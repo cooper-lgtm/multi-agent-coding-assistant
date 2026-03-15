@@ -1,4 +1,5 @@
 import { ModelRouter } from '../adapters/model-router.js';
+import { DEFAULT_OPENCLAW_AVAILABLE_MODELS } from '../adapters/openclaw-model-resolver.js';
 import type { QualityStatus, ReviewStatus } from '../schemas/planning.js';
 import type { ExecutionNode, RuntimeState } from '../schemas/runtime.js';
 
@@ -36,7 +37,7 @@ export class MockQualityGateRunner implements QualityGateRunner {
   private readonly router = new ModelRouter();
 
   constructor(options: MockQualityGateRunnerOptions = {}) {
-    this.availableModels = options.availableModels ?? ['gpt-5.4', 'codex', 'gemini', 'claude'];
+    this.availableModels = options.availableModels ?? DEFAULT_OPENCLAW_AVAILABLE_MODELS;
     this.taskDecisions = options.taskDecisions ?? {};
   }
 

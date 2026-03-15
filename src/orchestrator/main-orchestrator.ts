@@ -164,6 +164,7 @@ export class MainOrchestrator {
     if (decision.action === 'retry_same_model' || decision.action === 'retry_with_upgraded_model') {
       task.status = 'pending';
       task.model = decision.next_model;
+      task.model_metadata = decision.next_model_metadata;
       task.test_status = 'pending';
       task.review_status = 'pending';
       this.deps.reportingManager.record(

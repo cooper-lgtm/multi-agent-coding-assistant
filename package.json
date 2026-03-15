@@ -7,8 +7,10 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "demo:adapter": "npm run build && node dist/examples/run-openclaw-adapter-demo.js",
     "demo:planning": "npm run build && node dist/examples/run-planning-demo.js",
     "demo:orchestrator": "npm run build && node dist/examples/run-orchestration-demo.js",
+    "test:adapter": "npm run build && node --test tests/openclaw-runtime-adapter.test.mjs tests/openclaw-model-resolution.test.mjs",
     "test:planning": "npm run build && node --test tests/planning-mode-resolution.test.mjs tests/planning-pipeline.test.mjs",
     "test:runtime": "npm run build && node --test tests/orchestrator-runtime.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",

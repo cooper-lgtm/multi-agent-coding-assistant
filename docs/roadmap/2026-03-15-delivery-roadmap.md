@@ -66,7 +66,14 @@ A request can be transformed into a validated `planning result`, then into an ex
 - add adapter-focused demos or fixtures
 
 **Expected outcome**
-The orchestrator no longer only runs on in-process mocks; it can drive role execution through OpenClaw-facing integration contracts.
+The orchestrator can shape OpenClaw-facing role execution requests, preserve exact model metadata, and exercise the new adapter seam through fixtures and demos without yet providing the full concrete worker bridge.
+
+**Implementation note (2026-03-15)**
+- add `OpenClawModelResolver` support for logical aliases plus exact model ids
+- add typed planning-role and worker-role request/result/error envelopes
+- add a mockable OpenClaw runtime adapter stub instead of inventing a second long-lived agent
+- thread exact model metadata into planning traces and runtime task records
+- keep concrete worker execution for PR4
 
 ---
 

@@ -1,3 +1,5 @@
+import type { ModelResolution } from './models.js';
+
 export type RequestedPlanningMode = 'auto' | 'direct' | 'debate';
 export type ResolvedPlanningMode = 'direct' | 'debate' | 'auto_resolved_direct' | 'auto_resolved_debate';
 export type PlanningMode = RequestedPlanningMode | ResolvedPlanningMode;
@@ -60,6 +62,7 @@ export interface PlannerRouteTrace {
   role: PlanningRoleName;
   selected_model: string;
   attempted_models: string[];
+  selected_model_metadata?: ModelResolution;
 }
 
 export interface DebateTraceEntry {

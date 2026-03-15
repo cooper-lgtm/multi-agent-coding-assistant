@@ -1,3 +1,4 @@
+import { DEFAULT_OPENCLAW_AVAILABLE_MODELS } from '../adapters/openclaw-model-resolver.js';
 import { buildExecutionDag } from '../orchestrator/dag-builder.js';
 import { PlanningController } from '../planning/planning-controller.js';
 import {
@@ -6,7 +7,7 @@ import {
 } from './planning-fixtures.js';
 
 const controller = new PlanningController({
-  availableModels: ['gpt-5.4', 'codex', 'claude', 'gemini'],
+  availableModels: DEFAULT_OPENCLAW_AVAILABLE_MODELS,
 });
 
 function printScenario(label: string, request = buildDirectPlanningFixtureRequest()) {
@@ -17,7 +18,11 @@ function printScenario(label: string, request = buildDirectPlanningFixtureReques
     console.log(`Resolved mode: ${planningResult.planning_mode}`);
     console.log(
       `Planner routes: ${planningResult.planning_trace?.planner_routes
-        .map((route) => `${route.role}:${route.selected_model}`)
+        .map((route) =>
+          `${route.role}:${route.selected_model}${
+            route.selected_model_metadata ? `->${route.selected_model_metadata.exact_model_id}` : ''
+          }`,
+        )
         .join(', ')}`,
     );
     for (const task of planningResult.tasks) {

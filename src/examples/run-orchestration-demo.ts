@@ -34,7 +34,9 @@ const result = await orchestrator.run({
 console.log(`Run ${result.summary.run_id} finished with status ${result.summary.final_status}.`);
 for (const task of result.summary.tasks) {
   console.log(
-    `- ${task.task_id}: ${task.status} via ${task.assigned_agent} on ${task.model} (retries=${task.retry_count})`,
+    `- ${task.task_id}: ${task.status} via ${task.assigned_agent} on ${task.model}${
+      task.model_metadata ? ` -> ${task.model_metadata.exact_model_id}` : ''
+    } (retries=${task.retry_count})`,
   );
 }
 console.log(

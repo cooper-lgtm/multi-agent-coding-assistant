@@ -1,4 +1,8 @@
+import {
+  DEFAULT_OPENCLAW_AVAILABLE_MODELS,
+} from '../adapters/openclaw-model-resolver.js';
 import { ModelRouter } from '../adapters/model-router.js';
+import type { ModelResolution } from '../schemas/models.js';
 import type { AssignedAgent, RuntimeTaskStatus } from '../schemas/planning.js';
 import type { ExecutionNode } from '../schemas/runtime.js';
 
@@ -19,6 +23,7 @@ export interface RetryDecision {
   action: RetryAction;
   next_status: RuntimeTaskStatus;
   next_model: string;
+  next_model_metadata?: ModelResolution;
   retry_count: number;
   reason: string;
 }
@@ -36,7 +41,7 @@ export class RetryEscalationManager implements RetryManager {
   private readonly router = new ModelRouter();
 
   constructor(options: RetryEscalationManagerOptions = {}) {
-    this.availableModels = options.availableModels ?? ['gpt-5.4', 'codex', 'gemini', 'claude'];
+    this.availableModels = options.availableModels ?? DEFAULT_OPENCLAW_AVAILABLE_MODELS;
   }
 
   decide(task: ExecutionNode, cause: RetryCause): RetryDecision {
@@ -61,21 +66,23 @@ export class RetryEscalationManager implements RetryManager {
         action: 'retry_same_model',
         next_status: 'pending',
         next_model: task.model,
+        next_model_metadata: task.model_metadata,
         retry_count: task.retry_count + 1,
         reason: `Retrying ${task.task_id} on ${task.model} after ${cause}.`,
       };
     }
 
-    const upgradedModel = this.routeNextImplementationModel(task.assigned_agent, task.model);
-    if (upgradedModel) {
+    const upgradedRoute = this.routeNextImplementationModel(task.assigned_agent, task.model);
+    if (upgradedRoute) {
       return {
         taskId: task.task_id,
         cause,
         action: 'retry_with_upgraded_model',
         next_status: 'pending',
-        next_model: upgradedModel,
+        next_model: upgradedRoute.selectedModel,
+        next_model_metadata: upgradedRoute.selectedModelMetadata,
         retry_count: task.retry_count + 1,
-        reason: `Retry escalation for ${task.task_id}: switching from ${task.model} to ${upgradedModel}.`,
+        reason: `Retry escalation for ${task.task_id}: switching from ${task.model} to ${upgradedRoute.selectedModel}.`,
       };
     }
 
@@ -100,14 +107,14 @@ export class RetryEscalationManager implements RetryManager {
       action: 'keep_terminal_status',
       next_status: status,
       next_model: task.model,
+      next_model_metadata: task.model_metadata,
       retry_count: task.retry_count,
       reason,
     };
   }
 
-  private routeNextImplementationModel(agent: AssignedAgent, currentModel: string): string | null {
-    return this.router.routeNext(agent, currentModel, { availableModels: this.availableModels })
-      ?.selectedModel ?? null;
+  private routeNextImplementationModel(agent: AssignedAgent, currentModel: string) {
+    return this.router.routeNext(agent, currentModel, { availableModels: this.availableModels });
   }
 
   private toTerminalStatus(cause: RetryCause): RuntimeTaskStatus {

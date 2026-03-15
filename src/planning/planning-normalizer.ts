@@ -112,6 +112,7 @@ function buildPlannerTraceRoutes(routes: PlannerRouteTrace[]): PlannerRouteTrace
     role: route.role,
     selected_model: route.selected_model,
     attempted_models: [...route.attempted_models],
+    selected_model_metadata: route.selected_model_metadata,
   }));
 }
 

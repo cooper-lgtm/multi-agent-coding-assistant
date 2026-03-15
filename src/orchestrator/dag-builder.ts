@@ -1,3 +1,7 @@
+import {
+  DEFAULT_OPENCLAW_AVAILABLE_MODELS,
+  OpenClawModelResolver,
+} from '../adapters/openclaw-model-resolver.js';
 import { ModelRouter, type RoleName } from '../adapters/model-router.js';
 import type { DagBuildResult, ExecutionGraph, ExecutionNode, RuntimeState } from '../schemas/runtime.js';
 import type { PlanningResult } from '../schemas/planning.js';
@@ -16,7 +20,8 @@ export function buildExecutionDag(
   validatePlanningResult(planningResult);
 
   const router = new ModelRouter();
-  const availableModels = options.availableModels ?? ['gpt-5.4', 'codex', 'gemini', 'claude'];
+  const resolver = new OpenClawModelResolver();
+  const availableModels = options.availableModels ?? DEFAULT_OPENCLAW_AVAILABLE_MODELS;
   const maxRetries = options.maxRetriesPerTask ?? 2;
 
   const nodes: Record<string, ExecutionNode> = {};
@@ -24,9 +29,16 @@ export function buildExecutionDag(
 
   for (const task of planningResult.tasks) {
     const role: RoleName = task.assigned_agent;
-    const selectedModel = task.suggested_model && availableModels.includes(task.suggested_model)
-      ? task.suggested_model
-      : router.route(role, { availableModels }).selectedModel;
+    const suggestedModelMetadata = task.suggested_model
+      ? resolver.findAvailable(task.suggested_model, availableModels)
+      : null;
+    const routeDecision = suggestedModelMetadata ? null : router.route(role, { availableModels });
+    const selectedModel = suggestedModelMetadata
+      ? resolver.isExactModelId(task.suggested_model!)
+        ? suggestedModelMetadata.logical_model
+        : task.suggested_model!
+      : routeDecision!.selectedModel;
+    const modelMetadata = suggestedModelMetadata ?? routeDecision?.selectedModelMetadata;
 
     nodes[task.id] = {
       task_id: task.id,
@@ -34,6 +46,7 @@ export function buildExecutionDag(
       description: task.description,
       assigned_agent: task.assigned_agent,
       model: selectedModel,
+      model_metadata: modelMetadata,
       complexity: task.complexity,
       risk: task.risk,
       depends_on: [...task.depends_on],

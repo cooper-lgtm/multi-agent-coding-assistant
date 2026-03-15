@@ -83,6 +83,7 @@ export class ReportingManager {
       status: task.status,
       assigned_agent: task.assigned_agent,
       model: task.model,
+      model_metadata: task.model_metadata,
       retry_count: task.retry_count,
       test_status: task.test_status,
       review_status: task.review_status,
