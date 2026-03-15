@@ -16,6 +16,15 @@ The repository already has:
 
 The missing slice is the concrete runtime layer. The next MVP step should keep the architecture modular, strongly typed, and easy to replace with real adapters later.
 
+## Verified External Model IDs
+
+As of 2026-03-15, the OpenClaw host exposes these exact external model ids for this repository's next iteration:
+
+- `anthropic/claude-opus-4-6`
+- `google-gemini-cli/gemini-3.1-pro-preview`
+
+The runtime design should carry these exact ids rather than placeholder labels like `claude` or `gemini`. If compatibility aliases are used during transition, they should resolve to these ids.
+
 ## Approaches Considered
 
 ### 1. Expand `MainOrchestrator` into a single state machine file
@@ -70,12 +79,15 @@ Implementation tasks remain the only DAG nodes. The orchestrator will:
 - Contract for running a task owned by `frontend-agent` or `backend-agent`
 - Default mock implementation for the demo
 - Returns structured status, summary, and optional changed-file metadata
+- In the real executor phase, dispatch exact model ids, not provider nicknames
 
 ### Quality Gate Runner
 
 - Separate contract for `test-agent` and `review-agent`
 - Uses explicit role-based model routing for both gate roles
 - Returns test/review statuses plus the post-gate task status
+- The initial review target should be `anthropic/claude-opus-4-6`
+- The initial Gemini target should be `google-gemini-cli/gemini-3.1-pro-preview`
 
 ### Retry / Escalation Manager
 
@@ -84,6 +96,7 @@ Implementation tasks remain the only DAG nodes. The orchestrator will:
 - First retry: same model
 - Second retry: upgrade model using the next allowed model for the implementation role
 - Exhausted retries: preserve `needs_fix`, `failed`, or `blocked` as terminal outcomes
+- Retry state should persist exact next-model ids so runtime attempts are replayable and executable
 
 ### Reporting Manager
 
@@ -116,5 +129,5 @@ Implementation tasks remain the only DAG nodes. The orchestrator will:
 - Add minimal Node built-in tests against the compiled output.
 - Verify:
   - successful orchestration with dependencies,
-  - retry escalation upgrades the implementation model explicitly by role,
+  - retry escalation upgrades the implementation model explicitly by role using exact model ids,
   - downstream tasks are blocked when an upstream task ends terminal-negative.
