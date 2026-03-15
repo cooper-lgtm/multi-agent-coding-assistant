@@ -139,14 +139,14 @@ export function buildDirectPlanningFixture(): PlanningResult {
       planner_routes: [
         {
           role: 'planning-agent',
-          selected_model: 'gpt-5.4',
-          attempted_models: ['gpt-5.4', 'codex', 'gemini'],
+          selected_model: 'codex',
+          attempted_models: ['codex', 'gemini'],
           selected_model_metadata: {
-            requested_model: 'gpt-5.4',
-            logical_model: 'gpt-5.4',
+            requested_model: 'codex',
+            logical_model: 'codex',
             exact_model_id: 'openai-codex/gpt-5.4',
             provider: 'openai-codex',
-            aliases: ['gpt-5.4', 'codex'],
+            aliases: ['codex'],
           },
         },
       ],
@@ -264,7 +264,7 @@ export function buildDebatePlanningFixture(): PlanningResult {
         {
           role: 'architecture-planner',
           selected_model: 'claude',
-          attempted_models: ['claude', 'gpt-5.4', 'codex', 'gemini'],
+          attempted_models: ['claude', 'codex', 'gemini'],
           selected_model_metadata: {
             requested_model: 'claude',
             logical_model: 'claude',
@@ -276,19 +276,19 @@ export function buildDebatePlanningFixture(): PlanningResult {
         {
           role: 'engineering-planner',
           selected_model: 'codex',
-          attempted_models: ['codex', 'gpt-5.4', 'claude', 'gemini'],
+          attempted_models: ['codex', 'claude', 'gemini'],
           selected_model_metadata: {
             requested_model: 'codex',
-            logical_model: 'gpt-5.4',
+            logical_model: 'codex',
             exact_model_id: 'openai-codex/gpt-5.4',
             provider: 'openai-codex',
-            aliases: ['gpt-5.4', 'codex'],
+            aliases: ['codex'],
           },
         },
         {
           role: 'integration-planner',
           selected_model: 'gemini',
-          attempted_models: ['gemini', 'gpt-5.4', 'claude', 'codex'],
+          attempted_models: ['gemini', 'codex', 'claude'],
           selected_model_metadata: {
             requested_model: 'gemini',
             logical_model: 'gemini',

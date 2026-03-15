@@ -55,7 +55,7 @@ This MVP now includes both:
 - Verified exact external model ids currently include:
   - `anthropic/claude-opus-4-6`
   - `google-gemini-cli/gemini-3.1-pro-preview`
-- Logical compatibility labels such as `claude`, `gemini`, `codex`, and `gpt-5.4` still work.
+- Logical compatibility labels are `codex`, `claude`, and `gemini`.
 - Planning traces and runtime task records now carry exact model metadata where available while preserving logical labels in the existing `model` fields.
 
 ## Planning Modules

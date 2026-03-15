@@ -7,12 +7,12 @@ test('OpenClawModelResolver maps logical aliases to exact model ids', () => {
   const resolver = new OpenClawModelResolver();
 
   const claude = resolver.resolve('claude');
-  const codex = resolver.resolve('gpt-5.4');
+  const codex = resolver.resolve('codex');
 
   assert.equal(claude.logical_model, 'claude');
   assert.equal(claude.exact_model_id, 'anthropic/claude-opus-4-6');
   assert.equal(claude.provider, 'anthropic');
-  assert.equal(codex.logical_model, 'gpt-5.4');
+  assert.equal(codex.logical_model, 'codex');
   assert.equal(codex.exact_model_id, 'openai-codex/gpt-5.4');
   assert.equal(codex.provider, 'openai-codex');
 });
@@ -39,4 +39,24 @@ test('OpenClawModelResolver preserves exact ids when they are already provided',
   assert.equal(resolved.logical_model, 'claude');
   assert.equal(resolved.exact_model_id, 'anthropic/claude-opus-4-6');
   assert.equal(resolved.provider, 'anthropic');
+});
+
+test('routeNext skips exact-equivalent models when escalating retries', () => {
+  const router = new ModelRouter([
+    {
+      role: 'backend-agent',
+      preferredModels: ['codex', 'openai-codex/gpt-5.4', 'claude'],
+    },
+  ]);
+
+  const nextRoute = router.routeNext('backend-agent', 'codex', {
+    availableModels: [
+      'openai-codex/gpt-5.4',
+      'anthropic/claude-opus-4-6',
+    ],
+  });
+
+  assert.ok(nextRoute);
+  assert.equal(nextRoute.selectedModel, 'claude');
+  assert.equal(nextRoute.selectedModelExactId, 'anthropic/claude-opus-4-6');
 });

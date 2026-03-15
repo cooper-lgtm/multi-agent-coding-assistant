@@ -59,7 +59,7 @@ test('worker role envelopes standardize task payloads plus success and error res
 
   assert.equal(envelope.role_type, 'worker');
   assert.equal(envelope.role, 'backend-agent');
-  assert.equal(envelope.model.logical_model, 'gpt-5.4');
+  assert.equal(envelope.model.logical_model, 'codex');
   assert.equal(envelope.model.exact_model_id, 'openai-codex/gpt-5.4');
   assert.equal(envelope.payload.task.task_id, 'task-api-contract');
   assert.equal(envelope.payload.runtime.run_id, 'run-openclaw-adapter-test');

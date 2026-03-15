@@ -54,7 +54,7 @@ Support:
 - `openai-codex/gpt-5.4`
 - `anthropic/claude-opus-4-6`
 - `google-gemini-cli/gemini-3.1-pro-preview`
-- compatibility aliases like `codex`, `gpt-5.4`, `claude`, and `gemini`
+- compatibility aliases like `codex`, `claude`, and `gemini`
 
 ### Task 3: Integrate metadata and add adapter demo
 

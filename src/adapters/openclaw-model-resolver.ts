@@ -11,10 +11,10 @@ export interface OpenClawResolvedModel extends ModelResolution {}
 
 export const DEFAULT_OPENCLAW_MODEL_CATALOG: OpenClawModelCatalogEntry[] = [
   {
-    logical_model: 'gpt-5.4',
+    logical_model: 'codex',
     exact_model_id: 'openai-codex/gpt-5.4',
     provider: 'openai-codex',
-    aliases: ['gpt-5.4', 'codex'],
+    aliases: ['codex'],
   },
   {
     logical_model: 'claude',

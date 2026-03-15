@@ -18,7 +18,7 @@ const orchestrator = new MainOrchestrator({
     },
   }),
   qualityGateRunner: new MockQualityGateRunner(),
-  retryManager: new RetryEscalationManager({ availableModels: ['codex', 'gpt-5.4', 'claude'] }),
+  retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
   reportingManager: new ReportingManager(),
   runStore: new InMemoryRunStore(),
 });

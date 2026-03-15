@@ -32,35 +32,35 @@ export interface RoleModelPolicy {
 export const DEFAULT_ROLE_MODEL_POLICIES: RoleModelPolicy[] = [
   {
     role: 'planning-agent',
-    preferredModels: ['gpt-5.4', 'codex', 'gemini'],
+    preferredModels: ['codex', 'gemini'],
   },
   {
     role: 'architecture-planner',
-    preferredModels: ['claude', 'gpt-5.4', 'codex', 'gemini'],
+    preferredModels: ['claude', 'codex', 'gemini'],
   },
   {
     role: 'engineering-planner',
-    preferredModels: ['codex', 'gpt-5.4', 'claude', 'gemini'],
+    preferredModels: ['codex', 'claude', 'gemini'],
   },
   {
     role: 'integration-planner',
-    preferredModels: ['gemini', 'gpt-5.4', 'claude', 'codex'],
+    preferredModels: ['gemini', 'codex', 'claude'],
   },
   {
     role: 'frontend-agent',
-    preferredModels: ['codex', 'gpt-5.4', 'gemini'],
+    preferredModels: ['codex', 'gemini'],
   },
   {
     role: 'backend-agent',
-    preferredModels: ['codex', 'gpt-5.4', 'claude', 'gemini'],
+    preferredModels: ['codex', 'claude', 'gemini'],
   },
   {
     role: 'test-agent',
-    preferredModels: ['codex', 'gpt-5.4', 'gemini'],
+    preferredModels: ['codex', 'gemini'],
   },
   {
     role: 'review-agent',
-    preferredModels: ['claude', 'gpt-5.4', 'codex', 'gemini'],
+    preferredModels: ['claude', 'codex', 'gemini'],
   },
 ];
 
@@ -98,47 +98,48 @@ export class ModelRouter {
 
   routeNext(role: RoleName, currentModel: string, availability: ModelAvailability): ModelRouteDecision | null {
     const policy = this.getPolicy(role);
-    const compatibleModels = policy.preferredModels.filter((model) =>
-      this.resolver.isAvailable(model, availability.availableModels),
+    const compatibleRoutes = policy.preferredModels.flatMap((model) => {
+      const resolved = this.resolver.findAvailable(model, availability.availableModels);
+      return resolved ? [{ model, resolved }] : [];
+    });
+
+    const currentResolved = this.resolver.resolve(currentModel);
+    const currentIndex = compatibleRoutes.findIndex(({ model, resolved }) =>
+      model === currentModel ||
+      this.resolver.isSameModel(model, currentModel) ||
+      resolved.exact_model_id === currentResolved.exact_model_id,
     );
 
-    const currentIndex =
-      compatibleModels.indexOf(currentModel) >= 0
-        ? compatibleModels.indexOf(currentModel)
-        : compatibleModels.findIndex((model) => this.resolver.isSameModel(model, currentModel));
     if (currentIndex === -1) {
-      const fallbackModel = compatibleModels[0];
-      if (!fallbackModel) return null;
+      const fallbackRoute = compatibleRoutes[0];
+      if (!fallbackRoute) return null;
 
-      const resolvedFallback = this.resolver.findAvailable(fallbackModel, availability.availableModels)
-        ?? this.resolver.resolve(fallbackModel);
-
-      return compatibleModels.length > 0
-        ? {
-            role,
-            selectedModel: fallbackModel,
-            attemptedModels: compatibleModels,
-            selectedModelExactId: resolvedFallback.exact_model_id,
-            selectedModelProvider: resolvedFallback.provider,
-            selectedModelMetadata: resolvedFallback,
-          }
-        : null;
+      return {
+        role,
+        selectedModel: fallbackRoute.model,
+        attemptedModels: compatibleRoutes.map(({ model }) => model),
+        selectedModelExactId: fallbackRoute.resolved.exact_model_id,
+        selectedModelProvider: fallbackRoute.resolved.provider,
+        selectedModelMetadata: fallbackRoute.resolved,
+      };
     }
 
-    const nextModel = compatibleModels[currentIndex + 1];
-    if (!nextModel) return null;
+    for (const nextRoute of compatibleRoutes.slice(currentIndex + 1)) {
+      if (nextRoute.resolved.exact_model_id === currentResolved.exact_model_id) {
+        continue;
+      }
 
-    const resolvedNextModel = this.resolver.findAvailable(nextModel, availability.availableModels)
-      ?? this.resolver.resolve(nextModel);
+      return {
+        role,
+        selectedModel: nextRoute.model,
+        attemptedModels: compatibleRoutes.slice(currentIndex + 1).map(({ model }) => model),
+        selectedModelExactId: nextRoute.resolved.exact_model_id,
+        selectedModelProvider: nextRoute.resolved.provider,
+        selectedModelMetadata: nextRoute.resolved,
+      };
+    }
 
-    return {
-      role,
-      selectedModel: nextModel,
-      attemptedModels: compatibleModels.slice(currentIndex + 1),
-      selectedModelExactId: resolvedNextModel.exact_model_id,
-      selectedModelProvider: resolvedNextModel.provider,
-      selectedModelMetadata: resolvedNextModel,
-    };
+    return null;
   }
 
   private getPolicy(role: RoleName): RoleModelPolicy {
