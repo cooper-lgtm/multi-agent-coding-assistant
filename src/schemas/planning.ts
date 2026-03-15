@@ -1,9 +1,15 @@
-export type PlanningMode =
-  | 'auto'
-  | 'direct'
-  | 'debate'
-  | 'auto_resolved_direct'
-  | 'auto_resolved_debate';
+export type RequestedPlanningMode = 'auto' | 'direct' | 'debate';
+export type ResolvedPlanningMode = 'direct' | 'debate' | 'auto_resolved_direct' | 'auto_resolved_debate';
+export type PlanningMode = RequestedPlanningMode | ResolvedPlanningMode;
+export type PlanningRoleName =
+  | 'planning-agent'
+  | 'architecture-planner'
+  | 'engineering-planner'
+  | 'integration-planner';
+export type DebatePlannerRoleName =
+  | 'architecture-planner'
+  | 'engineering-planner'
+  | 'integration-planner';
 
 export type AssignedAgent = 'frontend-agent' | 'backend-agent';
 export type QualityStatus = 'pending' | 'pass' | 'fail' | 'skipped';
@@ -50,22 +56,42 @@ export interface PlanningTask {
   parallel_group?: string;
 }
 
+export interface PlannerRouteTrace {
+  role: PlanningRoleName;
+  selected_model: string;
+  attempted_models: string[];
+}
+
+export interface DebateTraceEntry {
+  role: DebatePlannerRoleName;
+  summary: string;
+  recommended_plan: string;
+}
+
+export interface PlanningTrace {
+  requested_mode: RequestedPlanningMode;
+  resolved_mode: ResolvedPlanningMode;
+  planner_routes: PlannerRouteTrace[];
+  debate?: DebateTraceEntry[];
+}
+
 export interface PlanningResult {
   schema_version: string;
-  planning_mode: PlanningMode;
+  planning_mode: ResolvedPlanningMode;
   epic: string;
   recommended_plan: string;
   tasks: PlanningTask[];
   parallel_groups?: Record<string, string[]>;
   notes_for_orchestrator?: string[];
   risks?: string[];
+  planning_trace?: PlanningTrace;
 }
 
 export interface PlanningRequest {
   request: string;
   project_summary: string;
   relevant_context: string[];
-  planning_mode: 'auto' | 'direct' | 'debate';
+  planning_mode: RequestedPlanningMode;
   constraints: string[];
   budget_policy?: BudgetPolicy;
   existing_artifacts?: string[];

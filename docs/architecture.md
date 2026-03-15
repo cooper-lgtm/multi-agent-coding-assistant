@@ -10,11 +10,13 @@ This project implements a layered orchestrator system on top of OpenClaw.
 
 2. **Planning Layer**
    - supports `auto`, `direct`, and `debate`
+   - resolves `auto` into a concrete planning mode before execution
+   - runs through a dedicated `PlanningPipeline`
    - debate mode fans out to:
      - `architecture-planner`
      - `engineering-planner`
      - `integration-planner`
-   - returns a single normalized `planning result`
+   - synthesizes debate outputs into one normalized `planning result`
 
 3. **Execution Graph Layer**
    - validates planning output
@@ -40,3 +42,13 @@ This project implements a layered orchestrator system on top of OpenClaw.
 ## Model Fallback Principle
 
 Every role has a preferred model order. If the first preferred model is unavailable, the router falls back to the next one. Because the user's main model is GPT-5.4, GPT-5.4 is always present as a guaranteed fallback before other final alternatives when configured.
+
+## Planning Pipeline Modules
+
+- `PlanningController`: thin facade for mode resolution, planner model inspection, and `createPlan()`
+- `PlanningPipeline`: orchestrates direct planning or debate planning from request to validated result
+- `DefaultPlanningModeResolver`: resolves `auto` mode with explicit debate gating
+- `MockDirectPlanner`: deterministic direct planner for the MVP
+- `MockDebateAnalyzer`: deterministic role analyzers for architecture, engineering, and integration
+- `DefaultDebateSynthesizer`: merges debate analyses into one planning draft
+- `DefaultPlanningNormalizer`: normalizes drafts, derives trace metadata, and prepares validation-safe output
