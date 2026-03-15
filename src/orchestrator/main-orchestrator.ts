@@ -22,7 +22,9 @@ export class MainOrchestrator {
 
   async run(request: PlanningRequest): Promise<OrchestrationRunResult> {
     const planningResult = await this.deps.createPlan(request);
-    const dag = buildExecutionDag(planningResult);
+    const dag = buildExecutionDag(planningResult, {
+      maxRetriesPerTask: request.budget_policy?.maxRetriesPerTask,
+    });
     const runtime = dag.runtime;
 
     this.deps.reportingManager.record(

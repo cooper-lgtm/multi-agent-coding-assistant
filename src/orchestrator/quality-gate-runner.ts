@@ -54,9 +54,21 @@ export class MockQualityGateRunner implements QualityGateRunner {
       summary: decision.summary,
       test_status: decision.test_status,
       review_status: decision.review_status,
-      test_model: decision.test_model ?? fallbackDecision.test_model,
-      review_model: decision.review_model ?? fallbackDecision.review_model,
+      test_model: this.resolveOptionalModelOverride(decision, 'test_model', fallbackDecision.test_model),
+      review_model: this.resolveOptionalModelOverride(
+        decision,
+        'review_model',
+        fallbackDecision.review_model,
+      ),
     };
+  }
+
+  private resolveOptionalModelOverride(
+    decision: MockQualityGateDecision,
+    key: 'test_model' | 'review_model',
+    fallbackModel: string | null,
+  ): string | null {
+    return Object.prototype.hasOwnProperty.call(decision, key) ? (decision[key] ?? null) : fallbackModel;
   }
 
   private buildDefaultDecision(task: ExecutionNode): QualityGateRunResult {
