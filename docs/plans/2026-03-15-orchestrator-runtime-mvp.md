@@ -4,7 +4,7 @@
 
 **Goal:** Add concrete orchestrator runtime modules, extend the orchestration loop through quality gates and retry escalation, and ship a runnable demo fixture.
 
-**Architecture:** Keep planning tasks as the only DAG nodes. Add small runtime modules for dispatch, gates, retries, and reporting, then let `MainOrchestrator` coordinate them while persisting typed runtime state and emitting a final run summary.
+**Architecture:** Keep planning tasks as the only DAG nodes. Add small runtime modules for dispatch, gates, retries, and reporting, then let `MainOrchestrator` coordinate them while persisting typed runtime state and emitting a final run summary. Use exact model ids for external providers instead of placeholder names, with `anthropic/claude-opus-4-6` and `google-gemini-cli/gemini-3.1-pro-preview` as the verified initial targets.
 
 **Tech Stack:** TypeScript, Node ESM, Node built-in test runner, existing model-router and runtime schema modules
 
@@ -19,7 +19,7 @@
 
 Cover:
 - successful 3-task orchestration with dependencies,
-- retry escalation to the next role-allowed model,
+- retry escalation to the next role-allowed exact model id,
 - dependency blocking after terminal-negative upstream status.
 
 **Step 2: Run test to verify it fails**
@@ -41,7 +41,7 @@ Expected: FAIL because runtime modules / APIs do not exist yet or the orchestrat
 
 Include:
 - explicit dispatcher and gate result types,
-- role-based model fallback helper,
+- role-based model fallback helper using exact model ids instead of bare `claude` / `gemini`,
 - run summary types,
 - default mock implementations for demo wiring.
 

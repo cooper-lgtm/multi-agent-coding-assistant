@@ -15,9 +15,30 @@ export function validatePlanningResult(planningResult: PlanningResult): void {
     if (!['frontend-agent', 'backend-agent'].includes(task.assigned_agent)) {
       throw new Error(`Invalid assigned_agent for task ${task.id}: ${task.assigned_agent}`);
     }
+    if (!['low', 'medium', 'high'].includes(task.complexity)) {
+      throw new Error(`Invalid complexity for task ${task.id}: ${task.complexity}`);
+    }
+    if (!['low', 'medium', 'high'].includes(task.risk)) {
+      throw new Error(`Invalid risk for task ${task.id}: ${task.risk}`);
+    }
+    if (!Array.isArray(task.depends_on)) {
+      throw new Error(`Task ${task.id} must include depends_on`);
+    }
     if (!task.quality_gate) throw new Error(`Missing quality_gate for task ${task.id}`);
+    if (typeof task.quality_gate.test_required !== 'boolean') {
+      throw new Error(`Task ${task.id} must include a boolean quality_gate.test_required`);
+    }
+    if (typeof task.quality_gate.review_required !== 'boolean') {
+      throw new Error(`Task ${task.id} must include a boolean quality_gate.review_required`);
+    }
+    if (!task.quality_gate.gate_reason?.trim()) {
+      throw new Error(`Task ${task.id} must include quality_gate.gate_reason`);
+    }
     if (!task.acceptance_criteria?.length) {
       throw new Error(`Task ${task.id} must include acceptance_criteria`);
+    }
+    if (task.depends_on.includes(task.id)) {
+      throw new Error(`Task ${task.id} cannot depend on itself`);
     }
   }
 
@@ -25,6 +46,14 @@ export function validatePlanningResult(planningResult: PlanningResult): void {
     for (const dependency of task.depends_on) {
       if (!ids.has(dependency)) {
         throw new Error(`Task ${task.id} depends on unknown task ${dependency}`);
+      }
+    }
+  }
+
+  for (const [groupName, taskIds] of Object.entries(planningResult.parallel_groups ?? {})) {
+    for (const taskId of taskIds) {
+      if (!ids.has(taskId)) {
+        throw new Error(`Parallel group ${groupName} references unknown task ${taskId}`);
       }
     }
   }
