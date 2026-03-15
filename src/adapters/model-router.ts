@@ -62,10 +62,7 @@ export class ModelRouter {
   constructor(private readonly policies: RoleModelPolicy[] = DEFAULT_ROLE_MODEL_POLICIES) {}
 
   route(role: RoleName, availability: ModelAvailability): ModelRouteDecision {
-    const policy = this.policies.find((item) => item.role === role);
-    if (!policy) {
-      throw new Error(`No model policy configured for role: ${role}`);
-    }
+    const policy = this.getPolicy(role);
 
     for (const model of policy.preferredModels) {
       if (availability.availableModels.includes(model)) {
@@ -80,5 +77,41 @@ export class ModelRouter {
     throw new Error(
       `No available model for role ${role}. Attempted: ${policy.preferredModels.join(', ')}`,
     );
+  }
+
+  routeNext(role: RoleName, currentModel: string, availability: ModelAvailability): ModelRouteDecision | null {
+    const policy = this.getPolicy(role);
+    const compatibleModels = policy.preferredModels.filter((model) =>
+      availability.availableModels.includes(model),
+    );
+
+    const currentIndex = compatibleModels.indexOf(currentModel);
+    if (currentIndex === -1) {
+      return compatibleModels.length > 0
+        ? {
+            role,
+            selectedModel: compatibleModels[0],
+            attemptedModels: compatibleModels,
+          }
+        : null;
+    }
+
+    const nextModel = compatibleModels[currentIndex + 1];
+    if (!nextModel) return null;
+
+    return {
+      role,
+      selectedModel: nextModel,
+      attemptedModels: compatibleModels.slice(currentIndex + 1),
+    };
+  }
+
+  private getPolicy(role: RoleName): RoleModelPolicy {
+    const policy = this.policies.find((item) => item.role === role);
+    if (!policy) {
+      throw new Error(`No model policy configured for role: ${role}`);
+    }
+
+    return policy;
   }
 }

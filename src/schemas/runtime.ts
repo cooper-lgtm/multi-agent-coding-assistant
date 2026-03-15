@@ -66,3 +66,37 @@ export interface DagBuildResult {
   runtime: RuntimeState;
   ready_tasks: ExecutionNode[];
 }
+
+export interface RunSummaryCounts {
+  completed: number;
+  needs_fix: number;
+  blocked: number;
+  failed: number;
+  pending: number;
+}
+
+export interface TaskRunSummary {
+  task_id: string;
+  title: string;
+  status: RuntimeTaskStatus;
+  assigned_agent: AssignedAgent;
+  model: string;
+  retry_count: number;
+  test_status: QualityStatus;
+  review_status: ReviewStatus;
+}
+
+export type RunFinalStatus = 'completed' | 'needs_fix' | 'blocked' | 'failed' | 'running';
+
+export interface RunSummary {
+  run_id: string;
+  epic: string;
+  final_status: RunFinalStatus;
+  counts: RunSummaryCounts;
+  tasks: TaskRunSummary[];
+  events: string[];
+}
+
+export interface OrchestrationRunResult extends DagBuildResult {
+  summary: RunSummary;
+}

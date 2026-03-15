@@ -7,6 +7,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "demo:orchestrator": "npm run build && node dist/examples/run-orchestration-demo.js",
+    "test:runtime": "npm run build && node --test tests/orchestrator-runtime.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js"
   },
