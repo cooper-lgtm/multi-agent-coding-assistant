@@ -13,6 +13,7 @@ export class InMemoryRunStore implements RunStore {
   }
 
   async load(runId: string): Promise<RuntimeState | null> {
-    return this.runs.get(runId) ?? null;
+    const runtime = this.runs.get(runId);
+    return runtime ? structuredClone(runtime) : null;
   }
 }

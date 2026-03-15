@@ -21,6 +21,8 @@ Core flow:
 7. Run `test-agent` and `review-agent` as quality gates
 8. Re-route `needs_fix`, escalate failures, and summarize results
 
+This MVP now includes a coherent runtime loop with mockable adapters for implementation dispatch, quality gates, retry/escalation, persistence, and reporting.
+
 ## Current Structure
 
 - `docs/`: architecture notes and implementation-facing docs
@@ -28,7 +30,8 @@ Core flow:
 - `src/schemas/`: shared runtime and planning types
 - `src/adapters/`: model routing and runtime integration adapters
 - `src/planning/`: planning controller contracts
-- `src/orchestrator/`: DAG builder, orchestrator loop, reporting
+- `src/orchestrator/`: DAG builder, main orchestrator, implementation dispatch, quality gates, retry/escalation, reporting
+- `src/examples/`: typed planning fixtures and runnable orchestration demo
 - `src/storage/`: runtime state persistence contracts
 - `src/workers/`: worker invocation contracts
 
@@ -36,16 +39,37 @@ Core flow:
 
 - Planning only produces implementation tasks.
 - `test-agent` and `review-agent` are quality gates, not planning owners.
-- `assigned_agent` must be unique per task.
+- `assigned_agent` can only be `frontend-agent` or `backend-agent`.
 - Cross-frontend/backend work must be split.
 - The main orchestrator remains the only global controller.
-- Model selection must support fallback chains.
+- Model selection must support explicit role-based fallback chains.
+
+## Runtime Modules
+
+- `implementation-dispatcher`: dispatches ready implementation tasks to `frontend-agent` or `backend-agent`
+- `quality-gate-runner`: runs `test-agent` and `review-agent` after implementation completes
+- `retry-escalation-manager`: applies the runtime retry policy and explicit per-role model fallback
+- `reporting-manager`: records runtime events and builds concise run summaries
+
+## Demo
+
+Example artifacts included in this MVP:
+- `src/examples/planning-fixtures.ts`: a 3-task planning result with dependencies
+- `src/examples/run-orchestration-demo.ts`: a runnable mock orchestration flow
+- `tests/orchestrator-runtime.test.mjs`: compiled-output runtime checks for success, retry escalation, and dependency blocking
+
+Useful commands:
+
+```bash
+npm run typecheck
+npm run test:runtime
+npm run demo:orchestrator
+```
 
 ## Next Implementation Milestones
 
 1. JSON schema validation for planning results
-2. Concrete OpenClaw session adapter
-3. Worker dispatch and result ingestion
-4. Quality gate execution loop
-5. File-backed runtime store
-6. CLI / chat entry integration
+2. Concrete OpenClaw session adapter for implementation and quality-gate roles
+3. File-backed runtime store
+4. Richer reporting output and checkpoint resume support
+5. CLI / chat entry integration
