@@ -82,3 +82,17 @@ test('planning pipeline resolves auto to debate and preserves trace metadata', a
     ),
   );
 });
+
+test('planning normalization rejects duplicate task ids before validation can collapse them', async () => {
+  const controller = new PlanningController({
+    availableModels: ['gpt-5.4', 'codex', 'claude', 'gemini'],
+  });
+
+  await assert.rejects(
+    controller.createPlan({
+      ...buildDirectPlanningFixtureRequest(),
+      existing_artifacts: ['fixture:duplicate-task-id'],
+    }),
+    /Duplicate task id detected during planning normalization: task-plan-contract/,
+  );
+});

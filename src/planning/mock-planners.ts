@@ -73,27 +73,37 @@ export class MockDirectPlanner implements DirectPlanner {
   async plan(input: DirectPlanningInput): Promise<PlanningDraft> {
     const text = buildRequestText(input.request);
     const needsFrontend = matchesAny(text, FRONTEND_PATTERNS);
+    const wantsDuplicateTaskId = input.request.existing_artifacts?.includes('fixture:duplicate-task-id');
 
     if (needsFrontend) {
+      const contractTask = buildContractTask(
+        'Define the backend planning contract that downstream UI work depends on.',
+        [
+          'The planning contract shape is explicit and stable for downstream consumers.',
+          'Implementation notes identify the backend contract surface.',
+        ],
+      );
+      const uiTask = buildUiTask(
+        'Build the frontend planning UI against the locked backend contract.',
+        [
+          'The UI reads from the contract produced by task-plan-contract.',
+          'Implementation notes identify the frontend change surface.',
+        ],
+      );
+
       return {
         epic: input.request.request.trim(),
         recommended_plan: 'Lock the plan contract first, then build the plan UI.',
-        tasks: [
-          buildContractTask(
-            'Define the backend planning contract that downstream UI work depends on.',
-            [
-              'The planning contract shape is explicit and stable for downstream consumers.',
-              'Implementation notes identify the backend contract surface.',
-            ],
-          ),
-          buildUiTask(
-            'Build the frontend planning UI against the locked backend contract.',
-            [
-              'The UI reads from the contract produced by task-plan-contract.',
-              'Implementation notes identify the frontend change surface.',
-            ],
-          ),
-        ],
+        tasks: wantsDuplicateTaskId
+          ? [
+              contractTask,
+              {
+                ...uiTask,
+                id: contractTask.id,
+                title: 'Duplicate planning UI task id fixture',
+              },
+            ]
+          : [contractTask, uiTask],
         notes_for_orchestrator: [
           'Direct planning stayed on implementation tasks only.',
         ],

@@ -75,7 +75,14 @@ function sortTasksTopologically(tasks: PlanningTask[]): PlanningTask[] {
   const ordered: PlanningTask[] = [];
   const visited = new Set<string>();
   const visiting = new Set<string>();
-  const taskMap = new Map(tasks.map((task) => [task.id, task]));
+  const taskMap = new Map<string, PlanningTask>();
+
+  for (const task of tasks) {
+    if (taskMap.has(task.id)) {
+      throw new Error(`Duplicate task id detected during planning normalization: ${task.id}`);
+    }
+    taskMap.set(task.id, task);
+  }
 
   function visit(taskId: string): void {
     if (visited.has(taskId)) return;
