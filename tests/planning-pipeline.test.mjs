@@ -11,7 +11,7 @@ import {
 
 test('planning pipeline produces a validated direct planning result and DAG', async () => {
   const controller = new PlanningController({
-    availableModels: ['gpt-5.4', 'codex', 'claude', 'gemini'],
+    availableModels: ['codex', 'claude', 'gemini'],
   });
 
   const planningResult = await controller.createPlan(buildDirectPlanningFixtureRequest());
@@ -36,7 +36,7 @@ test('planning pipeline produces a validated direct planning result and DAG', as
 
 test('planning pipeline produces a synthesized debate planning result and DAG', async () => {
   const controller = new PlanningController({
-    availableModels: ['gpt-5.4', 'codex', 'claude', 'gemini'],
+    availableModels: ['codex', 'claude', 'gemini'],
   });
 
   const planningResult = await controller.createPlan(buildDebatePlanningFixtureRequest());
@@ -62,7 +62,7 @@ test('planning pipeline produces a synthesized debate planning result and DAG', 
 
 test('planning pipeline resolves auto to debate and preserves trace metadata', async () => {
   const controller = new PlanningController({
-    availableModels: ['gpt-5.4', 'codex', 'claude', 'gemini'],
+    availableModels: ['codex', 'claude', 'gemini'],
   });
 
   const planningResult = await controller.createPlan({
@@ -85,7 +85,7 @@ test('planning pipeline resolves auto to debate and preserves trace metadata', a
 
 test('planning normalization rejects duplicate task ids before validation can collapse them', async () => {
   const controller = new PlanningController({
-    availableModels: ['gpt-5.4', 'codex', 'claude', 'gemini'],
+    availableModels: ['codex', 'claude', 'gemini'],
   });
 
   await assert.rejects(

@@ -1,3 +1,4 @@
+import type { ModelResolution } from './models.js';
 import type {
   AssignedAgent,
   PlanningMode,
@@ -22,6 +23,7 @@ export interface ExecutionNode {
   description: string;
   assigned_agent: AssignedAgent;
   model: string;
+  model_metadata?: ModelResolution;
   complexity: Complexity;
   risk: RiskLevel;
   depends_on: string[];
@@ -81,6 +83,7 @@ export interface TaskRunSummary {
   status: RuntimeTaskStatus;
   assigned_agent: AssignedAgent;
   model: string;
+  model_metadata?: ModelResolution;
   retry_count: number;
   test_status: QualityStatus;
   review_status: ReviewStatus;

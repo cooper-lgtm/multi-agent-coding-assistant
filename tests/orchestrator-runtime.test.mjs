@@ -62,7 +62,7 @@ test('retry escalation upgrades the implementation model explicitly by role', as
       },
     }),
     qualityGateRunner: new MockQualityGateRunner(),
-    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'gpt-5.4', 'claude'] }),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
     reportingManager: new ReportingManager(),
     runStore: new InMemoryRunStore(),
   });
@@ -78,10 +78,10 @@ test('retry escalation upgrades the implementation model explicitly by role', as
   const task = result.runtime.tasks['task-api-contract'];
   assert.equal(task.status, 'completed');
   assert.equal(task.retry_count, 2);
-  assert.equal(task.model, 'gpt-5.4');
+  assert.equal(task.model, 'claude');
   assert.match(
     result.summary.events.join('\n'),
-    /retry escalation.*task-api-contract.*gpt-5\.4/i,
+    /retry escalation.*task-api-contract.*claude/i,
   );
 });
 
@@ -114,7 +114,7 @@ test('downstream tasks become blocked when an upstream task ends needs_fix after
         ],
       },
     }),
-    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'gpt-5.4', 'claude'] }),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
     reportingManager: new ReportingManager(),
     runStore: new InMemoryRunStore(),
   });
@@ -143,7 +143,7 @@ test('orchestrator honors budget_policy.maxRetriesPerTask when building the runt
       },
     }),
     qualityGateRunner: new MockQualityGateRunner(),
-    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'gpt-5.4', 'claude'] }),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
     reportingManager: new ReportingManager(),
     runStore: new InMemoryRunStore(),
   });

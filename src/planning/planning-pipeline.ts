@@ -1,4 +1,7 @@
-import { ModelRouter } from '../adapters/model-router.js';
+import {
+  DEFAULT_OPENCLAW_AVAILABLE_MODELS,
+} from '../adapters/openclaw-model-resolver.js';
+import { ModelRouter, type ModelRouteDecision } from '../adapters/model-router.js';
 import type { DebatePlannerRoleName, PlannerRouteTrace, PlanningRequest, ResolvedPlanningMode } from '../schemas/planning.js';
 import { validatePlanningResult } from '../orchestrator/planning-validator.js';
 import type {
@@ -13,8 +16,6 @@ import { DefaultDebateSynthesizer } from './debate-synthesizer.js';
 import { MockDebateAnalyzer, MockDirectPlanner } from './mock-planners.js';
 import { DefaultPlanningModeResolver } from './planning-mode-resolver.js';
 import { DefaultPlanningNormalizer } from './planning-normalizer.js';
-
-const DEFAULT_AVAILABLE_MODELS = ['gpt-5.4', 'codex', 'gemini', 'claude'];
 
 export interface PlanningPipelineDependencies {
   modeResolver: PlanningModeResolver;
@@ -31,11 +32,12 @@ export interface PlanningPipelineOptions {
   dependencies?: Partial<PlanningPipelineDependencies>;
 }
 
-function toPlannerRoute(route: { role: string; selectedModel: string; attemptedModels: string[] }): PlannerRouteTrace {
+function toPlannerRoute(route: ModelRouteDecision): PlannerRouteTrace {
   return {
     role: route.role as PlannerRouteTrace['role'],
     selected_model: route.selectedModel,
     attempted_models: [...route.attemptedModels],
+    selected_model_metadata: route.selectedModelMetadata,
   };
 }
 
@@ -65,7 +67,7 @@ export class PlanningPipeline {
   }
 
   selectPlannerModels() {
-    const availableModels = this.options.availableModels ?? DEFAULT_AVAILABLE_MODELS;
+    const availableModels = this.options.availableModels ?? DEFAULT_OPENCLAW_AVAILABLE_MODELS;
     return {
       planningAgent: this.router.route('planning-agent', { availableModels }),
       architecturePlanner: this.router.route('architecture-planner', { availableModels }),
@@ -75,7 +77,7 @@ export class PlanningPipeline {
   }
 
   async createPlan(request: PlanningRequest) {
-    const availableModels = this.options.availableModels ?? DEFAULT_AVAILABLE_MODELS;
+    const availableModels = this.options.availableModels ?? DEFAULT_OPENCLAW_AVAILABLE_MODELS;
     const resolvedMode = this.resolvePlanningMode(request);
 
     if (resolvedMode === 'direct' || resolvedMode === 'auto_resolved_direct') {

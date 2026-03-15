@@ -1,4 +1,7 @@
 export * from './adapters/model-router.js';
+export * from './adapters/openclaw-model-resolver.js';
+export * from './adapters/openclaw-runtime-adapter.js';
+export * from './schemas/models.js';
 export * from './schemas/planning.js';
 export * from './schemas/runtime.js';
 export * from './planning/contracts.js';
@@ -16,4 +19,5 @@ export * from './orchestrator/retry-escalation-manager.js';
 export * from './orchestrator/reporting-manager.js';
 export * from './orchestrator/main-orchestrator.js';
 export * from './examples/planning-fixtures.js';
+export * from './examples/openclaw-adapter-fixtures.js';
 export * from './storage/run-store.js';
