@@ -7,6 +7,10 @@ import type { QualityGateRunner } from './quality-gate-runner.js';
 import type { RetryCause, RetryDecision, RetryManager } from './retry-escalation-manager.js';
 import { ReportingManager } from './reporting-manager.js';
 import type { RunStore } from '../storage/run-store.js';
+import {
+  applyWorkerExecutionContext,
+  createWorkerRetryHandoff,
+} from '../workers/contracts.js';
 
 export interface OrchestratorDependencies {
   createPlan(request: PlanningRequest): Promise<PlanningResult>;
@@ -82,6 +86,7 @@ export class MainOrchestrator {
 
     const dispatchResult = await this.deps.implementationDispatcher.dispatch(task, runtime);
     task.result = dispatchResult.summary;
+    applyWorkerExecutionContext(task, dispatchResult);
 
     if (dispatchResult.status === 'implementation_done') {
       task.error = null;
@@ -97,7 +102,8 @@ export class MainOrchestrator {
       return;
     }
 
-    task.error = dispatchResult.summary;
+    task.status = dispatchResult.status === 'blocked' ? 'blocked' : 'failed';
+    task.error = dispatchResult.blocker_message ?? dispatchResult.summary;
     const failureCause: RetryCause =
       dispatchResult.status === 'blocked' ? 'implementation_blocked' : 'implementation_failed';
     const decision = this.deps.retryManager.decide(task, failureCause);
@@ -119,6 +125,7 @@ export class MainOrchestrator {
     task.result = gateResult.summary;
     task.test_status = gateResult.test_status;
     task.review_status = gateResult.review_status;
+    applyWorkerExecutionContext(task, gateResult);
 
     if (gateResult.test_model) {
       this.deps.reportingManager.record(
@@ -150,7 +157,8 @@ export class MainOrchestrator {
       return;
     }
 
-    task.error = gateResult.summary;
+    task.status = gateResult.status === 'needs_fix' ? 'needs_fix' : 'failed';
+    task.error = gateResult.blocker_message ?? gateResult.summary;
     const failureCause: RetryCause =
       gateResult.status === 'needs_fix' ? 'quality_needs_fix' : 'quality_failed';
     const decision = this.deps.retryManager.decide(task, failureCause);
@@ -159,9 +167,17 @@ export class MainOrchestrator {
   }
 
   private applyRetryDecision(task: ExecutionNode, decision: RetryDecision, runtime: RuntimeState): void {
+    const attemptStatus = task.status === 'needs_fix' ? 'needs_fix' : task.status === 'blocked' ? 'blocked' : 'failed';
+
     task.retry_count = decision.retry_count;
 
     if (decision.action === 'retry_same_model' || decision.action === 'retry_with_upgraded_model') {
+      task.prior_attempt = createWorkerRetryHandoff(
+        task,
+        task.retry_count,
+        attemptStatus,
+        task.result ?? task.error ?? `Attempt ${task.retry_count} finished without a summary.`,
+      );
       task.status = 'pending';
       task.model = decision.next_model;
       task.model_metadata = decision.next_model_metadata;
@@ -209,7 +225,9 @@ export class MainOrchestrator {
         if (!blockingDependency) continue;
 
         task.status = 'blocked';
-        task.error = `Dependency ${blockingDependency} is not recoverable.`;
+        task.blocker_category = 'dependency';
+        task.blocker_message = `Dependency ${blockingDependency} is not recoverable.`;
+        task.error = task.blocker_message;
         this.deps.reportingManager.record(
           runtime,
           'task_blocked_by_dependency',

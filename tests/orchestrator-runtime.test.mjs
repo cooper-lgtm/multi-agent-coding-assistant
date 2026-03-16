@@ -79,6 +79,20 @@ test('retry escalation upgrades the implementation model explicitly by role', as
   assert.equal(task.status, 'completed');
   assert.equal(task.retry_count, 2);
   assert.equal(task.model, 'claude');
+  assert.equal(task.prior_attempt?.attempt, 2);
+  assert.equal(task.prior_attempt?.status, 'failed');
+  assert.match(task.prior_attempt?.summary ?? '', /same model failed again/i);
+  assert.deepEqual(task.changed_files, ['src/mock/task-api-contract.ts']);
+  assert.deepEqual(task.implementation_evidence, [
+    'Recovered on retry.',
+    'Attempt 3 finished implementation for task-api-contract.',
+  ]);
+  assert.deepEqual(task.test_evidence, [
+    'test-agent passed for task-api-contract on codex.',
+  ]);
+  assert.deepEqual(task.review_feedback, [
+    'review-agent approved task-api-contract on claude.',
+  ]);
   assert.match(
     result.summary.events.join('\n'),
     /retry escalation.*task-api-contract.*claude/i,
@@ -128,7 +142,20 @@ test('downstream tasks become blocked when an upstream task ends needs_fix after
   });
 
   assert.equal(result.runtime.tasks['task-api-contract'].status, 'needs_fix');
+  assert.equal(result.runtime.tasks['task-api-contract'].blocker_category, 'quality');
+  assert.equal(
+    result.runtime.tasks['task-api-contract'].blocker_message,
+    'Retry budget exhausted.',
+  );
+  assert.deepEqual(result.runtime.tasks['task-api-contract'].review_feedback, [
+    'Retry budget exhausted.',
+  ]);
+  assert.equal(
+    result.runtime.tasks['task-api-contract'].prior_attempt?.summary,
+    'Review still requests changes.',
+  );
   assert.equal(result.runtime.tasks['task-ui-shell'].status, 'blocked');
+  assert.equal(result.runtime.tasks['task-ui-shell'].blocker_category, 'dependency');
   assert.equal(result.runtime.tasks['task-integration-wireup'].status, 'blocked');
   assert.equal(result.summary.final_status, 'needs_fix');
 });
@@ -227,4 +254,147 @@ test('mock quality gate runner preserves explicit null model overrides', async (
 
   assert.equal(result.test_model, null);
   assert.equal(result.review_model, null);
+});
+
+test('mock quality gate runner treats pending statuses as non-success evidence', async () => {
+  const fixture = buildDemoPlanningFixture();
+  const targetTask = fixture.tasks[0];
+  const runner = new MockQualityGateRunner({
+    availableModels: ['codex', 'claude'],
+    taskDecisions: {
+      [targetTask.id]: [
+        {
+          status: 'failed',
+          summary: 'Quality gates could not start because the implementation artifact was missing.',
+          test_status: 'pending',
+          review_status: 'pending',
+        },
+      ],
+    },
+  });
+
+  const result = await runner.run(
+    {
+      task_id: targetTask.id,
+      title: targetTask.title,
+      description: targetTask.description,
+      assigned_agent: targetTask.assigned_agent,
+      model: 'codex',
+      complexity: targetTask.complexity,
+      risk: targetTask.risk,
+      depends_on: targetTask.depends_on,
+      acceptance_criteria: targetTask.acceptance_criteria,
+      quality_gate: targetTask.quality_gate,
+      status: 'implementation_done',
+      test_status: 'pending',
+      review_status: 'pending',
+      retry_count: 0,
+      max_retries: 2,
+      escalation_policy: {
+        on_first_failure: 'retry_same_model',
+        on_second_failure: 'upgrade_model',
+        on_third_failure: 'manual_orchestrator_decision',
+      },
+      result: null,
+      error: null,
+    },
+    {
+      run_id: 'run-test',
+      epic: fixture.epic,
+      graph: {
+        epic: fixture.epic,
+        planning_mode: fixture.planning_mode,
+        source_planning_result: fixture,
+        nodes: {},
+        edges: [],
+        parallel_groups: {},
+      },
+      tasks: {},
+      events: [],
+    },
+  );
+
+  assert.equal(result.test_model, 'codex');
+  assert.equal(result.review_model, 'claude');
+  assert.deepEqual(result.test_evidence, ['test-agent pending for task-api-contract on codex.']);
+  assert.deepEqual(result.review_feedback, ['review-agent pending for task-api-contract on claude.']);
+});
+
+test('orchestrator summary carries richer worker bridge details into reporting', async () => {
+  const fixture = buildDemoPlanningFixture();
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher: new MockImplementationDispatcher({
+      taskDecisions: {
+        'task-api-contract': [
+          {
+            status: 'failed',
+            summary: 'Repository fixture is missing a generated client stub.',
+            changed_files: ['src/api/contract.ts'],
+            blocker_category: 'repository',
+            blocker_message: 'Repository fixture is missing a generated client stub.',
+            implementation_evidence: ['Updated the API contract before the missing stub blocked progress.'],
+            test_evidence: [],
+            review_feedback: [],
+          },
+          {
+            status: 'implementation_done',
+            summary: 'Repository issue resolved and implementation completed.',
+            changed_files: ['src/api/contract.ts', 'src/api/client.ts'],
+            blocker_category: null,
+            blocker_message: null,
+            implementation_evidence: ['Added the generated client stub and finished the contract update.'],
+            test_evidence: [],
+            review_feedback: [],
+          },
+        ],
+      },
+    }),
+    qualityGateRunner: new MockQualityGateRunner({
+      taskDecisions: {
+        'task-api-contract': [
+          {
+            status: 'completed',
+            summary: 'Quality gates passed after the retry.',
+            changed_files: ['src/api/contract.ts', 'src/api/client.ts'],
+            blocker_category: null,
+            blocker_message: null,
+            implementation_evidence: ['Added the generated client stub and finished the contract update.'],
+            test_evidence: ['npm run test:adapter passed after the retry.'],
+            review_feedback: ['Review approved the regenerated client stub.'],
+            test_status: 'pass',
+            review_status: 'approved',
+          },
+        ],
+      },
+    }),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+  });
+
+  const summaryTask = result.summary.tasks.find((task) => task.task_id === 'task-api-contract');
+  assert.ok(summaryTask);
+  assert.deepEqual(summaryTask.changed_files, ['src/api/contract.ts', 'src/api/client.ts']);
+  assert.equal(summaryTask.blocker_category, null);
+  assert.equal(summaryTask.blocker_message, null);
+  assert.deepEqual(summaryTask.implementation_evidence, [
+    'Added the generated client stub and finished the contract update.',
+  ]);
+  assert.deepEqual(summaryTask.test_evidence, ['npm run test:adapter passed after the retry.']);
+  assert.deepEqual(summaryTask.review_feedback, ['Review approved the regenerated client stub.']);
+  assert.equal(summaryTask.prior_attempt?.attempt, 1);
+  assert.equal(summaryTask.prior_attempt?.status, 'failed');
+  assert.equal(
+    summaryTask.prior_attempt?.blocker_message,
+    'Repository fixture is missing a generated client stub.',
+  );
 });

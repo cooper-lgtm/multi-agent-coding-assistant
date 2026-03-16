@@ -31,4 +31,16 @@ console.log('\nWorker request envelope:');
 console.log(
   `${workerRequest.role} task ${workerRequest.payload.task.task_id} on ${workerRequest.model.exact_model_id}`,
 );
+console.log(`Changed files: ${workerRequest.payload.changed_files.join(', ') || '(none yet)'}`);
+console.log(`Blocker: ${workerRequest.payload.blocker_category ?? 'none'} / ${workerRequest.payload.blocker_message ?? 'n/a'}`);
+console.log(`Prior attempt: ${workerRequest.payload.prior_attempt?.summary ?? 'none'}`);
 console.log(`Summary: ${workerResult.ok ? workerResult.summary : workerResult.error.message}`);
+if (workerResult.ok) {
+  const output = workerResult.output as {
+    changed_files?: string[];
+    implementation_evidence?: string[];
+  };
+
+  console.log(`Worker result files: ${output.changed_files?.join(', ') || '(none)'}`);
+  console.log(`Implementation evidence: ${output.implementation_evidence?.join(' | ') || '(none)'}`);
+}

@@ -6,10 +6,10 @@ import {
   buildDemoPlanningFixture,
   buildDirectPlanningFixtureRequest,
   buildExecutionDag,
+  createOpenClawWorkerRoleRequest,
   createOpenClawPlanningRoleRequest,
   createOpenClawRoleError,
   createOpenClawRoleSuccess,
-  createOpenClawWorkerRoleRequest,
 } from '../dist/index.js';
 
 test('planning role request envelope standardizes planning payloads and model metadata', () => {
@@ -64,6 +64,13 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.equal(envelope.payload.task.task_id, 'task-api-contract');
   assert.equal(envelope.payload.runtime.run_id, 'run-openclaw-adapter-test');
   assert.equal(envelope.payload.repo_path, '/tmp/example-repo');
+  assert.deepEqual(envelope.payload.changed_files, []);
+  assert.equal(envelope.payload.blocker_category, null);
+  assert.equal(envelope.payload.blocker_message, null);
+  assert.deepEqual(envelope.payload.implementation_evidence, []);
+  assert.deepEqual(envelope.payload.test_evidence, []);
+  assert.deepEqual(envelope.payload.review_feedback, []);
+  assert.equal(envelope.payload.prior_attempt, null);
 
   const success = createOpenClawRoleSuccess({
     request: envelope,
@@ -71,6 +78,12 @@ test('worker role envelopes standardize task payloads plus success and error res
     output: {
       status: 'implementation_done',
       changed_files: ['src/api/contract.ts'],
+      blocker_category: null,
+      blocker_message: null,
+      implementation_evidence: ['Updated the contract to match the fixture.'],
+      test_evidence: [],
+      review_feedback: [],
+      prior_attempt: null,
     },
   });
 
@@ -85,7 +98,65 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.equal(success.model.exact_model_id, 'openai-codex/gpt-5.4');
   assert.equal(success.output.status, 'implementation_done');
   assert.deepEqual(success.output.changed_files, ['src/api/contract.ts']);
+  assert.deepEqual(success.output.implementation_evidence, [
+    'Updated the contract to match the fixture.',
+  ]);
   assert.equal(error.ok, false);
   assert.equal(error.error.code, 'adapter_unavailable');
   assert.equal(error.error.retryable, true);
+});
+
+test('worker role envelopes preserve retry handoff context for quality gate roles', () => {
+  const fixture = buildDemoPlanningFixture();
+  const { runtime } = buildExecutionDag(fixture, {
+    runId: 'run-openclaw-quality-gate-test',
+    availableModels: ['openai-codex/gpt-5.4', 'anthropic/claude-opus-4-6'],
+  });
+  const task = runtime.tasks['task-api-contract'];
+
+  task.changed_files = ['src/api/contract.ts'];
+  task.blocker_category = 'quality';
+  task.blocker_message = 'Previous review requested changes before approval.';
+  task.implementation_evidence = ['Contract types now compile for downstream callers.'];
+  task.test_evidence = ['npm run test:adapter passed locally on the previous attempt.'];
+  task.review_feedback = ['Review flagged missing edge-case coverage.'];
+  task.prior_attempt = {
+    attempt: 1,
+    status: 'needs_fix',
+    summary: 'Review requested changes after the first quality-gate pass.',
+    changed_files: ['src/api/contract.ts'],
+    blocker_category: 'quality',
+    blocker_message: 'Previous review requested changes before approval.',
+    implementation_evidence: ['Contract types now compile for downstream callers.'],
+    test_evidence: ['npm run test:adapter passed locally on the previous attempt.'],
+    review_feedback: ['Review flagged missing edge-case coverage.'],
+  };
+
+  const envelope = createOpenClawWorkerRoleRequest({
+    task,
+    runtime,
+    role: 'test-agent',
+    model: 'codex',
+    repoPath: '/tmp/example-repo',
+    prompt: {
+      prompt_id: 'test-agent',
+      prompt_path: 'prompts/test-agent.md',
+    },
+  });
+
+  assert.equal(envelope.role, 'test-agent');
+  assert.deepEqual(envelope.payload.changed_files, ['src/api/contract.ts']);
+  assert.equal(envelope.payload.blocker_category, 'quality');
+  assert.equal(envelope.payload.blocker_message, 'Previous review requested changes before approval.');
+  assert.deepEqual(envelope.payload.implementation_evidence, [
+    'Contract types now compile for downstream callers.',
+  ]);
+  assert.deepEqual(envelope.payload.test_evidence, [
+    'npm run test:adapter passed locally on the previous attempt.',
+  ]);
+  assert.deepEqual(envelope.payload.review_feedback, [
+    'Review flagged missing edge-case coverage.',
+  ]);
+  assert.equal(envelope.payload.prior_attempt?.attempt, 1);
+  assert.equal(envelope.payload.prior_attempt?.status, 'needs_fix');
 });

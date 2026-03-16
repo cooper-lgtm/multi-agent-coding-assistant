@@ -26,6 +26,7 @@ This MVP now includes both:
 - a coherent planning pipeline with typed contracts, normalization, synthesis, and mock planners/analyzers
 - a coherent runtime loop with mockable adapters for implementation dispatch, quality gates, retry/escalation, persistence, and reporting
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
+- a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
 
 ## Current Structure
 
@@ -72,6 +73,7 @@ This MVP now includes both:
 - `quality-gate-runner`: runs `test-agent` and `review-agent` after implementation completes
 - `retry-escalation-manager`: applies the runtime retry policy and explicit per-role model fallback
 - `reporting-manager`: records runtime events and builds concise run summaries
+- runtime task records now persist changed files, blocker category/message, implementation evidence, test evidence, review feedback, and the latest retry handoff
 
 ## Adapter Modules
 
@@ -108,7 +110,7 @@ npm run demo:orchestrator
 ## Next Implementation Milestones
 
 1. JSON schema validation for planning drafts and final planning results
-2. Concrete OpenClaw worker execution bridge built on top of the PR3 adapter layer
+2. Replace the PR4 mock worker bridge with the full real execution engine
 3. File-backed runtime store
 4. Richer reporting output and checkpoint resume support
 5. CLI / chat entry integration

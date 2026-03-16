@@ -38,6 +38,12 @@ for (const task of result.summary.tasks) {
       task.model_metadata ? ` -> ${task.model_metadata.exact_model_id}` : ''
     } (retries=${task.retry_count})`,
   );
+  console.log(`  changed files: ${task.changed_files.join(', ') || '(none)'}`);
+  console.log(`  blocker: ${task.blocker_category ?? 'none'} / ${task.blocker_message ?? 'n/a'}`);
+  console.log(`  prior attempt: ${task.prior_attempt?.summary ?? 'none'}`);
+  console.log(`  implementation evidence: ${task.implementation_evidence.join(' | ') || '(none)'}`);
+  console.log(`  test evidence: ${task.test_evidence.join(' | ') || '(none)'}`);
+  console.log(`  review feedback: ${task.review_feedback.join(' | ') || '(none)'}`);
 }
 console.log(
   `Counts: completed=${result.summary.counts.completed}, needs_fix=${result.summary.counts.needs_fix}, blocked=${result.summary.counts.blocked}, failed=${result.summary.counts.failed}, pending=${result.summary.counts.pending}`,

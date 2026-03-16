@@ -62,6 +62,13 @@ export function buildExecutionDag(
         on_second_failure: 'upgrade_model',
         on_third_failure: 'manual_orchestrator_decision',
       },
+      changed_files: [],
+      blocker_category: null,
+      blocker_message: null,
+      implementation_evidence: [],
+      test_evidence: [],
+      review_feedback: [],
+      prior_attempt: null,
       result: null,
       error: null,
     };
