@@ -7,6 +7,15 @@ A TypeScript implementation of an OpenClaw-native orchestrator system for:
 - running post-implementation quality gates,
 - handling retry, escalation, and reporting.
 
+## Documentation Entry Points
+
+Start here before non-trivial changes:
+- `PRODUCT.md`: current goals, priorities, and non-goals
+- `ARCHITECTURE.md`: end-to-end system flow, role boundaries, and invariants
+- `AGENTS.md`: contributor workflow, repo map, and validation expectations
+- `docs/templates/task-template.md`: standard task input for non-trivial work
+- `docs/reviews/recurring-issues.md`: repeated review failures worth preventing
+
 ## MVP Scope
 
 This repository focuses on the runtime kernel, not on long-lived manually registered agents.
@@ -30,7 +39,7 @@ This MVP now includes both:
 
 ## Current Structure
 
-- `docs/`: architecture notes and implementation-facing docs
+- `docs/`: plans, templates, prompt notes, roadmap items, and review guidance
 - `prompts/`: English prompt assets for planning and worker roles
 - `src/schemas/`: shared runtime and planning types
 - `src/adapters/`: model routing, exact-model resolution, and OpenClaw runtime integration adapters
