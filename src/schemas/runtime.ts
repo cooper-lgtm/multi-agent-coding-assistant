@@ -10,6 +10,7 @@ import type {
   RuntimeTaskStatus,
   Complexity,
 } from './planning.js';
+import type { WorkerBlockerCategory, WorkerRetryHandoff } from '../workers/contracts.js';
 
 export interface EscalationPolicy {
   on_first_failure: 'retry_same_model';
@@ -35,6 +36,13 @@ export interface ExecutionNode {
   retry_count: number;
   max_retries: number;
   escalation_policy: EscalationPolicy;
+  changed_files: string[];
+  blocker_category: WorkerBlockerCategory | null;
+  blocker_message: string | null;
+  implementation_evidence: string[];
+  test_evidence: string[];
+  review_feedback: string[];
+  prior_attempt: WorkerRetryHandoff | null;
   result: string | null;
   error: string | null;
 }
@@ -87,6 +95,13 @@ export interface TaskRunSummary {
   retry_count: number;
   test_status: QualityStatus;
   review_status: ReviewStatus;
+  changed_files: string[];
+  blocker_category: WorkerBlockerCategory | null;
+  blocker_message: string | null;
+  implementation_evidence: string[];
+  test_evidence: string[];
+  review_feedback: string[];
+  prior_attempt: WorkerRetryHandoff | null;
 }
 
 export type RunFinalStatus = 'completed' | 'needs_fix' | 'blocked' | 'failed' | 'running';

@@ -87,6 +87,13 @@ export class ReportingManager {
       retry_count: task.retry_count,
       test_status: task.test_status,
       review_status: task.review_status,
+      changed_files: [...task.changed_files],
+      blocker_category: task.blocker_category,
+      blocker_message: task.blocker_message,
+      implementation_evidence: [...task.implementation_evidence],
+      test_evidence: [...task.test_evidence],
+      review_feedback: [...task.review_feedback],
+      prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
     };
   }
 }

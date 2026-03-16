@@ -21,6 +21,8 @@ test('planning pipeline produces a validated direct planning result and DAG', as
   assert.equal(planningResult.tasks.length, 2);
   assert.ok(planningResult.tasks.every((task) =>
     task.assigned_agent === 'frontend-agent' || task.assigned_agent === 'backend-agent'));
+  assert.ok(planningResult.tasks.every((task) =>
+    task.assigned_agent !== 'test-agent' && task.assigned_agent !== 'review-agent'));
   assert.deepEqual(
     planningResult.planning_trace?.planner_routes.map((route) => route.role),
     ['planning-agent'],

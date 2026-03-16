@@ -7,6 +7,7 @@ import type {
   AssignedAgent,
 } from '../schemas/planning.js';
 import type { ExecutionNode, RuntimeState } from '../schemas/runtime.js';
+import { createWorkerExecutionContext, type WorkerExecutionContext } from '../workers/contracts.js';
 import { DEFAULT_OPENCLAW_AVAILABLE_MODELS, OpenClawModelResolver } from './openclaw-model-resolver.js';
 
 export type OpenClawWorkerRoleName = AssignedAgent | 'test-agent' | 'review-agent';
@@ -27,7 +28,7 @@ export interface OpenClawPlanningTaskPayload {
   existing_artifacts: string[];
 }
 
-export interface OpenClawWorkerTaskPayload {
+export interface OpenClawWorkerTaskPayload extends WorkerExecutionContext {
   repo_path: string;
   task: {
     task_id: string;
@@ -216,6 +217,7 @@ export function createOpenClawWorkerRoleRequest(
         retry_count: input.task.retry_count,
         max_retries: input.task.max_retries,
       },
+      ...createWorkerExecutionContext(input.task),
       prior_error: input.task.error,
     },
     metadata: {
@@ -313,13 +315,36 @@ export class MockOpenClawRuntimeAdapter implements OpenClawRuntimeAdapter {
       return await this.options.executeWorkerRole(request);
     }
 
+    const changedFiles =
+      request.payload.changed_files.length > 0
+        ? request.payload.changed_files
+        : [`src/mock/${request.payload.task.task_id}.ts`];
+    const isQualityGateRole = request.role === 'test-agent' || request.role === 'review-agent';
+
     return createOpenClawRoleSuccess({
       request,
-      summary: `Prepared worker payload for ${request.role}.`,
+      summary: `Mock worker execution completed for ${request.role}.`,
       output: {
+        status: isQualityGateRole ? 'completed' : 'implementation_done',
         accepted: true,
         payload_type: request.role_type,
         task_id: request.payload.task.task_id,
+        changed_files: changedFiles,
+        blocker_category: null,
+        blocker_message: null,
+        implementation_evidence:
+          request.payload.implementation_evidence.length > 0
+            ? request.payload.implementation_evidence
+            : [`Prepared worker payload for ${request.role}.`],
+        test_evidence:
+          request.role === 'test-agent'
+            ? [`test-agent would run checks for ${request.payload.task.task_id}.`]
+            : request.payload.test_evidence,
+        review_feedback:
+          request.role === 'review-agent'
+            ? [`review-agent would review ${request.payload.task.task_id}.`]
+            : request.payload.review_feedback,
+        prior_attempt: request.payload.prior_attempt,
       },
       session: {
         adapter: 'mock-openclaw',

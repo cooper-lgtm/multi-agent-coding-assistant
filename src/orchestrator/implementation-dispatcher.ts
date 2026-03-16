@@ -1,19 +1,24 @@
+import type { AssignedAgent } from '../schemas/planning.js';
 import type { ExecutionNode, RuntimeState } from '../schemas/runtime.js';
+import {
+  createImplementationWorkerExecutionRequest,
+  type ImplementationWorkerExecutionResult,
+  type WorkerBlockerCategory,
+} from '../workers/contracts.js';
 
-export interface ImplementationDispatchResult {
+export interface ImplementationDispatchResult extends Omit<ImplementationWorkerExecutionResult, 'role'> {
   taskId: string;
-  status: 'implementation_done' | 'blocked' | 'failed';
-  summary: string;
-  changed_files: string[];
+  role: AssignedAgent;
 }
 
 export interface ImplementationDispatcher {
   dispatch(task: ExecutionNode, runtime: RuntimeState): Promise<ImplementationDispatchResult>;
 }
 
-export type MockImplementationDecision = Omit<ImplementationDispatchResult, 'taskId' | 'changed_files'> & {
-  changed_files?: string[];
-};
+export interface MockImplementationDecision extends Partial<Omit<ImplementationDispatchResult, 'taskId' | 'role'>> {
+  status: ImplementationDispatchResult['status'];
+  summary: string;
+}
 
 export interface MockImplementationDispatcherOptions {
   taskDecisions?: Record<string, MockImplementationDecision[]>;
@@ -28,21 +33,66 @@ export class MockImplementationDispatcher implements ImplementationDispatcher {
   }
 
   async dispatch(task: ExecutionNode, _runtime: RuntimeState): Promise<ImplementationDispatchResult> {
+    const request = createImplementationWorkerExecutionRequest({ task, runtime: _runtime });
     const sequence = this.taskDecisions[task.task_id] ?? [];
     const index = this.taskIndices.get(task.task_id) ?? 0;
     const decision = sequence[index] ?? {
       status: 'implementation_done' as const,
       summary: `Implementation completed for ${task.title}.`,
-      changed_files: [`src/mock/${task.task_id}.ts`],
     };
 
     this.taskIndices.set(task.task_id, index + 1);
 
+    const changedFiles =
+      decision.changed_files ?? (request.changed_files.length > 0 ? request.changed_files : [`src/mock/${task.task_id}.ts`]);
+    const blockerCategory = this.resolveBlockerCategory(decision, request, task);
+    const blockerMessage = this.resolveBlockerMessage(decision, blockerCategory, task);
+    const implementationEvidence =
+      decision.implementation_evidence ??
+      [decision.summary, `Attempt ${task.retry_count + 1} finished implementation for ${task.task_id}.`];
+
     return {
       taskId: task.task_id,
+      role: task.assigned_agent,
       status: decision.status,
       summary: decision.summary,
-      changed_files: decision.changed_files ?? [`src/mock/${task.task_id}.ts`],
+      changed_files: changedFiles,
+      blocker_category: blockerCategory,
+      blocker_message: blockerMessage,
+      implementation_evidence: implementationEvidence,
+      test_evidence: decision.test_evidence ?? request.test_evidence,
+      review_feedback: decision.review_feedback ?? request.review_feedback,
+      prior_attempt: decision.prior_attempt ?? request.prior_attempt,
     };
+  }
+
+  private resolveBlockerCategory(
+    decision: MockImplementationDecision,
+    request: ReturnType<typeof createImplementationWorkerExecutionRequest>,
+    task: ExecutionNode,
+  ): WorkerBlockerCategory | null {
+    if (Object.prototype.hasOwnProperty.call(decision, 'blocker_category')) {
+      return decision.blocker_category ?? null;
+    }
+
+    if (decision.status === 'implementation_done') return null;
+    if (request.prior_attempt?.blocker_category) return request.prior_attempt.blocker_category;
+    if (task.status === 'blocked') return task.blocker_category;
+
+    return 'unknown';
+  }
+
+  private resolveBlockerMessage(
+    decision: MockImplementationDecision,
+    blockerCategory: WorkerBlockerCategory | null,
+    task: ExecutionNode,
+  ): string | null {
+    if (Object.prototype.hasOwnProperty.call(decision, 'blocker_message')) {
+      return decision.blocker_message ?? null;
+    }
+
+    if (!blockerCategory) return null;
+    if (decision.status === 'implementation_done') return null;
+    return decision.summary || task.error;
   }
 }

@@ -4,6 +4,7 @@ export * from './adapters/openclaw-runtime-adapter.js';
 export * from './schemas/models.js';
 export * from './schemas/planning.js';
 export * from './schemas/runtime.js';
+export * from './workers/contracts.js';
 export * from './planning/contracts.js';
 export * from './planning/planning-mode-resolver.js';
 export * from './planning/planning-normalizer.js';
