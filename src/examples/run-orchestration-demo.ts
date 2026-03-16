@@ -46,5 +46,5 @@ for (const task of result.summary.tasks) {
   console.log(`  review feedback: ${task.review_feedback.join(' | ') || '(none)'}`);
 }
 console.log(
-  `Counts: completed=${result.summary.counts.completed}, needs_fix=${result.summary.counts.needs_fix}, blocked=${result.summary.counts.blocked}, failed=${result.summary.counts.failed}, pending=${result.summary.counts.pending}`,
+  `Counts: completed=${result.summary.counts.completed}, needs_fix=${result.summary.counts.needs_fix}, blocked=${result.summary.counts.blocked}, failed=${result.summary.counts.failed}, cancelled=${result.summary.counts.cancelled}, pending=${result.summary.counts.pending}`,
 );

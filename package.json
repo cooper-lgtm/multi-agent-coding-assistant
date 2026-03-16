@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "demo:adapter": "npm run build && node dist/examples/run-openclaw-adapter-demo.js",
+    "demo:persistence": "npm run build && node dist/examples/run-persistence-demo.js",
     "demo:planning": "npm run build && node dist/examples/run-planning-demo.js",
     "demo:orchestrator": "npm run build && node dist/examples/run-orchestration-demo.js",
     "test:adapter": "npm run build && node --test tests/openclaw-runtime-adapter.test.mjs tests/openclaw-model-resolution.test.mjs",
@@ -26,6 +27,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "typescript": "^5.9.3"
   }
 }

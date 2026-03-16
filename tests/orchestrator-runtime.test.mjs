@@ -36,6 +36,7 @@ test('orchestrator completes a dependency chain and returns a final summary', as
     needs_fix: 0,
     blocked: 0,
     failed: 0,
+    cancelled: 0,
     pending: 0,
   });
   assert.deepEqual(

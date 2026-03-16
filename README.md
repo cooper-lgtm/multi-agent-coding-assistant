@@ -27,6 +27,7 @@ This MVP now includes both:
 - a coherent runtime loop with mockable adapters for implementation dispatch, quality gates, retry/escalation, persistence, and reporting
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
 - a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
+- durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
 
 ## Current Structure
 
@@ -37,7 +38,7 @@ This MVP now includes both:
 - `src/planning/`: planning contracts, mode resolution, normalization, synthesis, mock planners/analyzers, controller facade, pipeline service
 - `src/orchestrator/`: DAG builder, main orchestrator, implementation dispatch, quality gates, retry/escalation, reporting
 - `src/examples/`: typed planning fixtures plus runnable planning, orchestration, and OpenClaw adapter demos
-- `src/storage/`: runtime state persistence contracts
+- `src/storage/`: runtime state persistence contracts plus in-memory and file-backed run stores
 - `src/workers/`: worker invocation contracts
 
 ## Design Rules Captured
@@ -75,6 +76,17 @@ This MVP now includes both:
 - `reporting-manager`: records runtime events and builds concise run summaries
 - runtime task records now persist changed files, blocker category/message, implementation evidence, test evidence, review feedback, and the latest retry handoff
 
+## Persistence and Resume
+
+- Runs can now persist under `state/runs/<run-id>/`
+- Each run directory contains:
+  - `manifest.json`: compact operational metadata, task counts, and control flags
+  - `runtime.json`: the full typed `RuntimeState` snapshot and source of truth
+  - `events.jsonl`: line-delimited runtime events for inspection and debugging
+- Resume is checkpoint-based, not replay-based
+- `implementation_done` is treated as a stable checkpoint so resumed runs can continue into quality gates without re-dispatching implementation work
+- `pause` and `cancel` are cooperative: the orchestrator stops at safe checkpoints instead of force-interrupting active workers
+
 ## Adapter Modules
 
 - `openclaw-model-resolver`: maps logical labels and exact ids to provider-aware model metadata
@@ -87,10 +99,13 @@ Example artifacts included in this MVP:
 - `src/examples/planning-fixtures.ts`: typed direct, debate, and runtime planning fixtures
 - `src/examples/openclaw-adapter-fixtures.ts`: typed OpenClaw request-envelope fixtures for planning and worker roles
 - `src/examples/run-openclaw-adapter-demo.ts`: a runnable OpenClaw adapter-layer demo
+- `src/examples/run-persistence-demo.ts`: a runnable persistence/pause/resume demo that writes run artifacts under `state/runs/`
 - `src/examples/run-planning-demo.ts`: a runnable planning pipeline demo with direct and debate flows
 - `src/examples/run-orchestration-demo.ts`: a runnable mock orchestration flow
+- `tests/file-backed-run-store.test.mjs`: compiled-output checks for manifest/runtime/event-log persistence and inspection helpers
 - `tests/openclaw-model-resolution.test.mjs`: compiled-output checks for alias resolution and exact-model metadata
 - `tests/openclaw-runtime-adapter.test.mjs`: compiled-output checks for planning/worker envelope shaping
+- `tests/orchestrator-persistence.test.mjs`: compiled-output checks for checkpoint resume plus cooperative pause/cancel behavior
 - `tests/planning-mode-resolution.test.mjs`: compiled-output checks for `auto`/`direct`/`debate` resolution
 - `tests/planning-pipeline.test.mjs`: compiled-output checks for direct planning, debate synthesis, and DAG conversion
 - `tests/orchestrator-runtime.test.mjs`: compiled-output runtime checks for success, retry escalation, and dependency blocking
@@ -99,18 +114,20 @@ Useful commands:
 
 ```bash
 npm run typecheck
+npm run build
+npm run demo:persistence
 npm run test:adapter
 npm run test:planning
 npm run test:runtime
+npm run demo:orchestrator
 npm run demo:adapter
 npm run demo:planning
-npm run demo:orchestrator
 ```
 
 ## Next Implementation Milestones
 
 1. JSON schema validation for planning drafts and final planning results
 2. Replace the PR4 mock worker bridge with the full real execution engine
-3. File-backed runtime store
-4. Richer reporting output and checkpoint resume support
-5. CLI / chat entry integration
+3. Richer operational tooling and CLI / chat entry integration on top of persisted run state
+4. Multi-run inspection and management surfaces for persisted manifests and event logs
+5. Stronger concurrency guarantees if the runtime grows beyond the current single-writer model

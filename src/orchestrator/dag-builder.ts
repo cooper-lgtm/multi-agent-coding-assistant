@@ -3,7 +3,13 @@ import {
   OpenClawModelResolver,
 } from '../adapters/openclaw-model-resolver.js';
 import { ModelRouter, type RoleName } from '../adapters/model-router.js';
-import type { DagBuildResult, ExecutionGraph, ExecutionNode, RuntimeState } from '../schemas/runtime.js';
+import {
+  RUNTIME_STORAGE_VERSION,
+  type DagBuildResult,
+  type ExecutionGraph,
+  type ExecutionNode,
+  type RuntimeState,
+} from '../schemas/runtime.js';
 import type { PlanningResult } from '../schemas/planning.js';
 import { validatePlanningResult } from './planning-validator.js';
 
@@ -87,6 +93,8 @@ export function buildExecutionDag(
     parallel_groups: planningResult.parallel_groups ?? {},
   };
 
+  const now = new Date().toISOString();
+
   const runtime: RuntimeState = {
     run_id: options.runId ?? `run-${Date.now()}`,
     epic: planningResult.epic,
@@ -94,11 +102,19 @@ export function buildExecutionDag(
     tasks: structuredClone(nodes),
     events: [
       {
-        timestamp: new Date().toISOString(),
+        timestamp: now,
         type: 'runtime_initialized',
         message: `Runtime initialized for epic ${planningResult.epic}`,
       },
     ],
+    status: 'running',
+    created_at: now,
+    updated_at: now,
+    storage_version: RUNTIME_STORAGE_VERSION,
+    control: {
+      pause_requested: false,
+      cancel_requested: false,
+    },
   };
 
   return {
