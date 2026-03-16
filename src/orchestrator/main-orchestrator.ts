@@ -283,7 +283,7 @@ export class MainOrchestrator {
     runtime.status = 'running';
     runtime.control = {
       pause_requested: false,
-      cancel_requested: false,
+      cancel_requested: runtime.control.cancel_requested,
     };
 
     for (const task of Object.values(runtime.tasks)) {

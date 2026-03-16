@@ -238,6 +238,45 @@ test('resume continues a paused run from its last checkpoint', async () => {
   assert.equal(result.summary.final_status, 'completed');
 });
 
+test('resume preserves cancel requests that arrive while a run is paused', async () => {
+  const runtime = buildRuntime('run-resume-cancelled-while-paused');
+  runtime.status = 'paused';
+  runtime.control.pause_requested = true;
+  runtime.control.cancel_requested = true;
+  runtime.tasks['task-api-contract'].status = 'implementation_done';
+  runtime.tasks['task-api-contract'].changed_files = ['src/mock/task-api-contract.ts'];
+  runtime.tasks['task-api-contract'].implementation_evidence = ['Checkpointed implementation output.'];
+  runtime.graph.nodes = structuredClone(runtime.tasks);
+
+  const runStore = new ControlledRunStore(runtime);
+  const dispatcher = new CountingImplementationDispatcher({
+    forbiddenTaskIds: ['task-api-contract', 'task-ui-shell', 'task-integration-wireup'],
+  });
+  const qualityGateRunner = new CountingQualityGateRunner();
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => {
+      throw new Error('resume should not re-run planning');
+    },
+    implementationDispatcher: dispatcher,
+    qualityGateRunner,
+    retryManager: new RetryEscalationManager(),
+    reportingManager: new ReportingManager(),
+    runStore,
+  });
+
+  const result = await orchestrator.resume(runtime.run_id);
+
+  assert.deepEqual(dispatcher.calls, []);
+  assert.deepEqual(qualityGateRunner.calls, []);
+  assert.equal(result.runtime.status, 'cancelled');
+  assert.equal(result.runtime.control.pause_requested, false);
+  assert.equal(result.runtime.control.cancel_requested, true);
+  assert.equal(result.runtime.tasks['task-api-contract'].status, 'implementation_done');
+  assert.equal(result.runtime.tasks['task-ui-shell'].status, 'cancelled');
+  assert.equal(result.runtime.tasks['task-integration-wireup'].status, 'cancelled');
+  assert.equal(result.summary.final_status, 'cancelled');
+});
+
 test('resume normalizes transient in-flight task states back to pending before scheduling again', async () => {
   const runtime = buildRuntime('run-resume-normalize');
   runtime.tasks['task-api-contract'].status = 'completed';
