@@ -256,6 +256,70 @@ test('mock quality gate runner preserves explicit null model overrides', async (
   assert.equal(result.review_model, null);
 });
 
+test('mock quality gate runner treats pending statuses as non-success evidence', async () => {
+  const fixture = buildDemoPlanningFixture();
+  const targetTask = fixture.tasks[0];
+  const runner = new MockQualityGateRunner({
+    availableModels: ['codex', 'claude'],
+    taskDecisions: {
+      [targetTask.id]: [
+        {
+          status: 'failed',
+          summary: 'Quality gates could not start because the implementation artifact was missing.',
+          test_status: 'pending',
+          review_status: 'pending',
+        },
+      ],
+    },
+  });
+
+  const result = await runner.run(
+    {
+      task_id: targetTask.id,
+      title: targetTask.title,
+      description: targetTask.description,
+      assigned_agent: targetTask.assigned_agent,
+      model: 'codex',
+      complexity: targetTask.complexity,
+      risk: targetTask.risk,
+      depends_on: targetTask.depends_on,
+      acceptance_criteria: targetTask.acceptance_criteria,
+      quality_gate: targetTask.quality_gate,
+      status: 'implementation_done',
+      test_status: 'pending',
+      review_status: 'pending',
+      retry_count: 0,
+      max_retries: 2,
+      escalation_policy: {
+        on_first_failure: 'retry_same_model',
+        on_second_failure: 'upgrade_model',
+        on_third_failure: 'manual_orchestrator_decision',
+      },
+      result: null,
+      error: null,
+    },
+    {
+      run_id: 'run-test',
+      epic: fixture.epic,
+      graph: {
+        epic: fixture.epic,
+        planning_mode: fixture.planning_mode,
+        source_planning_result: fixture,
+        nodes: {},
+        edges: [],
+        parallel_groups: {},
+      },
+      tasks: {},
+      events: [],
+    },
+  );
+
+  assert.equal(result.test_model, 'codex');
+  assert.equal(result.review_model, 'claude');
+  assert.deepEqual(result.test_evidence, ['test-agent pending for task-api-contract on codex.']);
+  assert.deepEqual(result.review_feedback, ['review-agent pending for task-api-contract on claude.']);
+});
+
 test('orchestrator summary carries richer worker bridge details into reporting', async () => {
   const fixture = buildDemoPlanningFixture();
   const orchestrator = new MainOrchestrator({

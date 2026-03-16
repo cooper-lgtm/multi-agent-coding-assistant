@@ -126,6 +126,7 @@ export class MockQualityGateRunner implements QualityGateRunner {
     model: string | null,
   ): string[] {
     if (status === 'skipped') return [];
+    if (status === 'pending') return [`test-agent pending for ${task.task_id}${model ? ` on ${model}` : ''}.`];
     if (status === 'fail') return [`test-agent failed for ${task.task_id}${model ? ` on ${model}` : ''}.`];
     return [`test-agent passed for ${task.task_id}${model ? ` on ${model}` : ''}.`];
   }
@@ -136,6 +137,9 @@ export class MockQualityGateRunner implements QualityGateRunner {
     model: string | null,
   ): string[] {
     if (status === 'skipped') return [];
+    if (status === 'pending') {
+      return [`review-agent pending for ${task.task_id}${model ? ` on ${model}` : ''}.`];
+    }
     if (status === 'needs_fix') {
       return [`review-agent requested changes for ${task.task_id}${model ? ` on ${model}` : ''}.`];
     }
