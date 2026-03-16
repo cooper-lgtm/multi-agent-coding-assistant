@@ -101,3 +101,69 @@ test('file-backed run store reloads saved runtime snapshots and inspection metad
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('control requests patch manifest control without rewriting runtime snapshots', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'run-store-'));
+  const stateDir = path.join(root, 'state');
+
+  try {
+    const runtime = buildRuntime('run-control-race');
+    runtime.control = {
+      pause_requested: false,
+      cancel_requested: false,
+    };
+
+    const store = new FileBackedRunStore({ stateDir });
+    await store.save(runtime);
+    const runtimePath = path.join(stateDir, 'runs', runtime.run_id, 'runtime.json');
+    const snapshotBeforePause = await readFile(runtimePath, 'utf8');
+
+    await store.requestPause(runtime.run_id);
+
+    const snapshotAfterPause = await readFile(runtimePath, 'utf8');
+    const loadedRuntime = await store.load(runtime.run_id);
+    const manifest = await store.loadManifest(runtime.run_id);
+
+    assert.equal(snapshotAfterPause, snapshotBeforePause);
+    assert.equal(loadedRuntime.tasks['task-ui-shell'].status, 'pending');
+    assert.equal(loadedRuntime.control.pause_requested, true);
+    assert.equal(manifest.control.pause_requested, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('saving a stale runtime snapshot does not clear an already-requested control flag', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'run-store-'));
+  const stateDir = path.join(root, 'state');
+
+  try {
+    const runtime = buildRuntime('run-control-merge');
+    runtime.control = {
+      pause_requested: false,
+      cancel_requested: false,
+    };
+
+    const store = new FileBackedRunStore({ stateDir });
+    await store.save(runtime);
+
+    const staleRuntime = structuredClone(runtime);
+    staleRuntime.events.push({
+      timestamp: '2026-03-16T09:07:00.000Z',
+      type: 'stale_save_attempted',
+      message: 'A stale snapshot attempted to persist after pause was requested.',
+    });
+
+    await store.requestPause(runtime.run_id);
+    await store.save(staleRuntime);
+
+    const loadedRuntime = await store.load(runtime.run_id);
+    const manifest = await store.loadManifest(runtime.run_id);
+
+    assert.equal(loadedRuntime.control.pause_requested, true);
+    assert.equal(manifest.control.pause_requested, true);
+    assert.equal(loadedRuntime.events.at(-1).type, 'stale_save_attempted');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

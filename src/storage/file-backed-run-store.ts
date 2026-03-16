@@ -10,24 +10,44 @@ export interface FileBackedRunStoreOptions {
 
 export class FileBackedRunStore implements RunStore {
   private readonly stateDir: string;
+  private readonly runWriteQueues = new Map<string, Promise<void>>();
 
   constructor(options: FileBackedRunStoreOptions = {}) {
     this.stateDir = path.resolve(options.stateDir ?? 'state');
   }
 
   async save(runtime: RuntimeState): Promise<void> {
-    const runDir = this.getRunDir(runtime.run_id);
-    await mkdir(runDir, { recursive: true });
+    await this.withRunWriteLock(runtime.run_id, async () => {
+      const runDir = this.getRunDir(runtime.run_id);
+      await mkdir(runDir, { recursive: true });
 
-    const manifest = buildRunManifest(runtime);
+      const existingManifest = await this.readManifest(runtime.run_id);
+      const persistedRuntime = structuredClone(runtime);
+      persistedRuntime.control = this.resolvePersistedControl(runtime, existingManifest);
 
-    await this.writeJsonAtomic(path.join(runDir, 'runtime.json'), runtime);
-    await this.writeJsonAtomic(path.join(runDir, 'manifest.json'), manifest);
-    await this.persistEventLog(path.join(runDir, 'events.jsonl'), runtime.events);
+      const manifest = buildRunManifest(persistedRuntime);
+
+      await this.writeJsonAtomic(path.join(runDir, 'runtime.json'), persistedRuntime);
+      await this.writeJsonAtomic(path.join(runDir, 'manifest.json'), manifest);
+      await this.persistEventLog(path.join(runDir, 'events.jsonl'), persistedRuntime.events);
+
+      runtime.control = { ...persistedRuntime.control };
+    });
   }
 
   async load(runId: string): Promise<RuntimeState | null> {
-    return this.readJsonFile<RuntimeState>(path.join(this.getRunDir(runId), 'runtime.json'));
+    const runtime = await this.readJsonFile<RuntimeState>(path.join(this.getRunDir(runId), 'runtime.json'));
+
+    if (!runtime) {
+      return null;
+    }
+
+    const manifest = await this.readManifest(runId);
+    if (manifest) {
+      runtime.control = { ...manifest.control };
+    }
+
+    return runtime;
   }
 
   async listRuns(): Promise<RunManifest[]> {
@@ -48,7 +68,7 @@ export class FileBackedRunStore implements RunStore {
   }
 
   async loadManifest(runId: string): Promise<RunManifest | null> {
-    return this.readJsonFile<RunManifest>(path.join(this.getRunDir(runId), 'manifest.json'));
+    return this.readManifest(runId);
   }
 
   async loadEvents(runId: string): Promise<RuntimeEvent[]> {
@@ -77,18 +97,46 @@ export class FileBackedRunStore implements RunStore {
   }
 
   private async updateControl(runId: string, patch: Partial<RuntimeControlState>): Promise<void> {
-    const runtime = await this.load(runId);
+    await this.withRunWriteLock(runId, async () => {
+      const manifest = await this.readManifest(runId);
 
-    if (!runtime) {
-      throw new Error(`Unknown run: ${runId}`);
+      if (!manifest) {
+        throw new Error(`Unknown run: ${runId}`);
+      }
+
+      const now = new Date().toISOString();
+      const nextManifest: RunManifest = {
+        ...manifest,
+        updated_at: now,
+        last_persisted_at: now,
+        control: {
+          ...manifest.control,
+          ...patch,
+        },
+      };
+
+      await this.writeJsonAtomic(path.join(this.getRunDir(runId), 'manifest.json'), nextManifest);
+    });
+  }
+
+  private resolvePersistedControl(runtime: RuntimeState, manifest: RunManifest | null): RuntimeControlState {
+    if (!manifest) {
+      return { ...runtime.control };
     }
 
-    runtime.control = {
-      ...runtime.control,
-      ...patch,
+    if (
+      manifest.status === 'paused' &&
+      runtime.status === 'running' &&
+      !runtime.control.pause_requested &&
+      !runtime.control.cancel_requested
+    ) {
+      return { ...runtime.control };
+    }
+
+    return {
+      pause_requested: runtime.control.pause_requested || manifest.control.pause_requested,
+      cancel_requested: runtime.control.cancel_requested || manifest.control.cancel_requested,
     };
-    runtime.updated_at = new Date().toISOString();
-    await this.save(runtime);
   }
 
   private async persistEventLog(eventsPath: string, events: RuntimeEvent[]): Promise<void> {
@@ -142,6 +190,10 @@ export class FileBackedRunStore implements RunStore {
     }
   }
 
+  private async readManifest(runId: string): Promise<RunManifest | null> {
+    return this.readJsonFile<RunManifest>(path.join(this.getRunDir(runId), 'manifest.json'));
+  }
+
   private async writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
     await this.writeTextAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
   }
@@ -155,5 +207,27 @@ export class FileBackedRunStore implements RunStore {
 
   private getRunDir(runId: string): string {
     return path.join(this.stateDir, 'runs', runId);
+  }
+
+  private async withRunWriteLock<T>(runId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.runWriteQueues.get(runId) ?? Promise.resolve();
+    let releaseCurrent!: () => void;
+    const current = new Promise<void>((resolve) => {
+      releaseCurrent = resolve;
+    });
+    const queued = previous.catch(() => undefined).then(() => current);
+
+    this.runWriteQueues.set(runId, queued);
+    await previous.catch(() => undefined);
+
+    try {
+      return await operation();
+    } finally {
+      releaseCurrent();
+
+      if (this.runWriteQueues.get(runId) === queued) {
+        this.runWriteQueues.delete(runId);
+      }
+    }
   }
 }
