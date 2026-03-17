@@ -31,11 +31,15 @@ export type RuntimeTaskStatus =
 
 export type Complexity = 'low' | 'medium' | 'high';
 export type RiskLevel = 'low' | 'medium' | 'high';
+export type RoleFallbackPolicy = Partial<Record<AssignedAgent, string[]>>;
 
 export interface BudgetPolicy {
   maxParallelTasks?: number;
   allowDebatePlanning?: boolean;
   maxRetriesPerTask?: number;
+  taskRetryBudgets?: Record<string, number>;
+  riskEscalationThreshold?: RiskLevel;
+  roleFallbackPolicy?: RoleFallbackPolicy;
 }
 
 export type ExecutionControlMode = 'auto-execute' | 'confirm-before-run';

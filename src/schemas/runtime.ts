@@ -7,6 +7,7 @@ import type {
   QualityGate,
   QualityStatus,
   ReviewStatus,
+  RoleFallbackPolicy,
   RiskLevel,
   RuntimeTaskStatus,
   Complexity,
@@ -42,6 +43,7 @@ export interface ExecutionNode {
   review_status: ReviewStatus;
   retry_count: number;
   max_retries: number;
+  fallback_models: string[];
   escalation_policy: EscalationPolicy;
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
@@ -57,6 +59,14 @@ export interface ExecutionNode {
   prior_attempt: WorkerRetryHandoff | null;
   result: string | null;
   error: string | null;
+}
+
+export interface RuntimePolicyState {
+  max_parallel_tasks: number | null;
+  max_retries_per_task: number;
+  task_retry_budgets: Record<string, number>;
+  risk_escalation_threshold: RiskLevel | null;
+  role_fallback_policy: RoleFallbackPolicy;
 }
 
 export interface ExecutionGraph {
@@ -111,6 +121,7 @@ export interface RuntimeState {
   storage_version: string;
   control: RuntimeControlState;
   approval_state: RuntimeApprovalState | null;
+  policy_state: RuntimePolicyState | null;
 }
 
 export interface DagBuildResult {

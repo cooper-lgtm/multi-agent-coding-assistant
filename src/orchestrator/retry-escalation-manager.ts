@@ -34,14 +34,16 @@ export interface RetryManager {
 
 export interface RetryEscalationManagerOptions {
   availableModels?: string[];
+  modelRouter?: ModelRouter;
 }
 
 export class RetryEscalationManager implements RetryManager {
   private readonly availableModels: string[];
-  private readonly router = new ModelRouter();
+  private readonly router: ModelRouter;
 
   constructor(options: RetryEscalationManagerOptions = {}) {
     this.availableModels = options.availableModels ?? DEFAULT_OPENCLAW_AVAILABLE_MODELS;
+    this.router = options.modelRouter ?? new ModelRouter();
   }
 
   decide(task: ExecutionNode, cause: RetryCause): RetryDecision {
@@ -72,7 +74,11 @@ export class RetryEscalationManager implements RetryManager {
       };
     }
 
-    const upgradedRoute = this.routeNextImplementationModel(task.assigned_agent, task.model);
+    const upgradedRoute = this.routeNextImplementationModel(
+      task.assigned_agent,
+      task.model,
+      task.fallback_models,
+    );
     if (upgradedRoute) {
       return {
         taskId: task.task_id,
@@ -113,8 +119,17 @@ export class RetryEscalationManager implements RetryManager {
     };
   }
 
-  private routeNextImplementationModel(agent: AssignedAgent, currentModel: string) {
-    return this.router.routeNext(agent, currentModel, { availableModels: this.availableModels });
+  private routeNextImplementationModel(
+    agent: AssignedAgent,
+    currentModel: string,
+    fallbackModels: string[],
+  ) {
+    return this.router.routeNext(
+      agent,
+      currentModel,
+      { availableModels: this.availableModels },
+      { preferredModels: fallbackModels.length > 0 ? fallbackModels : undefined },
+    );
   }
 
   private toTerminalStatus(cause: RetryCause): RuntimeTaskStatus {

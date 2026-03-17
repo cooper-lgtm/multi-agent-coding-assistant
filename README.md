@@ -38,6 +38,7 @@ This MVP now includes both:
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
 - a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
 - approval controls that can pause after planning until a human explicitly approves execution
+- a policy engine that keeps max parallelism, retry budgets, role-specific fallback chains, and high-risk manual-review guardrails in the orchestrator layer
 - durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
 
 ## Current Structure
@@ -83,6 +84,7 @@ This MVP now includes both:
 
 - `implementation-dispatcher`: dispatches ready implementation tasks to `frontend-agent` or `backend-agent`, including a goose-backed dispatcher option
 - `approval-manager`: keeps confirm-before-run approval as an orchestrator concern instead of pushing it into worker adapters
+- `policy-engine`: applies runtime budget and safety rules before dispatch without pushing orchestration policy into goose recipes
 - `quality-gate-runner`: runs `test-agent` and `review-agent` after implementation completes
 - `retry-escalation-manager`: applies the runtime retry policy and explicit per-role model fallback
 - `reporting-manager`: records runtime events and builds concise run summaries
@@ -97,6 +99,7 @@ This MVP now includes both:
   - `events.jsonl`: line-delimited runtime events for inspection and debugging
 - Resume is checkpoint-based, not replay-based
 - `execution_control.mode=confirm-before-run` can pause immediately after planning and persist a waiting-for-approval state
+- `budget_policy` now persists the effective orchestration policy, including task retry overrides and high-risk manual-review guardrails, on the runtime snapshot
 - `implementation_done` is treated as a stable checkpoint so resumed runs can continue into quality gates without re-dispatching implementation work
 - `pause` and `cancel` are cooperative: the orchestrator stops at safe checkpoints instead of force-interrupting active workers
 
