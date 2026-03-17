@@ -22,11 +22,12 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
   - `test-agent` / `review-agent` are post-implementation quality gates
   - `needs_fix`, `blocked`, `failed` remain distinct
   - model routing should preserve logical labels plus exact-model metadata
-- Goose integration baseline has advanced through Task 4 of the active plan:
+- Goose integration baseline has advanced through Task 5 of the active plan:
   - structured goose worker-result contracts are present
   - goose recipe assets and role-to-recipe mapping are present
   - goose worker adapter + goose process runner are present
   - orchestrator implementation dispatch can route through goose-backed dispatcher while keeping external quality gates
+  - approval controls can pause after planning and require explicit approval before execution resumes
 - Runtime evidence now carries implementation execution context (commands, tests, risk notes, suggested status, delivery metadata, retry handoff) through dispatch, reporting, and persisted runtime state.
 
 ## Active Plan and Task Slices
@@ -37,12 +38,12 @@ Planned slices (status inferred from repository state):
 2. Goose recipe assets + task-to-recipe mapping — **completed**
 3. Goose worker adapter — **completed**
 4. Route implementation dispatch through goose (quality gates remain external) — **completed**
-5. PR6 approval/orchestration controls — **pending**
+5. PR6 approval/orchestration controls — **completed**
 6. PR7 budget/policy/safety controls — **pending**
 7. PR8 eval suite + golden scenarios — **pending**
 8. PR9 CLI entry points + goose delivery workflow — **pending**
 
-Task 3/4 evidence now present:
+Task 3/5 evidence now present:
 - `src/adapters/goose-worker-adapter.ts`
 - `src/adapters/goose-process-runner.ts`
 - `tests/goose-worker-adapter.test.mjs`
@@ -50,6 +51,8 @@ Task 3/4 evidence now present:
 - `tests/orchestrator-goose-runtime.test.mjs`
 - `src/examples/run-goose-worker-demo.ts`
 - `package.json` (`demo:goose`)
+- `src/orchestrator/approval-manager.ts`
+- `tests/orchestrator-approval-controls.test.mjs`
 
 ## Module Map
 - `src/schemas/`: shared planning/runtime/model contracts
@@ -76,6 +79,11 @@ Targeted goose/runtime checks:
 npm run build && node --test tests/goose-worker-contract.test.mjs tests/goose-recipe-builder.test.mjs tests/goose-worker-adapter.test.mjs tests/orchestrator-goose-runtime.test.mjs
 ```
 
+Targeted approval checks:
+```bash
+npm run build && node --test tests/orchestrator-approval-controls.test.mjs tests/orchestrator-persistence.test.mjs
+```
+
 Doc-only minimum:
 ```bash
 git diff --check
@@ -89,17 +97,16 @@ git diff --check
 - preserve orchestrator ownership boundaries (goose at implementation seam only; quality gates remain external evaluators)
 
 ## Drift Notes
-- Prior context artifact lagged behind current code by marking Tasks 3/4 as pending.
-- Current code and tests show Task 3 and Task 4 baseline present; artifact corrected accordingly.
+- Prior context artifact lagged behind current code by marking Tasks 3/5 as pending.
+- Current code and tests show Task 3, Task 4, and Task 5 baseline present; artifact corrected accordingly.
 
 ## Known Operational Gaps
-- PR6 approval/pause decision controls are not yet implemented.
 - PR7 budget/policy/safety guardrails remain future work.
 - PR8 eval suite/golden scenarios remain future work.
 - PR9 CLI entry and end-to-end goose delivery workflow remain future work.
 
 ## Artifact Metadata
 - artifact_type: `repo-context`
-- version: `1.3.0`
+- version: `1.4.0`
 - status: `refreshed`
 - refreshed_on: `2026-03-17`

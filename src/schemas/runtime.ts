@@ -1,6 +1,7 @@
 import type { ModelResolution } from './models.js';
 import type {
   AssignedAgent,
+  ExecutionControlMode,
   PlanningMode,
   PlanningResult,
   QualityGate,
@@ -88,6 +89,16 @@ export interface RuntimeControlState {
   cancel_requested: boolean;
 }
 
+export type ApprovalStatus = 'auto_approved' | 'waiting_for_approval' | 'approved';
+
+export interface RuntimeApprovalState {
+  mode: ExecutionControlMode;
+  status: ApprovalStatus;
+  requested_at: string;
+  approved_at: string | null;
+  approved_by: string | null;
+}
+
 export interface RuntimeState {
   run_id: string;
   epic: string;
@@ -99,6 +110,7 @@ export interface RuntimeState {
   updated_at: string;
   storage_version: string;
   control: RuntimeControlState;
+  approval_state: RuntimeApprovalState | null;
 }
 
 export interface DagBuildResult {
@@ -146,6 +158,7 @@ export interface RunSummary {
   run_id: string;
   epic: string;
   final_status: RunFinalStatus;
+  approval_state: RuntimeApprovalState | null;
   counts: RunSummaryCounts;
   tasks: TaskRunSummary[];
   events: string[];
@@ -186,6 +199,7 @@ export interface RunManifest {
   last_persisted_at: string;
   task_counts: RunTaskCounts;
   control: RuntimeControlState;
+  approval_state: RuntimeApprovalState | null;
   artifacts: RunManifestArtifacts;
 }
 

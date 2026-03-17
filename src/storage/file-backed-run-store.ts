@@ -2,7 +2,7 @@ import { appendFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs
 import path from 'node:path';
 
 import { type RunManifest, type RuntimeControlState, type RuntimeEvent, type RuntimeState } from '../schemas/runtime.js';
-import { buildRunManifest, type RunStore } from './run-store.js';
+import { buildRunManifest, type RunApprovalUpdate, type RunStore } from './run-store.js';
 
 export interface FileBackedRunStoreOptions {
   stateDir?: string;
@@ -86,6 +86,31 @@ export class FileBackedRunStore implements RunStore {
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => JSON.parse(line) as RuntimeEvent);
+  }
+
+  async approveRun(runId: string, approval: RunApprovalUpdate): Promise<void> {
+    await this.withRunWriteLock(runId, async () => {
+      const runtimePath = path.join(this.getRunDir(runId), 'runtime.json');
+      const runtime = await this.readJsonFile<RuntimeState>(runtimePath);
+
+      if (!runtime) {
+        throw new Error(`Unknown run: ${runId}`);
+      }
+
+      runtime.approval_state = {
+        mode: runtime.approval_state?.mode ?? 'confirm-before-run',
+        status: 'approved',
+        requested_at: runtime.approval_state?.requested_at ?? new Date().toISOString(),
+        approved_at: approval.approved_at ?? new Date().toISOString(),
+        approved_by: approval.approved_by,
+      };
+      runtime.updated_at = new Date().toISOString();
+
+      const manifest = buildRunManifest(runtime, runtime.updated_at);
+
+      await this.writeJsonAtomic(runtimePath, runtime);
+      await this.writeJsonAtomic(path.join(this.getRunDir(runId), 'manifest.json'), manifest);
+    });
   }
 
   async requestPause(runId: string): Promise<void> {
