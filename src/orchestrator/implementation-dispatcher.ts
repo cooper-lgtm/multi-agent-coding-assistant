@@ -62,6 +62,11 @@ export class MockImplementationDispatcher implements ImplementationDispatcher {
       implementation_evidence: implementationEvidence,
       test_evidence: decision.test_evidence ?? request.test_evidence,
       review_feedback: decision.review_feedback ?? request.review_feedback,
+      commands_run: decision.commands_run ?? request.commands_run,
+      test_results: decision.test_results ?? request.test_results,
+      risk_notes: decision.risk_notes ?? request.risk_notes,
+      suggested_status: decision.suggested_status ?? decision.status,
+      delivery_metadata: this.resolveDeliveryMetadata(decision, request.delivery_metadata),
       prior_attempt: decision.prior_attempt ?? request.prior_attempt,
     };
   }
@@ -94,5 +99,14 @@ export class MockImplementationDispatcher implements ImplementationDispatcher {
     if (!blockerCategory) return null;
     if (decision.status === 'implementation_done') return null;
     return decision.summary || task.error;
+  }
+
+  private resolveDeliveryMetadata(
+    decision: MockImplementationDecision,
+    fallback: ImplementationDispatchResult['delivery_metadata'],
+  ): ImplementationDispatchResult['delivery_metadata'] {
+    return Object.prototype.hasOwnProperty.call(decision, 'delivery_metadata')
+      ? (decision.delivery_metadata ?? null)
+      : fallback;
   }
 }

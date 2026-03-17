@@ -70,6 +70,11 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.deepEqual(envelope.payload.implementation_evidence, []);
   assert.deepEqual(envelope.payload.test_evidence, []);
   assert.deepEqual(envelope.payload.review_feedback, []);
+  assert.deepEqual(envelope.payload.commands_run, []);
+  assert.deepEqual(envelope.payload.test_results, []);
+  assert.deepEqual(envelope.payload.risk_notes, []);
+  assert.equal(envelope.payload.suggested_status, null);
+  assert.equal(envelope.payload.delivery_metadata, null);
   assert.equal(envelope.payload.prior_attempt, null);
 
   const success = createOpenClawRoleSuccess({
@@ -83,6 +88,15 @@ test('worker role envelopes standardize task payloads plus success and error res
       implementation_evidence: ['Updated the contract to match the fixture.'],
       test_evidence: [],
       review_feedback: [],
+      commands_run: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+      test_results: [{ name: 'tests/openclaw-runtime-adapter.test.mjs', status: 'pass' }],
+      risk_notes: ['Broaden worker-role adapter coverage for retry handoffs.'],
+      suggested_status: 'implementation_done',
+      delivery_metadata: {
+        branch_name: 'feat/goose-worker-contracts',
+        commit_sha: 'deadbeef',
+        pr_url: 'https://github.com/example/repo/pull/123',
+      },
       prior_attempt: null,
     },
   });
@@ -101,6 +115,18 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.deepEqual(success.output.implementation_evidence, [
     'Updated the contract to match the fixture.',
   ]);
+  assert.deepEqual(success.output.commands_run, [
+    'npm run build',
+    'node --test tests/openclaw-runtime-adapter.test.mjs',
+  ]);
+  assert.deepEqual(success.output.test_results, [
+    { name: 'tests/openclaw-runtime-adapter.test.mjs', status: 'pass' },
+  ]);
+  assert.deepEqual(success.output.risk_notes, [
+    'Broaden worker-role adapter coverage for retry handoffs.',
+  ]);
+  assert.equal(success.output.suggested_status, 'implementation_done');
+  assert.equal(success.output.delivery_metadata?.pr_url, 'https://github.com/example/repo/pull/123');
   assert.equal(error.ok, false);
   assert.equal(error.error.code, 'adapter_unavailable');
   assert.equal(error.error.retryable, true);
@@ -120,6 +146,15 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   task.implementation_evidence = ['Contract types now compile for downstream callers.'];
   task.test_evidence = ['npm run test:adapter passed locally on the previous attempt.'];
   task.review_feedback = ['Review flagged missing edge-case coverage.'];
+  task.commands_run = ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'];
+  task.test_results = [{ name: 'tests/openclaw-runtime-adapter.test.mjs', status: 'pass' }];
+  task.risk_notes = ['One edge-case fixture still needs broader coverage.'];
+  task.suggested_status = 'needs_fix';
+  task.delivery_metadata = {
+    branch_name: 'feat/goose-worker-contracts',
+    commit_sha: 'deadbeef',
+    pr_url: 'https://github.com/example/repo/pull/123',
+  };
   task.prior_attempt = {
     attempt: 1,
     status: 'needs_fix',
@@ -130,6 +165,15 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     implementation_evidence: ['Contract types now compile for downstream callers.'],
     test_evidence: ['npm run test:adapter passed locally on the previous attempt.'],
     review_feedback: ['Review flagged missing edge-case coverage.'],
+    commands_run: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+    test_results: [{ name: 'tests/openclaw-runtime-adapter.test.mjs', status: 'pass' }],
+    risk_notes: ['One edge-case fixture still needs broader coverage.'],
+    suggested_status: 'needs_fix',
+    delivery_metadata: {
+      branch_name: 'feat/goose-worker-contracts',
+      commit_sha: 'deadbeef',
+      pr_url: 'https://github.com/example/repo/pull/123',
+    },
   };
 
   const envelope = createOpenClawWorkerRoleRequest({
@@ -157,6 +201,18 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   assert.deepEqual(envelope.payload.review_feedback, [
     'Review flagged missing edge-case coverage.',
   ]);
+  assert.deepEqual(envelope.payload.commands_run, [
+    'npm run build',
+    'node --test tests/openclaw-runtime-adapter.test.mjs',
+  ]);
+  assert.deepEqual(envelope.payload.test_results, [
+    { name: 'tests/openclaw-runtime-adapter.test.mjs', status: 'pass' },
+  ]);
+  assert.deepEqual(envelope.payload.risk_notes, [
+    'One edge-case fixture still needs broader coverage.',
+  ]);
+  assert.equal(envelope.payload.suggested_status, 'needs_fix');
+  assert.equal(envelope.payload.delivery_metadata?.branch_name, 'feat/goose-worker-contracts');
   assert.equal(envelope.payload.prior_attempt?.attempt, 1);
   assert.equal(envelope.payload.prior_attempt?.status, 'needs_fix');
 });

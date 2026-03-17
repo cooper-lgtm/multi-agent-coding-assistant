@@ -337,6 +337,20 @@ test('orchestrator summary carries richer worker bridge details into reporting',
             implementation_evidence: ['Updated the API contract before the missing stub blocked progress.'],
             test_evidence: [],
             review_feedback: [],
+            commands_run: ['npm run build'],
+            test_results: [
+              {
+                name: 'tests/orchestrator-runtime.test.mjs',
+                status: 'fail',
+                details: 'Generated client stub missing from repository fixture.',
+              },
+            ],
+            risk_notes: ['Client stub generation is still blocked on missing repository fixtures.'],
+            suggested_status: 'blocked',
+            delivery_metadata: {
+              branch_name: 'feat/goose-worker-contracts',
+              commit_sha: 'deadbeef0',
+            },
           },
           {
             status: 'implementation_done',
@@ -347,6 +361,23 @@ test('orchestrator summary carries richer worker bridge details into reporting',
             implementation_evidence: ['Added the generated client stub and finished the contract update.'],
             test_evidence: [],
             review_feedback: [],
+            commands_run: [
+              'npm run build',
+              'node --test tests/orchestrator-runtime.test.mjs',
+            ],
+            test_results: [
+              {
+                name: 'tests/orchestrator-runtime.test.mjs',
+                status: 'pass',
+              },
+            ],
+            risk_notes: ['Broaden integration coverage for the regenerated client stub.'],
+            suggested_status: 'implementation_done',
+            delivery_metadata: {
+              branch_name: 'feat/goose-worker-contracts',
+              commit_sha: 'deadbeef1',
+              pr_url: 'https://github.com/example/repo/pull/123',
+            },
           },
         ],
       },
@@ -392,10 +423,35 @@ test('orchestrator summary carries richer worker bridge details into reporting',
   ]);
   assert.deepEqual(summaryTask.test_evidence, ['npm run test:adapter passed after the retry.']);
   assert.deepEqual(summaryTask.review_feedback, ['Review approved the regenerated client stub.']);
+  assert.deepEqual(summaryTask.commands_run, [
+    'npm run build',
+    'node --test tests/orchestrator-runtime.test.mjs',
+  ]);
+  assert.deepEqual(summaryTask.test_results, [
+    { name: 'tests/orchestrator-runtime.test.mjs', status: 'pass' },
+  ]);
+  assert.deepEqual(summaryTask.risk_notes, [
+    'Broaden integration coverage for the regenerated client stub.',
+  ]);
+  assert.equal(summaryTask.suggested_status, 'implementation_done');
+  assert.equal(summaryTask.delivery_metadata?.pr_url, 'https://github.com/example/repo/pull/123');
   assert.equal(summaryTask.prior_attempt?.attempt, 1);
   assert.equal(summaryTask.prior_attempt?.status, 'failed');
   assert.equal(
     summaryTask.prior_attempt?.blocker_message,
     'Repository fixture is missing a generated client stub.',
   );
+  assert.deepEqual(summaryTask.prior_attempt?.commands_run, ['npm run build']);
+  assert.deepEqual(summaryTask.prior_attempt?.test_results, [
+    {
+      name: 'tests/orchestrator-runtime.test.mjs',
+      status: 'fail',
+      details: 'Generated client stub missing from repository fixture.',
+    },
+  ]);
+  assert.deepEqual(summaryTask.prior_attempt?.risk_notes, [
+    'Client stub generation is still blocked on missing repository fixtures.',
+  ]);
+  assert.equal(summaryTask.prior_attempt?.suggested_status, 'blocked');
+  assert.equal(summaryTask.prior_attempt?.delivery_metadata?.commit_sha, 'deadbeef0');
 });

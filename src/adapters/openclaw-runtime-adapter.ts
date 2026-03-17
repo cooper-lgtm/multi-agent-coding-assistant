@@ -344,6 +344,12 @@ export class MockOpenClawRuntimeAdapter implements OpenClawRuntimeAdapter {
           request.role === 'review-agent'
             ? [`review-agent would review ${request.payload.task.task_id}.`]
             : request.payload.review_feedback,
+        commands_run: request.payload.commands_run,
+        test_results: request.payload.test_results,
+        risk_notes: request.payload.risk_notes,
+        suggested_status:
+          request.payload.suggested_status ?? (isQualityGateRole ? 'completed' : 'implementation_done'),
+        delivery_metadata: request.payload.delivery_metadata,
         prior_attempt: request.payload.prior_attempt,
       },
       session: {
