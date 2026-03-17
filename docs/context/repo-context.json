@@ -1,6 +1,6 @@
 {
   "artifact_type": "repo-context",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "status": "refreshed",
   "repo_name": "multi-agent-coding-assistant",
   "repo_path": ".",
@@ -93,73 +93,30 @@
       {
         "id": 7,
         "title": "Implement PR8 evaluation suite and golden scenarios",
-        "status": "pending"
+        "status": "completed"
       },
       {
         "id": 8,
         "title": "Implement PR9 CLI entry points and goose delivery workflow",
-        "status": "pending"
+        "status": "completed"
       }
     ]
   },
-  "goose_integration_evidence": {
-    "task2": {
-      "adapter": "src/adapters/goose-recipe-builder.ts",
-      "test": "tests/goose-recipe-builder.test.mjs",
-      "recipes": [
-        ".goose/recipes/frontend-implementation.yaml",
-        ".goose/recipes/backend-implementation.yaml"
-      ],
-      "schema": ".goose/recipes/shared/worker-output-schema.json",
-      "contract_doc": "docs/goose/task-contract.md"
-    },
-    "task3": {
-      "adapter": "src/adapters/goose-worker-adapter.ts",
-      "process_runner": "src/adapters/goose-process-runner.ts",
-      "test": "tests/goose-worker-adapter.test.mjs"
-    },
-    "task4": {
-      "dispatcher": "src/orchestrator/implementation-dispatcher.ts",
-      "runtime_test": "tests/orchestrator-goose-runtime.test.mjs",
-      "demo": "src/examples/run-goose-worker-demo.ts",
-      "script": "package.json#demo:goose"
-    },
-    "task5": {
-      "approval_manager": "src/orchestrator/approval-manager.ts",
-      "runtime_test": "tests/orchestrator-approval-controls.test.mjs",
-      "runtime_schema": "src/schemas/runtime.ts",
-      "store_contracts": [
-        "src/storage/run-store.ts",
-        "src/storage/file-backed-run-store.ts"
-      ]
-    },
-    "task6": {
-      "policy_engine": "src/orchestrator/policy-engine.ts",
-      "runtime_test": "tests/orchestrator-policy-engine.test.mjs",
-      "runtime_schema": "src/schemas/runtime.ts",
-      "router": "src/adapters/model-router.ts",
-      "retry_manager": "src/orchestrator/retry-escalation-manager.ts"
-    }
-  },
   "validation": {
-    "standard_commands": [
+    "required_gate": [
       "npm run typecheck",
       "npm run build",
       "npm run test:adapter",
       "npm run test:planning",
-      "npm run test:runtime"
-    ],
-    "targeted_goose_runtime": [
-      "npm run build && node --test tests/goose-worker-contract.test.mjs tests/goose-recipe-builder.test.mjs tests/goose-worker-adapter.test.mjs tests/orchestrator-goose-runtime.test.mjs"
-    ],
-    "targeted_approval_runtime": [
-      "npm run build && node --test tests/orchestrator-approval-controls.test.mjs tests/orchestrator-persistence.test.mjs"
-    ],
-    "targeted_policy_runtime": [
-      "npm run build && node --test tests/orchestrator-policy-engine.test.mjs tests/orchestrator-runtime.test.mjs tests/orchestrator-goose-runtime.test.mjs"
-    ],
-    "doc_only_minimum": [
-      "git diff --check"
+      "npm run test:runtime",
+      "node --test tests/goose-worker-contract.test.mjs",
+      "node --test tests/goose-recipe-builder.test.mjs",
+      "node --test tests/goose-worker-adapter.test.mjs",
+      "node --test tests/orchestrator-goose-runtime.test.mjs",
+      "node --test tests/orchestrator-approval-controls.test.mjs",
+      "node --test tests/orchestrator-policy-engine.test.mjs",
+      "node --test tests/orchestrator-e2e.test.mjs",
+      "node --test tests/cli-smoke.test.mjs"
     ]
   },
   "workflow": {
@@ -167,17 +124,5 @@
     "pr_strategy": "one slice-sized PR",
     "review_trigger": "automatic Codex review workflow on PR creation or update",
     "merge_gate": "required local validation passes"
-  },
-  "baseline_observations": [
-    "tasks 1 through 6 from the active goose integration plan are present in the codebase",
-    "goose worker adapter path exists and is wired for implementation dispatch via GooseBackedImplementationDispatcher",
-    "quality-gate ownership remains external to implementation dispatch and controlled by the orchestrator",
-    "demo:goose script is present in package.json",
-    "approval controls can pause after planning and resume only after explicit approval is recorded in the run store",
-    "policy controls now centralize max parallel dispatch, retry budgets, fallback chains, and high-risk manual-review guardrails above the goose worker seam"
-  ],
-  "drift": [
-    "Previous context artifact marked tasks 3 through 6 as pending or incomplete; code/tests indicate they are completed in baseline.",
-    "No contradiction detected between current code and root docs for orchestrator ownership and quality-gate boundaries."
-  ]
+  }
 }
