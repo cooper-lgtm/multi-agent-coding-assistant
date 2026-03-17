@@ -1,0 +1,43 @@
+name: CI Tests
+
+on:
+  pull_request:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-build:
+    name: typecheck-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run typecheck and build
+        uses: ./.github/actions/run-npm-check
+        with:
+          node-version: "20"
+          command: |
+            npm run typecheck
+            npm run build
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run adapter, planning, and runtime tests
+        uses: ./.github/actions/run-npm-check
+        with:
+          node-version: "20"
+          command: |
+            npm run test:adapter
+            npm run test:planning
+            npm run test:runtime
