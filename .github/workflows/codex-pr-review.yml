@@ -14,6 +14,8 @@ jobs:
     if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    env:
+      CODEX_REVIEW_TOKEN: ${{ secrets.CODEX_REVIEW_TOKEN }}
     steps:
       - name: Local dry run (act)
         if: ${{ env.ACT == 'true' }}
@@ -24,14 +26,14 @@ jobs:
           echo "commit: ${{ github.event.pull_request.head.sha }}"
 
       - name: Skip when CODEX_REVIEW_TOKEN is not configured
-        if: ${{ env.ACT != 'true' && secrets.CODEX_REVIEW_TOKEN == '' }}
+        if: ${{ env.ACT != 'true' && env.CODEX_REVIEW_TOKEN == '' }}
         run: echo "CODEX_REVIEW_TOKEN is not configured; skipping Codex review request."
 
       - name: Request Codex review
-        if: ${{ env.ACT != 'true' && secrets.CODEX_REVIEW_TOKEN != '' }}
+        if: ${{ env.ACT != 'true' && env.CODEX_REVIEW_TOKEN != '' }}
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.CODEX_REVIEW_TOKEN }}
+          github-token: ${{ env.CODEX_REVIEW_TOKEN }}
           script: |
             const pr = context.payload.pull_request;
             const sha = pr.head.sha;
