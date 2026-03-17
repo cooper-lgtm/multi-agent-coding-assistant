@@ -1,6 +1,6 @@
 {
   "artifact_type": "repo-context",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "status": "refreshed",
   "repo_name": "multi-agent-coding-assistant",
   "repo_path": ".",
@@ -73,12 +73,12 @@
       {
         "id": 3,
         "title": "Implement the goose worker adapter",
-        "status": "pending"
+        "status": "completed"
       },
       {
         "id": 4,
         "title": "Route implementation work through goose while keeping quality gates external",
-        "status": "pending"
+        "status": "completed"
       },
       {
         "id": 5,
@@ -102,15 +102,28 @@
       }
     ]
   },
-  "task2_evidence": {
-    "adapter": "src/adapters/goose-recipe-builder.ts",
-    "test": "tests/goose-recipe-builder.test.mjs",
-    "recipes": [
-      ".goose/recipes/frontend-implementation.yaml",
-      ".goose/recipes/backend-implementation.yaml"
-    ],
-    "schema": ".goose/recipes/shared/worker-output-schema.json",
-    "contract_doc": "docs/goose/task-contract.md"
+  "goose_integration_evidence": {
+    "task2": {
+      "adapter": "src/adapters/goose-recipe-builder.ts",
+      "test": "tests/goose-recipe-builder.test.mjs",
+      "recipes": [
+        ".goose/recipes/frontend-implementation.yaml",
+        ".goose/recipes/backend-implementation.yaml"
+      ],
+      "schema": ".goose/recipes/shared/worker-output-schema.json",
+      "contract_doc": "docs/goose/task-contract.md"
+    },
+    "task3": {
+      "adapter": "src/adapters/goose-worker-adapter.ts",
+      "process_runner": "src/adapters/goose-process-runner.ts",
+      "test": "tests/goose-worker-adapter.test.mjs"
+    },
+    "task4": {
+      "dispatcher": "src/orchestrator/implementation-dispatcher.ts",
+      "runtime_test": "tests/orchestrator-goose-runtime.test.mjs",
+      "demo": "src/examples/run-goose-worker-demo.ts",
+      "script": "package.json#demo:goose"
+    }
   },
   "validation": {
     "standard_commands": [
@@ -119,6 +132,9 @@
       "npm run test:adapter",
       "npm run test:planning",
       "npm run test:runtime"
+    ],
+    "targeted_goose_runtime": [
+      "npm run build && node --test tests/goose-worker-contract.test.mjs tests/goose-recipe-builder.test.mjs tests/goose-worker-adapter.test.mjs tests/orchestrator-goose-runtime.test.mjs"
     ],
     "doc_only_minimum": [
       "git diff --check"
@@ -131,11 +147,13 @@
     "merge_gate": "required local validation passes"
   },
   "baseline_observations": [
-    "task 1 and task 2 from the active goose integration plan are now in the codebase",
-    "goose worker adapter and runtime dispatch wiring remain future work",
-    "package.json does not yet include goose-oriented runtime scripts"
+    "tasks 1 through 4 from the active goose integration plan are present in the codebase",
+    "goose worker adapter path exists and is wired for implementation dispatch via GooseBackedImplementationDispatcher",
+    "quality-gate ownership remains external to implementation dispatch and controlled by the orchestrator",
+    "demo:goose script is present in package.json"
   ],
   "drift": [
-    "Context artifact refreshed after merging Task 2 PR; no root-doc vs code contradiction detected."
+    "Previous context artifact marked tasks 3 and 4 as pending; code/tests indicate they are completed in baseline.",
+    "No contradiction detected between current code and root docs for orchestrator ownership and quality-gate boundaries."
   ]
 }
