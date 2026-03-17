@@ -1,4 +1,7 @@
-const HELP_TEXT = `multi-agent-coding-assistant CLI
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+export const HELP_TEXT = `multi-agent-coding-assistant CLI
 
 Usage:
   maca <command> [options]
@@ -18,11 +21,11 @@ Options:
   --help                         Show this help
 `;
 
-function printHelp(): void {
+export function printHelp(): void {
   process.stdout.write(HELP_TEXT);
 }
 
-function main(argv: string[]): number {
+export function main(argv: string[]): number {
   const args = argv.slice(2);
 
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
@@ -52,7 +55,18 @@ function main(argv: string[]): number {
   return 0;
 }
 
-const exitCode = main(process.argv);
-if (exitCode !== 0) {
-  process.exit(exitCode);
+function isCliEntrypoint(metaUrl: string): boolean {
+  const entryPath = process.argv[1];
+  if (!entryPath) {
+    return false;
+  }
+
+  return pathToFileURL(path.resolve(entryPath)).href === metaUrl;
+}
+
+if (isCliEntrypoint(import.meta.url)) {
+  const exitCode = main(process.argv);
+  if (exitCode !== 0) {
+    process.exit(exitCode);
+  }
 }
