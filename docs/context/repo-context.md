@@ -1,95 +1,56 @@
 # Repository Context Artifact
 
-This file is a refreshed working summary for agents operating in this repository.
-It is a convenience layer, not the ultimate source of truth.
+This file is a concise operational snapshot for contributors and agents.
+If this artifact conflicts with current code or root docs, prefer `README.md`, `PRODUCT.md`, `ARCHITECTURE.md`, and `AGENTS.md`, then refresh this file.
 
-Canonical source order:
+## Canonical Read Order
 1. `README.md`
 2. `PRODUCT.md`
 3. `ARCHITECTURE.md`
 4. `AGENTS.md`
-5. relevant `docs/plans/`
-6. relevant source files and tests
+5. `docs/plans/2026-03-16-goose-integration-post-pr5.md`
+6. `docs/templates/task-template.md`
+7. `docs/reviews/recurring-issues.md`
+8. relevant `src/` modules and `tests/`
 
-If this artifact drifts from the repository, prefer the canonical files and refresh this document.
+## Current Baseline (2026-03-17)
+- TypeScript orchestration kernel is active for planning, DAG execution, implementation dispatch, quality gates, retry/escalation, reporting, and file-backed persistence/resume.
+- Planning/runtime invariants remain enforced in root docs and tests:
+  - `main-orchestrator` is sole global controller
+  - planning outputs implementation tasks only
+  - implementation owners are `frontend-agent` / `backend-agent`
+  - `test-agent` / `review-agent` are post-implementation quality gates
+  - `needs_fix`, `blocked`, `failed` remain distinct
+  - model routing should preserve logical labels plus exact-model metadata
+- Current runtime is still mock implementation dispatch (no goose adapter wiring yet).
 
-## Purpose
+## Active Plan and Task Slices
+Primary plan: `docs/plans/2026-03-16-goose-integration-post-pr5.md`
 
-This repository implements a TypeScript orchestration kernel for OpenClaw-based multi-agent coding workflows.
-The current system goal is to keep planning, DAG execution, quality gates, retry, persistence, and reporting explicit and recoverable.
+Planned slices (status inferred from repository state):
+1. Structured goose worker-result contracts — **pending**
+2. Goose recipe assets + task-to-recipe mapping — **pending**
+3. Goose worker adapter — **pending**
+4. Route implementation dispatch through goose (quality gates remain external) — **pending**
+5. PR6 approval/orchestration controls — **pending**
+6. PR7 budget/policy/safety controls — **pending**
+7. PR8 eval suite + golden scenarios — **pending**
+8. PR9 CLI entry points + goose delivery workflow — **pending**
 
-The next architecture step is to replace the mock implementation worker bridge with a goose-backed execution runtime while keeping `test-agent` and `review-agent` under orchestrator control.
-
-## Current Priorities
-
-Priority order:
-1. correctness
-2. recoverability
-3. traceability
-4. contract clarity
-5. breadth
-
-Do not trade runtime correctness for convenience or speculative autonomy.
-
-## Stable Architecture Summary
-
-Core flow:
-1. classify request and resolve planning mode
-2. run planning pipeline
-3. validate planning result
-4. build execution DAG
-5. dispatch implementation work to `frontend-agent` or `backend-agent`
-6. run `test-agent` and `review-agent` as quality gates
-7. apply retry and escalation
-8. persist runtime state and report final summary
-
-Key invariants:
-- `main-orchestrator` is the only global controller
-- planning outputs implementation tasks only
-- `assigned_agent` may only be `frontend-agent` or `backend-agent`
-- `test-agent` and `review-agent` are evaluators, not task owners
-- `needs_fix`, `blocked`, and `failed` are distinct recovery states
-- logical model labels and exact model metadata must stay aligned
+Reason for pending statuses: repository currently lacks planned goose files/tests (for example `src/adapters/goose-worker-adapter.ts`, `tests/goose-worker-*.test.mjs`, `.goose/recipes/*`, CLI artifacts) and `package.json` has no goose-oriented scripts.
 
 ## Module Map
+- `src/schemas/`: shared planning/runtime/model contracts
+- `src/planning/`: mode resolution, direct/debate flows, normalization/synthesis
+- `src/orchestrator/`: DAG builder, runtime loop, dispatcher, quality gates, retry, reporting
+- `src/adapters/`: OpenClaw request/result shaping and model routing/resolution
+- `src/workers/`: worker contracts and retry-handoff context
+- `src/storage/`: run store contracts and file-backed persistence
+- `src/examples/`: demos/fixtures (planning, runtime, adapter, persistence)
+- `tests/`: adapter/planning/runtime/persistence verification
 
-| Path | Responsibility |
-| --- | --- |
-| `src/schemas/` | planning, runtime, and model contracts |
-| `src/planning/` | planning mode resolution, direct/debate flow, synthesis, normalization |
-| `src/orchestrator/` | DAG build, runtime loop, dispatch, quality gates, retry, reporting |
-| `src/adapters/` | OpenClaw envelopes, model routing, exact-model resolution |
-| `src/workers/` | worker execution contracts and retry handoff |
-| `src/storage/` | run persistence and resume support |
-| `src/examples/` | runnable demos and typed fixtures |
-| `tests/` | adapter, planning, runtime, and persistence coverage |
-| `prompts/` | prompt assets for planning, implementation, and quality roles |
-
-## Active Delivery Plan
-
-Primary plan:
-- `docs/plans/2026-03-16-goose-integration-post-pr5.md`
-
-Current planned task slices:
-1. Add structured goose worker-result contracts
-2. Add goose recipe assets and task-to-recipe mapping
-3. Implement the goose worker adapter
-4. Route implementation work through goose while keeping quality gates external
-5. Implement PR6 human approval and orchestration controls
-6. Implement PR7 budget, policy, and safety controls
-7. Implement PR8 evaluation suite and golden scenarios
-8. Implement PR9 CLI entry points and goose delivery workflow
-
-Execution rule:
-- one task-sized PR at a time
-- one branch per PR
-- always comment `@codex review`
-- do not wait for review completion if required local verification passed
-
-## Validation Surface
-
-Standard verification commands:
-
+## Validation Commands
+Standard:
 ```bash
 npm run typecheck
 npm run build
@@ -98,46 +59,29 @@ npm run test:planning
 npm run test:runtime
 ```
 
-Task-specific tests should be added and run alongside these when relevant.
+Doc-only minimum:
+```bash
+git diff --check
+```
 
-## Goose Operating Rules
+## PR / Workflow Rules (from active plan + AGENTS.md)
+- one roadmap slice per branch
+- one slice-sized PR at a time
+- include `@codex review` comment on each PR
+- merge only after required local validation passes
+- preserve orchestrator ownership boundaries (goose at implementation seam only)
 
-When goose works in this repository:
-- read root docs before making architecture decisions
-- use `docs/templates/task-template.md` for non-trivial tasks
-- keep work scoped to one major task from the active plan
-- preserve orchestrator ownership boundaries
-- do not silently collapse statuses or retry semantics
-- update docs when contracts or workflow assumptions change
+## Drift Notes
+- No material conflict found between root canonical docs and current code baseline.
+- Goose integration plan describes intended next slices, but those slices are not yet implemented in code/tests.
 
-## Context Refresh Inputs
-
-Refresh this artifact from:
-- `README.md`
-- `PRODUCT.md`
-- `ARCHITECTURE.md`
-- `AGENTS.md`
-- `docs/plans/2026-03-16-goose-integration-post-pr5.md`
-- `docs/templates/task-template.md`
-- `docs/reviews/recurring-issues.md`
-- relevant `src/` modules and `tests/` for the currently active task
-
-## Refresh Policy
-
-Refresh this artifact:
-- before starting a new task-sized PR
-- after merging a task-sized PR
-- after any architecture-sensitive change that shifts role boundaries, contracts, routing, or validation
-
-## Current Known Gaps
-
-- goose execution runtime is not yet wired into the implementation dispatcher
-- repo context automation is being bootstrapped through `.goose/recipes/`
-- quality gates remain external and should stay external during goose integration
+## Known Operational Gaps
+- Goose-backed implementation runtime path not wired yet.
+- Goose recipe/task-contract assets not present yet.
+- Approval/policy/eval/CLI milestones from plan remain future work.
 
 ## Artifact Metadata
-
 - artifact_type: `repo-context`
-- intended_consumers: humans, goose recipes, orchestration helpers
-- update_mode: refreshed, not hand-waved
-- current_status: bootstrap
+- version: `1.1.0`
+- status: `refreshed`
+- refreshed_on: `2026-03-17`
