@@ -7,6 +7,7 @@ import type { RetryCause, RetryDecision, RetryManager } from './retry-escalation
 import { ReportingManager } from './reporting-manager.js';
 import type { RunStore } from '../storage/run-store.js';
 import { ApprovalManager } from './approval-manager.js';
+import { PolicyEngine } from './policy-engine.js';
 import {
   applyWorkerExecutionContext,
   createWorkerRetryHandoff,
@@ -20,13 +21,16 @@ export interface OrchestratorDependencies {
   reportingManager: ReportingManager;
   runStore: RunStore;
   approvalManager?: ApprovalManager;
+  policyEngine?: PolicyEngine;
 }
 
 export class MainOrchestrator {
   private readonly approvalManager: ApprovalManager;
+  private readonly policyEngine: PolicyEngine;
 
   constructor(private readonly deps: OrchestratorDependencies) {
     this.approvalManager = deps.approvalManager ?? new ApprovalManager();
+    this.policyEngine = deps.policyEngine ?? new PolicyEngine();
   }
 
   async run(request: PlanningRequest): Promise<OrchestrationRunResult> {
@@ -36,6 +40,7 @@ export class MainOrchestrator {
     });
     const runtime = dag.runtime;
 
+    const policyState = this.policyEngine.applyToRuntime(runtime, request);
     runtime.approval_state = this.approvalManager.initialize(runtime, request);
     runtime.status = 'running';
     this.deps.reportingManager.record(
@@ -43,6 +48,12 @@ export class MainOrchestrator {
       'orchestrator_started',
       `Starting orchestration run ${runtime.run_id} for epic ${runtime.epic}.`,
     );
+    this.deps.reportingManager.record(
+      runtime,
+      'policy_applied',
+      this.buildPolicyMessage(policyState),
+    );
+    this.recordPolicyBlocks(runtime);
 
     if (!this.approvalManager.canExecute(runtime)) {
       this.approvalManager.markAwaitingApproval(runtime);
@@ -120,7 +131,7 @@ export class MainOrchestrator {
         continue;
       }
 
-      const readyTasks = findReadyTasks(runtime);
+      const readyTasks = this.policyEngine.selectDispatchableTasks(runtime);
       if (readyTasks.length === 0) {
         this.deps.reportingManager.record(
           runtime,
@@ -138,6 +149,34 @@ export class MainOrchestrator {
         await this.executeTask(liveTask, runtime);
         this.blockTasksWithFailedDependencies(runtime);
       }
+    }
+  }
+
+  private buildPolicyMessage(policyState: NonNullable<RuntimeState['policy_state']>): string {
+    const parallelism = policyState.max_parallel_tasks === null
+      ? 'unbounded ready-task dispatch'
+      : `max parallel dispatch ${policyState.max_parallel_tasks}`;
+    const riskThreshold = policyState.risk_escalation_threshold ?? 'none';
+
+    return `Applied runtime policy: ${parallelism}, default retry budget ${policyState.max_retries_per_task}, risk threshold ${riskThreshold}.`;
+  }
+
+  private recordPolicyBlocks(runtime: RuntimeState): void {
+    for (const task of Object.values(runtime.tasks)) {
+      if (task.status !== 'blocked') {
+        continue;
+      }
+
+      if (!task.blocker_message?.includes('manual review')) {
+        continue;
+      }
+
+      this.deps.reportingManager.record(
+        runtime,
+        'task_blocked_by_policy',
+        task.blocker_message,
+        task.task_id,
+      );
     }
   }
 

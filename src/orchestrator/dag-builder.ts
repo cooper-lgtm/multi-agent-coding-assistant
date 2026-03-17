@@ -63,6 +63,7 @@ export function buildExecutionDag(
       review_status: 'pending',
       retry_count: 0,
       max_retries: maxRetries,
+      fallback_models: [],
       escalation_policy: {
         on_first_failure: 'retry_same_model',
         on_second_failure: 'upgrade_model',
@@ -121,6 +122,7 @@ export function buildExecutionDag(
       cancel_requested: false,
     },
     approval_state: null,
+    policy_state: null,
   };
 
   return {

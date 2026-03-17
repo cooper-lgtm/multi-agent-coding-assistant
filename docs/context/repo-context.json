@@ -1,6 +1,6 @@
 {
   "artifact_type": "repo-context",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "status": "refreshed",
   "repo_name": "multi-agent-coding-assistant",
   "repo_path": ".",
@@ -88,7 +88,7 @@
       {
         "id": 6,
         "title": "Implement PR7 budget, policy, and safety controls",
-        "status": "pending"
+        "status": "completed"
       },
       {
         "id": 7,
@@ -132,6 +132,13 @@
         "src/storage/run-store.ts",
         "src/storage/file-backed-run-store.ts"
       ]
+    },
+    "task6": {
+      "policy_engine": "src/orchestrator/policy-engine.ts",
+      "runtime_test": "tests/orchestrator-policy-engine.test.mjs",
+      "runtime_schema": "src/schemas/runtime.ts",
+      "router": "src/adapters/model-router.ts",
+      "retry_manager": "src/orchestrator/retry-escalation-manager.ts"
     }
   },
   "validation": {
@@ -148,6 +155,9 @@
     "targeted_approval_runtime": [
       "npm run build && node --test tests/orchestrator-approval-controls.test.mjs tests/orchestrator-persistence.test.mjs"
     ],
+    "targeted_policy_runtime": [
+      "npm run build && node --test tests/orchestrator-policy-engine.test.mjs tests/orchestrator-runtime.test.mjs tests/orchestrator-goose-runtime.test.mjs"
+    ],
     "doc_only_minimum": [
       "git diff --check"
     ]
@@ -159,14 +169,15 @@
     "merge_gate": "required local validation passes"
   },
   "baseline_observations": [
-    "tasks 1 through 5 from the active goose integration plan are present in the codebase",
+    "tasks 1 through 6 from the active goose integration plan are present in the codebase",
     "goose worker adapter path exists and is wired for implementation dispatch via GooseBackedImplementationDispatcher",
     "quality-gate ownership remains external to implementation dispatch and controlled by the orchestrator",
     "demo:goose script is present in package.json",
-    "approval controls can pause after planning and resume only after explicit approval is recorded in the run store"
+    "approval controls can pause after planning and resume only after explicit approval is recorded in the run store",
+    "policy controls now centralize max parallel dispatch, retry budgets, fallback chains, and high-risk manual-review guardrails above the goose worker seam"
   ],
   "drift": [
-    "Previous context artifact marked tasks 3 through 5 as pending; code/tests indicate they are completed in baseline.",
+    "Previous context artifact marked tasks 3 through 6 as pending or incomplete; code/tests indicate they are completed in baseline.",
     "No contradiction detected between current code and root docs for orchestrator ownership and quality-gate boundaries."
   ]
 }

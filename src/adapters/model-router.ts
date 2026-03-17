@@ -15,6 +15,10 @@ export interface ModelAvailability {
   availableModels: string[];
 }
 
+export interface ModelRouteOptions {
+  preferredModels?: string[];
+}
+
 export interface ModelRouteDecision {
   role: RoleName;
   selectedModel: string;
@@ -74,16 +78,16 @@ export class ModelRouter {
     this.resolver = resolver;
   }
 
-  route(role: RoleName, availability: ModelAvailability): ModelRouteDecision {
-    const policy = this.getPolicy(role);
+  route(role: RoleName, availability: ModelAvailability, options: ModelRouteOptions = {}): ModelRouteDecision {
+    const preferredModels = this.getPreferredModels(role, options.preferredModels);
 
-    for (const model of policy.preferredModels) {
+    for (const model of preferredModels) {
       const resolvedModel = this.resolver.findAvailable(model, availability.availableModels);
       if (resolvedModel) {
         return {
           role,
           selectedModel: model,
-          attemptedModels: [...policy.preferredModels],
+          attemptedModels: [...preferredModels],
           selectedModelExactId: resolvedModel.exact_model_id,
           selectedModelProvider: resolvedModel.provider,
           selectedModelMetadata: resolvedModel,
@@ -92,13 +96,18 @@ export class ModelRouter {
     }
 
     throw new Error(
-      `No available model for role ${role}. Attempted: ${policy.preferredModels.join(', ')}`,
+      `No available model for role ${role}. Attempted: ${preferredModels.join(', ')}`,
     );
   }
 
-  routeNext(role: RoleName, currentModel: string, availability: ModelAvailability): ModelRouteDecision | null {
-    const policy = this.getPolicy(role);
-    const compatibleRoutes = policy.preferredModels.flatMap((model) => {
+  routeNext(
+    role: RoleName,
+    currentModel: string,
+    availability: ModelAvailability,
+    options: ModelRouteOptions = {},
+  ): ModelRouteDecision | null {
+    const preferredModels = this.getPreferredModels(role, options.preferredModels);
+    const compatibleRoutes = preferredModels.flatMap((model) => {
       const resolved = this.resolver.findAvailable(model, availability.availableModels);
       return resolved ? [{ model, resolved }] : [];
     });
@@ -149,5 +158,13 @@ export class ModelRouter {
     }
 
     return policy;
+  }
+
+  private getPreferredModels(role: RoleName, preferredModels?: string[]): string[] {
+    if (preferredModels && preferredModels.length > 0) {
+      return [...preferredModels];
+    }
+
+    return [...this.getPolicy(role).preferredModels];
   }
 }
