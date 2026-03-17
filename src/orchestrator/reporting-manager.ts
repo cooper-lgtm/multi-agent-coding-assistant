@@ -1,6 +1,5 @@
 import type {
   ExecutionNode,
-  RunFinalStatus,
   RunSummary,
   RunSummaryCounts,
   RuntimeEvent,
@@ -29,7 +28,7 @@ export class ReportingManager {
     return {
       run_id: runtime.run_id,
       epic: runtime.epic,
-      final_status: this.resolveFinalStatus(counts),
+      final_status: runtime.status,
       counts,
       tasks,
       events: runtime.events.map((event) => event.message),
@@ -42,6 +41,7 @@ export class ReportingManager {
       needs_fix: 0,
       blocked: 0,
       failed: 0,
+      cancelled: 0,
       pending: 0,
     };
 
@@ -59,6 +59,9 @@ export class ReportingManager {
         case 'failed':
           counts.failed += 1;
           break;
+        case 'cancelled':
+          counts.cancelled += 1;
+          break;
         default:
           counts.pending += 1;
           break;
@@ -67,15 +70,6 @@ export class ReportingManager {
 
     return counts;
   }
-
-  private resolveFinalStatus(counts: RunSummaryCounts): RunFinalStatus {
-    if (counts.failed > 0) return 'failed';
-    if (counts.needs_fix > 0) return 'needs_fix';
-    if (counts.blocked > 0) return 'blocked';
-    if (counts.pending > 0) return 'running';
-    return 'completed';
-  }
-
   private toTaskSummary(task: ExecutionNode): TaskRunSummary {
     return {
       task_id: task.task_id,

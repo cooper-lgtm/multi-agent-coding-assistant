@@ -1,6 +1,5 @@
-import type { PlanningRequest, PlanningResult } from '../schemas/planning.js';
-import type { RuntimeTaskStatus } from '../schemas/planning.js';
-import type { ExecutionNode, OrchestrationRunResult, RuntimeState } from '../schemas/runtime.js';
+import type { PlanningRequest, PlanningResult, RuntimeTaskStatus } from '../schemas/planning.js';
+import type { ExecutionNode, OrchestrationRunResult, RunLifecycleStatus, RuntimeState } from '../schemas/runtime.js';
 import { buildExecutionDag, findReadyTasks } from './dag-builder.js';
 import type { ImplementationDispatcher } from './implementation-dispatcher.js';
 import type { QualityGateRunner } from './quality-gate-runner.js';
@@ -31,6 +30,7 @@ export class MainOrchestrator {
     });
     const runtime = dag.runtime;
 
+    runtime.status = 'running';
     this.deps.reportingManager.record(
       runtime,
       'orchestrator_started',
@@ -38,20 +38,55 @@ export class MainOrchestrator {
     );
     await this.persist(runtime);
     await this.executeLoop(runtime);
-    await this.persist(runtime);
+    await this.finalize(runtime);
 
-    return {
-      graph: dag.graph,
+    return this.buildResult(runtime);
+  }
+
+  async resume(runId: string): Promise<OrchestrationRunResult> {
+    const runtime = await this.deps.runStore.load(runId);
+
+    if (!runtime) {
+      throw new Error(`Unknown run: ${runId}`);
+    }
+
+    if (this.isRunFinished(runtime.status)) {
+      return this.buildResult(runtime);
+    }
+
+    this.prepareRuntimeForResume(runtime);
+    this.deps.reportingManager.record(
       runtime,
-      ready_tasks: findReadyTasks(runtime),
-      summary: this.deps.reportingManager.buildSummary(runtime),
-    };
+      'orchestrator_resumed',
+      `Resuming orchestration run ${runtime.run_id}.`,
+    );
+    await this.persist(runtime, { syncControl: false });
+    await this.executeLoop(runtime);
+    await this.finalize(runtime);
+
+    return this.buildResult(runtime);
   }
 
   private async executeLoop(runtime: RuntimeState): Promise<void> {
     while (!this.areAllTasksTerminal(runtime)) {
+      await this.syncControlFromStore(runtime);
+      if (await this.handleControlRequests(runtime)) return;
+
       this.blockTasksWithFailedDependencies(runtime);
       if (this.areAllTasksTerminal(runtime)) break;
+
+      const checkpointTasks = this.findImplementationCheckpointTasks(runtime);
+      if (checkpointTasks.length > 0) {
+        for (const task of checkpointTasks) {
+          await this.syncControlFromStore(runtime);
+          if (await this.handleControlRequests(runtime)) return;
+
+          await this.runQualityGates(runtime.tasks[task.task_id], runtime);
+          this.blockTasksWithFailedDependencies(runtime);
+        }
+
+        continue;
+      }
 
       const readyTasks = findReadyTasks(runtime);
       if (readyTasks.length === 0) {
@@ -64,6 +99,9 @@ export class MainOrchestrator {
       }
 
       for (const task of readyTasks) {
+        await this.syncControlFromStore(runtime);
+        if (await this.handleControlRequests(runtime)) return;
+
         const liveTask = runtime.tasks[task.task_id];
         await this.executeTask(liveTask, runtime);
         this.blockTasksWithFailedDependencies(runtime);
@@ -98,7 +136,6 @@ export class MainOrchestrator {
         task.task_id,
       );
       await this.persist(runtime);
-      await this.runQualityGates(task, runtime);
       return;
     }
 
@@ -113,6 +150,8 @@ export class MainOrchestrator {
 
   private async runQualityGates(task: ExecutionNode, runtime: RuntimeState): Promise<void> {
     task.status = 'testing';
+    task.test_status = 'pending';
+    task.review_status = 'pending';
     this.deps.reportingManager.record(
       runtime,
       'quality_gate_started',
@@ -167,7 +206,8 @@ export class MainOrchestrator {
   }
 
   private applyRetryDecision(task: ExecutionNode, decision: RetryDecision, runtime: RuntimeState): void {
-    const attemptStatus = task.status === 'needs_fix' ? 'needs_fix' : task.status === 'blocked' ? 'blocked' : 'failed';
+    const attemptStatus =
+      task.status === 'needs_fix' ? 'needs_fix' : task.status === 'blocked' ? 'blocked' : 'failed';
 
     task.retry_count = decision.retry_count;
 
@@ -239,6 +279,131 @@ export class MainOrchestrator {
     }
   }
 
+  private prepareRuntimeForResume(runtime: RuntimeState): void {
+    runtime.status = 'running';
+    runtime.control = {
+      pause_requested: false,
+      cancel_requested: runtime.control.cancel_requested,
+    };
+
+    for (const task of Object.values(runtime.tasks)) {
+      switch (task.status) {
+        case 'routed':
+        case 'running':
+          task.status = 'pending';
+          task.error = null;
+          task.test_status = 'pending';
+          task.review_status = 'pending';
+          break;
+        case 'testing':
+        case 'reviewing':
+          task.status = 'implementation_done';
+          task.test_status = 'pending';
+          task.review_status = 'pending';
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  private findImplementationCheckpointTasks(runtime: RuntimeState): ExecutionNode[] {
+    return Object.values(runtime.tasks).filter((task) => task.status === 'implementation_done');
+  }
+
+  private async syncControlFromStore(runtime: RuntimeState): Promise<void> {
+    const manifest = await this.deps.runStore.loadManifest(runtime.run_id);
+
+    if (!manifest) {
+      return;
+    }
+
+    runtime.control = {
+      ...manifest.control,
+    };
+  }
+
+  private async handleControlRequests(runtime: RuntimeState): Promise<boolean> {
+    if (runtime.control.cancel_requested) {
+      this.deps.reportingManager.record(
+        runtime,
+        'cancel_requested',
+        `Cancellation requested for run ${runtime.run_id}.`,
+      );
+      this.cancelPendingWork(runtime);
+      runtime.status = 'cancelled';
+      this.deps.reportingManager.record(
+        runtime,
+        'run_cancelled',
+        `Run ${runtime.run_id} stopped at a safe checkpoint after cancellation.`,
+      );
+      await this.persist(runtime);
+      return true;
+    }
+
+    if (runtime.control.pause_requested) {
+      this.deps.reportingManager.record(
+        runtime,
+        'pause_requested',
+        `Pause requested for run ${runtime.run_id}.`,
+      );
+      runtime.status = 'paused';
+      this.deps.reportingManager.record(
+        runtime,
+        'run_paused',
+        `Run ${runtime.run_id} paused at a safe checkpoint.`,
+      );
+      await this.persist(runtime);
+      return true;
+    }
+
+    return false;
+  }
+
+  private cancelPendingWork(runtime: RuntimeState): void {
+    for (const task of Object.values(runtime.tasks)) {
+      if (this.isTerminal(task.status) || task.status === 'implementation_done') {
+        continue;
+      }
+
+      task.status = 'cancelled';
+      task.error = task.error ?? 'Run cancelled before the task reached a terminal state.';
+    }
+  }
+
+  private async finalize(runtime: RuntimeState): Promise<void> {
+    if (runtime.status === 'paused') {
+      await this.persist(runtime);
+      return;
+    }
+
+    if (!this.isRunFinished(runtime.status)) {
+      runtime.status = this.resolveRunStatus(runtime);
+    }
+
+    await this.persist(runtime);
+  }
+
+  private resolveRunStatus(runtime: RuntimeState): RunLifecycleStatus {
+    const statuses = Object.values(runtime.tasks).map((task) => task.status);
+
+    if (statuses.includes('failed')) return 'failed';
+    if (statuses.includes('needs_fix')) return 'needs_fix';
+    if (statuses.includes('blocked')) return 'blocked';
+    if (statuses.includes('cancelled')) return 'cancelled';
+    if (statuses.every((status) => status === 'completed')) return 'completed';
+    return 'running';
+  }
+
+  private buildResult(runtime: RuntimeState): OrchestrationRunResult {
+    return {
+      graph: runtime.graph,
+      runtime,
+      ready_tasks: findReadyTasks(runtime),
+      summary: this.deps.reportingManager.buildSummary(runtime),
+    };
+  }
+
   private areAllTasksTerminal(runtime: RuntimeState): boolean {
     return Object.values(runtime.tasks).every((task) => this.isTerminal(task.status));
   }
@@ -251,8 +416,17 @@ export class MainOrchestrator {
     return status === 'needs_fix' || status === 'blocked' || status === 'failed' || status === 'cancelled';
   }
 
-  private async persist(runtime: RuntimeState): Promise<void> {
+  private isRunFinished(status: RunLifecycleStatus): boolean {
+    return ['completed', 'needs_fix', 'blocked', 'failed', 'cancelled'].includes(status);
+  }
+
+  private async persist(runtime: RuntimeState, options: { syncControl?: boolean } = {}): Promise<void> {
+    if (options.syncControl !== false) {
+      await this.syncControlFromStore(runtime);
+    }
+
     runtime.graph.nodes = structuredClone(runtime.tasks);
+    runtime.updated_at = new Date().toISOString();
     await this.deps.runStore.save(runtime);
   }
 }
