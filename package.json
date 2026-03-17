@@ -5,6 +5,9 @@
   "description": "An OpenClaw-native orchestrator for planning, DAG scheduling, execution dispatch, and quality gates in multi-agent coding workflows.",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "maca": "dist/cli/main.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "demo:adapter": "npm run build && node dist/examples/run-openclaw-adapter-demo.js",
@@ -17,7 +20,8 @@
     "test:planning": "npm run build && node --test tests/planning-mode-resolution.test.mjs tests/planning-pipeline.test.mjs",
     "test:runtime": "npm run build && node --test tests/orchestrator-runtime.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "cli": "npm run build && node dist/cli/main.js"
   },
   "keywords": [
     "openclaw",
