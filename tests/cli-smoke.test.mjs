@@ -22,3 +22,16 @@ test('cli help exposes plan/run/resume and key flags', () => {
   assert.match(output, /mock\|goose/);
   assert.match(output, /json/);
 });
+
+test('importing the library entrypoint does not execute the CLI', () => {
+  const output = execFileSync(
+    'node',
+    ['--input-type=module', '--eval', "await import('./dist/index.js');"],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8'
+    }
+  );
+
+  assert.equal(output, '');
+});
