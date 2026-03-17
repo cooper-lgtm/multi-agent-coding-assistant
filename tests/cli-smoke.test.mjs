@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { mkdtemp, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const projectRoot = process.cwd();
@@ -34,4 +36,25 @@ test('importing the library entrypoint does not execute the CLI', () => {
   );
 
   assert.equal(output, '');
+});
+
+test('cli help still executes when launched through a symlinked bin path', async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'maca-bin-'));
+  const symlinkPath = path.join(tempDir, 'maca');
+
+  try {
+    await symlink(cliPath, symlinkPath);
+
+    const output = execFileSync('node', [symlinkPath, '--help'], {
+      cwd: projectRoot,
+      encoding: 'utf8'
+    });
+
+    assert.match(output, /multi-agent-coding-assistant CLI/);
+    assert.match(output, /\bplan\b/);
+    assert.match(output, /\brun\b/);
+    assert.match(output, /\bresume\b/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 });

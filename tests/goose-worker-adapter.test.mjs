@@ -104,6 +104,26 @@ test('goose worker adapter surfaces blocked when goose reports prerequisites mis
   assert.equal(result.output.summary, 'Goose execution blocked by missing prerequisites.');
 });
 
+test('goose worker adapter treats ENOENT startup failures as blocked environment issues', async () => {
+  const request = buildWorkerRequest('backend-agent');
+
+  const adapter = new GooseWorkerAdapter({
+    runGoose: async () => ({
+      ok: false,
+      exit_code: 127,
+      stdout: '',
+      stderr: 'spawn goose ENOENT',
+    }),
+  });
+
+  const result = await adapter.execute(request);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.output.status, 'blocked');
+  assert.equal(result.output.blocker_category, 'environment');
+  assert.match(result.output.blocker_message, /ENOENT/i);
+});
+
 test('goose worker adapter treats malformed structured output as failed worker evidence', async () => {
   const request = buildWorkerRequest('backend-agent');
 
@@ -123,6 +143,32 @@ test('goose worker adapter treats malformed structured output as failed worker e
   assert.equal(result.output.blocker_category, 'unknown');
   assert.match(result.output.blocker_message, /not valid structured worker output/i);
   assert.match(result.output.implementation_evidence.at(-1), /not-json/);
+});
+
+test('goose worker adapter rejects structured output with invalid field types', async () => {
+  const request = buildWorkerRequest('backend-agent');
+
+  const adapter = new GooseWorkerAdapter({
+    runGoose: async () => ({
+      ok: true,
+      exit_code: 0,
+      stdout: JSON.stringify({
+        status: 'implementation_done',
+        summary: 'Goose claims implementation completed.',
+        changed_files: 'src/api/contract.ts',
+        implementation_evidence: 'Updated the contract.',
+        commands_run: 'npm run build',
+      }),
+      stderr: '',
+    }),
+  });
+
+  const result = await adapter.execute(request);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.output.status, 'failed');
+  assert.equal(result.output.blocker_category, 'unknown');
+  assert.match(result.output.blocker_message, /not valid structured worker output/i);
 });
 
 test('buildGooseProcessArgs serializes recipe inputs as goose params', () => {

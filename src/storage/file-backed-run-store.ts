@@ -92,11 +92,13 @@ export class FileBackedRunStore implements RunStore {
     await this.withRunWriteLock(runId, async () => {
       const runtimePath = path.join(this.getRunDir(runId), 'runtime.json');
       const runtime = await this.readJsonFile<RuntimeState>(runtimePath);
+      const manifest = await this.readManifest(runId);
 
       if (!runtime) {
         throw new Error(`Unknown run: ${runId}`);
       }
 
+      runtime.control = this.resolvePersistedControl(runtime, manifest);
       runtime.approval_state = {
         mode: runtime.approval_state?.mode ?? 'confirm-before-run',
         status: 'approved',
@@ -106,10 +108,10 @@ export class FileBackedRunStore implements RunStore {
       };
       runtime.updated_at = new Date().toISOString();
 
-      const manifest = buildRunManifest(runtime, runtime.updated_at);
+      const nextManifest = buildRunManifest(runtime, runtime.updated_at);
 
       await this.writeJsonAtomic(runtimePath, runtime);
-      await this.writeJsonAtomic(path.join(this.getRunDir(runId), 'manifest.json'), manifest);
+      await this.writeJsonAtomic(path.join(this.getRunDir(runId), 'manifest.json'), nextManifest);
     });
   }
 

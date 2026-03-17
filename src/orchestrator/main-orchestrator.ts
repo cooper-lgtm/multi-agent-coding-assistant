@@ -85,6 +85,16 @@ export class MainOrchestrator {
       return this.buildResult(runtime);
     }
 
+    runtime.control = {
+      pause_requested: false,
+      cancel_requested: runtime.control.cancel_requested,
+    };
+
+    if (await this.handleControlRequests(runtime)) {
+      await this.finalize(runtime);
+      return this.buildResult(runtime);
+    }
+
     if (!this.approvalManager.canExecute(runtime)) {
       this.approvalManager.markAwaitingApproval(runtime);
       this.deps.reportingManager.record(

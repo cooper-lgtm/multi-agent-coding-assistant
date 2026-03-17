@@ -167,3 +167,33 @@ test('saving a stale runtime snapshot does not clear an already-requested contro
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('approving a run preserves pause and cancel requests already recorded in the manifest', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'run-store-'));
+  const stateDir = path.join(root, 'state');
+
+  try {
+    const runtime = buildRuntime('run-approval-control-merge');
+    runtime.control = {
+      pause_requested: false,
+      cancel_requested: false,
+    };
+
+    const store = new FileBackedRunStore({ stateDir });
+    await store.save(runtime);
+    await store.requestPause(runtime.run_id);
+    await store.requestCancel(runtime.run_id);
+    await store.approveRun(runtime.run_id, { approved_by: 'human-reviewer' });
+
+    const loadedRuntime = await store.load(runtime.run_id);
+    const manifest = await store.loadManifest(runtime.run_id);
+
+    assert.equal(loadedRuntime.control.pause_requested, true);
+    assert.equal(loadedRuntime.control.cancel_requested, true);
+    assert.equal(manifest.control.pause_requested, true);
+    assert.equal(manifest.control.cancel_requested, true);
+    assert.equal(loadedRuntime.approval_state?.status, 'approved');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
