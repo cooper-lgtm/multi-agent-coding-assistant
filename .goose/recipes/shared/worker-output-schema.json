@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GooseImplementationWorkerOutput",
+  "type": "object",
+  "required": [
+    "status",
+    "summary",
+    "changed_files",
+    "blocker_category",
+    "blocker_message",
+    "implementation_evidence",
+    "test_evidence",
+    "review_feedback",
+    "commands_run",
+    "test_results",
+    "risk_notes",
+    "suggested_status",
+    "delivery_metadata"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["implementation_done", "blocked", "failed"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "changed_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blocker_category": {
+      "type": ["string", "null"],
+      "enum": ["requirements", "repository", "dependency", "environment", "quality", "unknown", null]
+    },
+    "blocker_message": {
+      "type": ["string", "null"]
+    },
+    "implementation_evidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "test_evidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "review_feedback": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "commands_run": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "test_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["pass", "fail", "skip", "pending"] },
+          "details": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "risk_notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "suggested_status": {
+      "type": ["string", "null"],
+      "enum": ["implementation_done", "blocked", "failed", "completed", "needs_fix", null]
+    },
+    "delivery_metadata": {
+      "type": ["object", "null"],
+      "required": ["branch_name", "commit_sha", "pr_url"],
+      "properties": {
+        "branch_name": { "type": ["string", "null"] },
+        "commit_sha": { "type": ["string", "null"] },
+        "pr_url": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

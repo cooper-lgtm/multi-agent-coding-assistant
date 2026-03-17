@@ -50,6 +50,14 @@ export function buildOpenClawWorkerRoleRequestFixture() {
   task.implementation_evidence = ['Locked the API contract for downstream UI consumers.'];
   task.test_evidence = ['Previous adapter smoke test passed before review feedback arrived.'];
   task.review_feedback = ['Review requested one naming cleanup before approval.'];
+  task.commands_run = ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'];
+  task.test_results = [{ name: 'tests/openclaw-runtime-adapter.test.mjs', status: 'pass' }];
+  task.risk_notes = ['Broaden adapter smoke coverage after the naming cleanup lands.'];
+  task.suggested_status = 'needs_fix';
+  task.delivery_metadata = {
+    branch_name: 'feat/openclaw-adapter-fixture',
+    commit_sha: 'abc1234',
+  };
   task.prior_attempt = {
     attempt: 1,
     status: 'needs_fix',
@@ -60,6 +68,14 @@ export function buildOpenClawWorkerRoleRequestFixture() {
     implementation_evidence: ['Locked the API contract for downstream UI consumers.'],
     test_evidence: ['Previous adapter smoke test passed before review feedback arrived.'],
     review_feedback: ['Review requested one naming cleanup before approval.'],
+    commands_run: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+    test_results: [{ name: 'tests/openclaw-runtime-adapter.test.mjs', status: 'pass' }],
+    risk_notes: ['Broaden adapter smoke coverage after the naming cleanup lands.'],
+    suggested_status: 'needs_fix',
+    delivery_metadata: {
+      branch_name: 'feat/openclaw-adapter-fixture',
+      commit_sha: 'abc1234',
+    },
   };
 
   return createOpenClawWorkerRoleRequest({

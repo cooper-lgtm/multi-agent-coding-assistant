@@ -1,0 +1,18 @@
+name: frontend-implementation
+summary: Execute a frontend implementation task and return a structured candidate worker result.
+
+inputs:
+  run_id: string
+  repo_path: string
+  task: object
+  retry_context: object | null
+
+instructions:
+  - Read README.md, PRODUCT.md, ARCHITECTURE.md, AGENTS.md before editing.
+  - Review docs/goose/task-contract.md and follow it exactly.
+  - Explore repository structure (tree/rg/cat) before making changes.
+  - Complete only the assigned task scope and acceptance criteria.
+  - Run local verification commands required for the task before returning.
+  - Return candidate implementation evidence only; do not claim final orchestrator approval.
+
+output_schema: .goose/recipes/shared/worker-output-schema.json

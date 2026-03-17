@@ -10,7 +10,13 @@ import type {
   RuntimeTaskStatus,
   Complexity,
 } from './planning.js';
-import type { WorkerBlockerCategory, WorkerRetryHandoff } from '../workers/contracts.js';
+import type {
+  WorkerBlockerCategory,
+  WorkerDeliveryMetadata,
+  WorkerRetryHandoff,
+  WorkerSuggestedStatus,
+  WorkerTestResult,
+} from '../workers/contracts.js';
 
 export interface EscalationPolicy {
   on_first_failure: 'retry_same_model';
@@ -42,6 +48,11 @@ export interface ExecutionNode {
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
+  commands_run: string[];
+  test_results: WorkerTestResult[];
+  risk_notes: string[];
+  suggested_status: WorkerSuggestedStatus | null;
+  delivery_metadata: WorkerDeliveryMetadata | null;
   prior_attempt: WorkerRetryHandoff | null;
   result: string | null;
   error: string | null;
@@ -121,6 +132,11 @@ export interface TaskRunSummary {
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
+  commands_run: string[];
+  test_results: WorkerTestResult[];
+  risk_notes: string[];
+  suggested_status: WorkerSuggestedStatus | null;
+  delivery_metadata: WorkerDeliveryMetadata | null;
   prior_attempt: WorkerRetryHandoff | null;
 }
 

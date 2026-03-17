@@ -73,6 +73,11 @@ export class MockQualityGateRunner implements QualityGateRunner {
       review_feedback:
         decision.review_feedback ??
         this.resolveReviewFeedback(task, decision, reviewModel),
+      commands_run: decision.commands_run ?? request.commands_run,
+      test_results: decision.test_results ?? request.test_results,
+      risk_notes: decision.risk_notes ?? request.risk_notes,
+      suggested_status: this.resolveSuggestedStatus(decision, request.suggested_status),
+      delivery_metadata: this.resolveDeliveryMetadata(decision, request.delivery_metadata),
       prior_attempt: decision.prior_attempt ?? request.prior_attempt,
       test_status: decision.test_status,
       review_status: decision.review_status,
@@ -112,6 +117,11 @@ export class MockQualityGateRunner implements QualityGateRunner {
         task.quality_gate.review_required ? 'approved' : 'skipped',
         reviewModel,
       ),
+      commands_run: [...(task.commands_run ?? [])],
+      test_results: structuredClone(task.test_results ?? []),
+      risk_notes: [...(task.risk_notes ?? [])],
+      suggested_status: task.suggested_status ?? null,
+      delivery_metadata: task.delivery_metadata ? structuredClone(task.delivery_metadata) : null,
       prior_attempt: task.prior_attempt ?? null,
       test_status: task.quality_gate.test_required ? 'pass' : 'skipped',
       review_status: task.quality_gate.review_required ? 'approved' : 'skipped',
@@ -192,5 +202,23 @@ export class MockQualityGateRunner implements QualityGateRunner {
 
     if (decision.status === 'completed') return null;
     return decision.summary || task.error;
+  }
+
+  private resolveSuggestedStatus(
+    decision: MockQualityGateDecision,
+    fallback: QualityGateRunResult['suggested_status'],
+  ): QualityGateRunResult['suggested_status'] {
+    return Object.prototype.hasOwnProperty.call(decision, 'suggested_status')
+      ? (decision.suggested_status ?? null)
+      : fallback;
+  }
+
+  private resolveDeliveryMetadata(
+    decision: MockQualityGateDecision,
+    fallback: QualityGateRunResult['delivery_metadata'],
+  ): QualityGateRunResult['delivery_metadata'] {
+    return Object.prototype.hasOwnProperty.call(decision, 'delivery_metadata')
+      ? (decision.delivery_metadata ?? null)
+      : fallback;
   }
 }

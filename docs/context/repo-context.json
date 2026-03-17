@@ -1,0 +1,141 @@
+{
+  "artifact_type": "repo-context",
+  "version": "1.2.0",
+  "status": "refreshed",
+  "repo_name": "multi-agent-coding-assistant",
+  "repo_path": ".",
+  "refreshed_on": "2026-03-17",
+  "generated_from": [
+    "README.md",
+    "PRODUCT.md",
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "docs/plans/2026-03-16-goose-integration-post-pr5.md",
+    "docs/templates/task-template.md",
+    "docs/reviews/recurring-issues.md",
+    "src/",
+    "tests/",
+    "package.json"
+  ],
+  "canonical_reading_order": [
+    "README.md",
+    "PRODUCT.md",
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "docs/plans/2026-03-16-goose-integration-post-pr5.md",
+    "docs/templates/task-template.md",
+    "docs/reviews/recurring-issues.md",
+    "relevant source and tests"
+  ],
+  "product": {
+    "goal": "Stable, inspectable, recoverable OpenClaw-native orchestration kernel for multi-agent coding workflows.",
+    "priority_order": [
+      "correctness",
+      "recoverability",
+      "traceability",
+      "contract_clarity",
+      "breadth"
+    ]
+  },
+  "architecture": {
+    "global_controller": "main-orchestrator",
+    "implementation_roles": [
+      "frontend-agent",
+      "backend-agent"
+    ],
+    "quality_roles": [
+      "test-agent",
+      "review-agent"
+    ],
+    "invariants": [
+      "planning outputs implementation-only tasks",
+      "assigned_agent limited to frontend-agent/backend-agent",
+      "quality gates are evaluators, not planning owners",
+      "needs_fix, blocked, failed are distinct states",
+      "retry preserves evidence and handoff context",
+      "logical model labels should remain aligned with exact-model metadata"
+    ]
+  },
+  "active_plan": {
+    "path": "docs/plans/2026-03-16-goose-integration-post-pr5.md",
+    "execution_mode": "one_task_slice_per_pr",
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Add structured goose worker-result contracts",
+        "status": "completed"
+      },
+      {
+        "id": 2,
+        "title": "Add goose recipe assets and task-to-recipe mapping",
+        "status": "completed"
+      },
+      {
+        "id": 3,
+        "title": "Implement the goose worker adapter",
+        "status": "pending"
+      },
+      {
+        "id": 4,
+        "title": "Route implementation work through goose while keeping quality gates external",
+        "status": "pending"
+      },
+      {
+        "id": 5,
+        "title": "Implement PR6 human approval and orchestration controls",
+        "status": "pending"
+      },
+      {
+        "id": 6,
+        "title": "Implement PR7 budget, policy, and safety controls",
+        "status": "pending"
+      },
+      {
+        "id": 7,
+        "title": "Implement PR8 evaluation suite and golden scenarios",
+        "status": "pending"
+      },
+      {
+        "id": 8,
+        "title": "Implement PR9 CLI entry points and goose delivery workflow",
+        "status": "pending"
+      }
+    ]
+  },
+  "task2_evidence": {
+    "adapter": "src/adapters/goose-recipe-builder.ts",
+    "test": "tests/goose-recipe-builder.test.mjs",
+    "recipes": [
+      ".goose/recipes/frontend-implementation.yaml",
+      ".goose/recipes/backend-implementation.yaml"
+    ],
+    "schema": ".goose/recipes/shared/worker-output-schema.json",
+    "contract_doc": "docs/goose/task-contract.md"
+  },
+  "validation": {
+    "standard_commands": [
+      "npm run typecheck",
+      "npm run build",
+      "npm run test:adapter",
+      "npm run test:planning",
+      "npm run test:runtime"
+    ],
+    "doc_only_minimum": [
+      "git diff --check"
+    ]
+  },
+  "workflow": {
+    "branch_strategy": "one roadmap slice per branch",
+    "pr_strategy": "one slice-sized PR",
+    "review_trigger": "automatic Codex review workflow on PR creation or update",
+    "merge_gate": "required local validation passes"
+  },
+  "baseline_observations": [
+    "task 1 and task 2 from the active goose integration plan are now in the codebase",
+    "goose worker adapter and runtime dispatch wiring remain future work",
+    "package.json does not yet include goose-oriented runtime scripts"
+  ],
+  "drift": [
+    "Context artifact refreshed after merging Task 2 PR; no root-doc vs code contradiction detected."
+  ]
+}

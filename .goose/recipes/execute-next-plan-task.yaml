@@ -1,0 +1,120 @@
+version: "1.0.0"
+title: "Execute Next Plan Task"
+description: "Read the active goose integration plan, refresh repository context, select exactly one next task-sized slice, and deliver one validated PR from branch creation through merge."
+instructions: |
+  You are the execution recipe for this repository's goose-driven delivery workflow.
+
+  Read these files first:
+  - README.md
+  - PRODUCT.md
+  - ARCHITECTURE.md
+  - AGENTS.md
+  - {{ plan_path }}
+  - {{ context_md_path }}
+  - {{ context_json_path }}
+  - docs/templates/task-template.md
+  - docs/reviews/recurring-issues.md
+
+  Then:
+  1. identify exactly one next unfinished major task from the active plan
+  2. refresh your understanding of the affected source files and tests
+  3. create a branch for that task-sized slice from {{ base_branch }}
+  4. complete only that task's scope
+  5. run the task's required validation commands
+  6. create a PR
+  7. if local required verification passed, merge without waiting for the automatic Codex review workflow to finish
+  8. refresh the repository context artifacts after merge
+
+  Rules:
+  - Do not start a second major task in the same run
+  - Keep `test-agent` and `review-agent` under orchestrator ownership
+  - Do not collapse `needs_fix`, `blocked`, and `failed`
+  - Do not invent completion if verification failed
+  - Codex review is triggered automatically by workflow; do not add a manual PR comment
+  - Use `task_hint` only if it is non-empty; otherwise choose the next unfinished task from the plan
+  - For blocked or failed runs before branch or PR creation, omit `branch_name` and `pr_url`, and set `merge_status` to `not_opened`
+  - If task scope is ambiguous, stop and return blocked
+  - If there is no clearly next unfinished task, stop and return blocked
+
+  Prefer one small, reviewable PR over a broad multi-task change.
+prompt: |
+  Execute the next unfinished task from {{ plan_path }} for repository {{ repo_path }}.
+
+  Base branch for this run: {{ base_branch }}
+  Task hint for this run: {{ task_hint }}
+
+  Before editing, confirm the selected task and affected modules from the plan.
+  Finish after one task-sized PR has been validated, opened, and merged, then refresh the context artifacts. Codex review runs automatically via workflow, so no manual PR comment is needed.
+parameters:
+  - key: repo_path
+    input_type: string
+    requirement: required
+    description: "Absolute path to the repository root"
+  - key: plan_path
+    input_type: string
+    requirement: required
+    description: "Path to the active implementation plan"
+  - key: context_md_path
+    input_type: string
+    requirement: optional
+    default: "docs/context/repo-context.md"
+    description: "Markdown context artifact path"
+  - key: context_json_path
+    input_type: string
+    requirement: optional
+    default: "docs/context/repo-context.json"
+    description: "JSON context artifact path"
+  - key: base_branch
+    input_type: string
+    requirement: optional
+    default: "main"
+    description: "Default base branch for task-sized PR work"
+  - key: task_hint
+    input_type: string
+    requirement: optional
+    default: ""
+    description: "Optional hint to force a specific task slice when needed"
+extensions:
+  - type: builtin
+    name: developer
+    description: "File operations and shell access"
+settings:
+  max_turns: 200
+response:
+  json_schema:
+    type: object
+    properties:
+      status:
+        type: string
+        enum: ["completed", "blocked", "failed"]
+      selected_task:
+        type: string
+      branch_name:
+        type: string
+      pr_url:
+        type: string
+      merge_status:
+        type: string
+        enum: ["merged", "opened_not_merged", "not_opened"]
+      changed_files:
+        type: array
+        items:
+          type: string
+      validation_commands:
+        type: array
+        items:
+          type: string
+      risks:
+        type: array
+        items:
+          type: string
+      follow_up:
+        type: array
+        items:
+          type: string
+    required:
+      - status
+      - selected_task
+      - merge_status
+      - changed_files
+      - validation_commands

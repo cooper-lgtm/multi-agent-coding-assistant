@@ -16,6 +16,22 @@ export type WorkerAttemptStatus =
   | 'completed'
   | 'needs_fix';
 
+export type WorkerSuggestedStatus = WorkerAttemptStatus;
+
+export type WorkerTestStatus = 'pass' | 'fail' | 'skip' | 'pending';
+
+export interface WorkerTestResult {
+  name: string;
+  status: WorkerTestStatus;
+  details?: string;
+}
+
+export interface WorkerDeliveryMetadata {
+  branch_name?: string;
+  commit_sha?: string;
+  pr_url?: string;
+}
+
 export interface WorkerRetryHandoff {
   attempt: number;
   status: WorkerAttemptStatus;
@@ -26,6 +42,11 @@ export interface WorkerRetryHandoff {
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
+  commands_run: string[];
+  test_results: WorkerTestResult[];
+  risk_notes: string[];
+  suggested_status: WorkerSuggestedStatus | null;
+  delivery_metadata: WorkerDeliveryMetadata | null;
 }
 
 export interface WorkerExecutionContext {
@@ -35,6 +56,11 @@ export interface WorkerExecutionContext {
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
+  commands_run: string[];
+  test_results: WorkerTestResult[];
+  risk_notes: string[];
+  suggested_status: WorkerSuggestedStatus | null;
+  delivery_metadata: WorkerDeliveryMetadata | null;
   prior_attempt: WorkerRetryHandoff | null;
 }
 
@@ -45,6 +71,12 @@ export interface WorkerExecutionInput extends WorkerExecutionContext {
 }
 
 export interface WorkerExecutionOutput extends WorkerExecutionContext {
+  status: WorkerAttemptStatus;
+  summary: string;
+}
+
+export interface CreateWorkerExecutionOutputInput {
+  context?: Partial<WorkerExecutionContext> | Partial<ExecutionNode> | null;
   status: WorkerAttemptStatus;
   summary: string;
 }
@@ -79,7 +111,20 @@ export function createWorkerExecutionContext(
     implementation_evidence: [...(source?.implementation_evidence ?? [])],
     test_evidence: [...(source?.test_evidence ?? [])],
     review_feedback: [...(source?.review_feedback ?? [])],
+    commands_run: [...(source?.commands_run ?? [])],
+    test_results: (source?.test_results ?? []).map(cloneTestResult),
+    risk_notes: [...(source?.risk_notes ?? [])],
+    suggested_status: source?.suggested_status ?? null,
+    delivery_metadata: source?.delivery_metadata ? cloneDeliveryMetadata(source.delivery_metadata) : null,
     prior_attempt: source?.prior_attempt ? cloneRetryHandoff(source.prior_attempt) : null,
+  };
+}
+
+export function createWorkerExecutionOutput(input: CreateWorkerExecutionOutputInput): WorkerExecutionOutput {
+  return {
+    ...createWorkerExecutionContext(input.context),
+    status: input.status,
+    summary: input.summary,
   };
 }
 
@@ -123,6 +168,11 @@ export function applyWorkerExecutionContext(
   task.implementation_evidence = normalized.implementation_evidence;
   task.test_evidence = normalized.test_evidence;
   task.review_feedback = normalized.review_feedback;
+  task.commands_run = normalized.commands_run;
+  task.test_results = normalized.test_results;
+  task.risk_notes = normalized.risk_notes;
+  task.suggested_status = normalized.suggested_status;
+  task.delivery_metadata = normalized.delivery_metadata;
   task.prior_attempt = normalized.prior_attempt;
 }
 
@@ -144,6 +194,11 @@ export function createWorkerRetryHandoff(
     implementation_evidence: context.implementation_evidence,
     test_evidence: context.test_evidence,
     review_feedback: context.review_feedback,
+    commands_run: context.commands_run,
+    test_results: context.test_results,
+    risk_notes: context.risk_notes,
+    suggested_status: context.suggested_status,
+    delivery_metadata: context.delivery_metadata,
   };
 }
 
@@ -167,5 +222,31 @@ function cloneRetryHandoff(handoff: WorkerRetryHandoff): WorkerRetryHandoff {
     implementation_evidence: [...handoff.implementation_evidence],
     test_evidence: [...handoff.test_evidence],
     review_feedback: [...handoff.review_feedback],
+    commands_run: [...handoff.commands_run],
+    test_results: handoff.test_results.map(cloneTestResult),
+    risk_notes: [...handoff.risk_notes],
+    suggested_status: handoff.suggested_status,
+    delivery_metadata: handoff.delivery_metadata ? cloneDeliveryMetadata(handoff.delivery_metadata) : null,
+  };
+}
+
+function cloneTestResult(result: WorkerTestResult): WorkerTestResult {
+  const cloned: WorkerTestResult = {
+    name: result.name,
+    status: result.status,
+  };
+
+  if (result.details !== undefined) {
+    cloned.details = result.details;
+  }
+
+  return cloned;
+}
+
+function cloneDeliveryMetadata(metadata: WorkerDeliveryMetadata): WorkerDeliveryMetadata {
+  return {
+    branch_name: metadata.branch_name,
+    commit_sha: metadata.commit_sha,
+    pr_url: metadata.pr_url,
   };
 }

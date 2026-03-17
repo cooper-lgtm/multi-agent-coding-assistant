@@ -29,7 +29,7 @@ These items are intentionally outside goose's first implementation PR. Complete 
 5. Decide the delivery rule:
    - one roadmap slice per branch
    - one branch per PR
-   - every PR must include a comment: `@codex review`
+   - Codex review is triggered automatically by workflow for every PR
    - merge only after the listed local verification commands pass
 
 If any prerequisite is missing, goose should stop and report `blocked` instead of improvising.
@@ -423,7 +423,7 @@ Add:
   - implement task
   - run local verification
   - `gh pr create`
-  - add a PR comment: `@codex review`
+  - rely on the automatic Codex review workflow
   - merge only after the required checks pass
 
 The CLI should expose the goose-backed runtime but not require it for mock/demo execution.
@@ -466,7 +466,6 @@ Expected: all PASS.
 If all verification passes, goose may use the standard GitHub flow for that branch:
 
 - `gh pr create --fill --base main`
-- `gh pr comment --body "@codex review"`
 - `gh pr merge --merge --delete-branch`
 
 Do not merge if any required verification step fails.
@@ -474,10 +473,10 @@ Do not merge if any required verification step fails.
 ## Async Review Rule
 
 - This rule applies to every PR created from this plan, including each task-sized PR from Task 1 through Task 8.
-- After a PR is ready and local verification passes, goose should always leave a review invitation comment: `@codex review`.
+- After a PR is ready, Codex review should be triggered automatically by workflow without a manual PR comment.
 - Goose does not need to wait for the review to finish before merging if the local required checks already passed.
 - Any review findings can be handled later in a separate follow-up PR.
-- Treat the review request as mandatory signaling, not as a blocking gate for the initial merge.
+- Treat the automatic review as mandatory signaling, not as a blocking gate for the initial merge.
 
 ## Notes
 

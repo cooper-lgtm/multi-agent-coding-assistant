@@ -1,6 +1,7 @@
 export * from './adapters/model-router.js';
 export * from './adapters/openclaw-model-resolver.js';
 export * from './adapters/openclaw-runtime-adapter.js';
+export * from './adapters/goose-recipe-builder.js';
 export * from './schemas/models.js';
 export * from './schemas/planning.js';
 export * from './schemas/runtime.js';

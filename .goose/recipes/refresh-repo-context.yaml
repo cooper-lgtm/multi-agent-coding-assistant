@@ -1,0 +1,100 @@
+version: "1.0.0"
+title: "Refresh Repository Context"
+description: "Read the canonical repository docs and active delivery plan, then refresh the repo context artifacts used by goose before and after task-sized PR work."
+instructions: |
+  You are refreshing repository context artifacts for the multi-agent-coding-assistant repository.
+
+  Your job is documentation and context synthesis only.
+  Do not implement product features in this recipe.
+
+  Read these canonical sources first:
+  - README.md
+  - PRODUCT.md
+  - ARCHITECTURE.md
+  - AGENTS.md
+  - {{ plan_path }}
+  - docs/templates/task-template.md
+  - docs/reviews/recurring-issues.md
+
+  Then read the most relevant source files and tests needed to describe the current baseline accurately.
+
+  Refresh both:
+  - {{ context_md_path }}
+  - {{ context_json_path }}
+
+  Requirements:
+  - Keep the artifact concise and operational
+  - Keep checked-in artifacts portable; do not record machine-specific absolute filesystem paths
+  - Preserve architecture invariants and workflow rules
+  - Record the active plan and current task slices
+  - Describe validation commands and PR workflow
+  - Record Codex review as workflow-triggered automation, not as a manual PR comment step
+  - If the repository baseline changed, update the artifacts to match the current code and docs
+  - If canonical docs and code disagree, prefer the current code plus root docs and call out the drift
+
+  Do not create speculative roadmap items.
+  Do not mark tasks complete unless the repository state clearly proves it.
+prompt: |
+  Refresh the repository context artifacts for {{ repo_path }} and write the updated summaries to:
+  - {{ context_md_path }}
+  - {{ context_json_path }}
+
+  Stop after the artifacts are updated and validated.
+parameters:
+  - key: repo_path
+    input_type: string
+    requirement: required
+    description: "Absolute path to the repository root"
+  - key: plan_path
+    input_type: string
+    requirement: required
+    description: "Path to the active implementation plan"
+  - key: context_md_path
+    input_type: string
+    requirement: optional
+    default: "docs/context/repo-context.md"
+    description: "Markdown context artifact path"
+  - key: context_json_path
+    input_type: string
+    requirement: optional
+    default: "docs/context/repo-context.json"
+    description: "JSON context artifact path"
+extensions:
+  - type: builtin
+    name: developer
+    description: "File operations and shell access"
+settings:
+  max_turns: 80
+response:
+  json_schema:
+    type: object
+    properties:
+      status:
+        type: string
+        enum: ["completed", "blocked", "failed"]
+      summary:
+        type: string
+      changed_files:
+        type: array
+        items:
+          type: string
+      sources_read:
+        type: array
+        items:
+          type: string
+      risks:
+        type: array
+        items:
+          type: string
+    required:
+      - status
+      - summary
+      - changed_files
+      - sources_read
+retry:
+  max_retries: 1
+  checks:
+    - type: shell
+      command: "test -f '{{ context_md_path }}' && test -f '{{ context_json_path }}'"
+    - type: shell
+      command: "node -e \"JSON.parse(require('fs').readFileSync('{{ context_json_path }}', 'utf8'))\""
