@@ -24,9 +24,11 @@ instructions: |
 
   Requirements:
   - Keep the artifact concise and operational
+  - Keep checked-in artifacts portable; do not record machine-specific absolute filesystem paths
   - Preserve architecture invariants and workflow rules
   - Record the active plan and current task slices
   - Describe validation commands and PR workflow
+  - Record Codex review as workflow-triggered automation, not as a manual PR comment step
   - If the repository baseline changed, update the artifacts to match the current code and docs
   - If canonical docs and code disagree, prefer the current code plus root docs and call out the drift
 

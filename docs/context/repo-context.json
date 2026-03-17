@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "status": "refreshed",
   "repo_name": "multi-agent-coding-assistant",
-  "repo_path": "/Users/openclaw/Documents/multi-agent-coding-assistant",
+  "repo_path": ".",
   "refreshed_on": "2026-03-17",
   "generated_from": [
     "README.md",
@@ -127,7 +127,7 @@
   "workflow": {
     "branch_strategy": "one roadmap slice per branch",
     "pr_strategy": "one slice-sized PR",
-    "required_review_comment": "@codex review",
+    "review_trigger": "automatic Codex review workflow on PR creation or update",
     "merge_gate": "required local validation passes"
   },
   "baseline_observations": [

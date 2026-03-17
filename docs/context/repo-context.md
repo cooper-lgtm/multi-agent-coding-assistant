@@ -74,7 +74,7 @@ git diff --check
 ## PR / Workflow Rules (from active plan + AGENTS.md)
 - one roadmap slice per branch
 - one slice-sized PR at a time
-- include `@codex review` comment on each PR
+- Codex review runs automatically via workflow for each PR
 - merge only after required local validation passes
 - preserve orchestrator ownership boundaries (goose at implementation seam only)
 

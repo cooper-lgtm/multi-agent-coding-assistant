@@ -22,16 +22,17 @@ instructions: |
   4. complete only that task's scope
   5. run the task's required validation commands
   6. create a PR
-  7. leave a PR comment containing exactly: @codex review
-  8. if local required verification passed, merge without waiting for review completion
-  9. refresh the repository context artifacts after merge
+  7. if local required verification passed, merge without waiting for the automatic Codex review workflow to finish
+  8. refresh the repository context artifacts after merge
 
   Rules:
   - Do not start a second major task in the same run
   - Keep `test-agent` and `review-agent` under orchestrator ownership
   - Do not collapse `needs_fix`, `blocked`, and `failed`
   - Do not invent completion if verification failed
+  - Codex review is triggered automatically by workflow; do not add a manual PR comment
   - Use `task_hint` only if it is non-empty; otherwise choose the next unfinished task from the plan
+  - For blocked or failed runs before branch or PR creation, omit `branch_name` and `pr_url`, and set `merge_status` to `not_opened`
   - If task scope is ambiguous, stop and return blocked
   - If there is no clearly next unfinished task, stop and return blocked
 
@@ -43,7 +44,7 @@ prompt: |
   Task hint for this run: {{ task_hint }}
 
   Before editing, confirm the selected task and affected modules from the plan.
-  Finish after one task-sized PR has been validated, opened, commented with @codex review, and merged, then refresh the context artifacts.
+  Finish after one task-sized PR has been validated, opened, and merged, then refresh the context artifacts. Codex review runs automatically via workflow, so no manual PR comment is needed.
 parameters:
   - key: repo_path
     input_type: string
@@ -114,8 +115,6 @@ response:
     required:
       - status
       - selected_task
-      - branch_name
-      - pr_url
       - merge_status
       - changed_files
       - validation_commands

@@ -1,11 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import {
   buildGooseRecipeExecution,
   buildDemoPlanningFixture,
   buildExecutionDag,
 } from '../dist/index.js';
+
+function readRequiredFields(recipePath) {
+  const content = fs.readFileSync(recipePath, 'utf8');
+  const lines = content.split('\n');
+  const requiredFields = [];
+  let inRequiredBlock = false;
+
+  for (const line of lines) {
+    if (!inRequiredBlock) {
+      if (line.trim() === 'required:') {
+        inRequiredBlock = true;
+      }
+
+      continue;
+    }
+
+    const fieldMatch = line.match(/^\s*-\s+(.+?)\s*$/);
+
+    if (fieldMatch) {
+      requiredFields.push(fieldMatch[1]);
+      continue;
+    }
+
+    if (line.trim() !== '' && !line.startsWith('      ')) {
+      break;
+    }
+  }
+
+  return requiredFields;
+}
+
+function isMachineSpecificPath(value) {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    (path.posix.isAbsolute(value) || path.win32.isAbsolute(value))
+  );
+}
 
 function buildTask(agent) {
   const fixture = buildDemoPlanningFixture();
@@ -74,4 +114,41 @@ test('buildGooseRecipeExecution maps backend-agent to backend recipe and passes 
     'Please tighten null-handling around retry state.',
   ]);
   assert.deepEqual(spec.inputs.task.acceptance_criteria, task.acceptance_criteria);
+});
+
+test('committed repo context keeps repo_path portable across clones', () => {
+  const context = JSON.parse(fs.readFileSync('docs/context/repo-context.json', 'utf8'));
+
+  assert.ok(
+    !Object.hasOwn(context, 'repo_path') || !isMachineSpecificPath(context.repo_path),
+    `Expected repo_path to stay portable, received ${context.repo_path}`,
+  );
+});
+
+test('committed repo context records automatic codex review workflow', () => {
+  const context = JSON.parse(fs.readFileSync('docs/context/repo-context.json', 'utf8'));
+
+  assert.ok(!Object.hasOwn(context.workflow, 'required_review_comment'));
+  assert.match(context.workflow.review_trigger, /automatic Codex review/i);
+});
+
+test('execute-next-plan-task does not require branch or pr metadata for blocked runs', () => {
+  const requiredFields = readRequiredFields('.goose/recipes/execute-next-plan-task.yaml');
+
+  assert.ok(!requiredFields.includes('branch_name'));
+  assert.ok(!requiredFields.includes('pr_url'));
+  assert.deepEqual(requiredFields, [
+    'status',
+    'selected_task',
+    'merge_status',
+    'changed_files',
+    'validation_commands',
+  ]);
+});
+
+test('execute-next-plan-task relies on automatic codex review workflow', () => {
+  const recipe = fs.readFileSync('.goose/recipes/execute-next-plan-task.yaml', 'utf8');
+
+  assert.ok(!recipe.includes('@codex review'));
+  assert.match(recipe, /automatic Codex review/i);
 });
