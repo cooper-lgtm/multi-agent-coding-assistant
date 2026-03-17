@@ -34,6 +34,7 @@ Core flow:
 This MVP now includes both:
 - a coherent planning pipeline with typed contracts, normalization, synthesis, and mock planners/analyzers
 - a coherent runtime loop with mockable adapters for implementation dispatch, quality gates, retry/escalation, persistence, and reporting
+- a goose-backed implementation dispatch path that keeps `frontend-agent` / `backend-agent` work at the worker seam while preserving external quality gates
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
 - a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
 - durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
@@ -79,7 +80,7 @@ This MVP now includes both:
 
 ## Runtime Modules
 
-- `implementation-dispatcher`: dispatches ready implementation tasks to `frontend-agent` or `backend-agent`
+- `implementation-dispatcher`: dispatches ready implementation tasks to `frontend-agent` or `backend-agent`, including a goose-backed dispatcher option
 - `quality-gate-runner`: runs `test-agent` and `review-agent` after implementation completes
 - `retry-escalation-manager`: applies the runtime retry policy and explicit per-role model fallback
 - `reporting-manager`: records runtime events and builds concise run summaries
@@ -98,6 +99,8 @@ This MVP now includes both:
 
 ## Adapter Modules
 
+- `goose-worker-adapter`: shells out to goose implementation recipes and normalizes structured worker output
+- `goose-process-runner`: serializes recipe params into non-interactive goose CLI invocations
 - `openclaw-model-resolver`: maps logical labels and exact ids to provider-aware model metadata
 - `openclaw-runtime-adapter`: standardizes planning and worker request/result/error envelopes for OpenClaw-facing execution
 - `model-router`: keeps role-based fallback ordering while attaching exact-model metadata when available
@@ -108,9 +111,11 @@ Example artifacts included in this MVP:
 - `src/examples/planning-fixtures.ts`: typed direct, debate, and runtime planning fixtures
 - `src/examples/openclaw-adapter-fixtures.ts`: typed OpenClaw request-envelope fixtures for planning and worker roles
 - `src/examples/run-openclaw-adapter-demo.ts`: a runnable OpenClaw adapter-layer demo
+- `src/examples/run-goose-worker-demo.ts`: a runnable goose-backed implementation dispatch demo using a stubbed goose process
 - `src/examples/run-persistence-demo.ts`: a runnable persistence/pause/resume demo that writes run artifacts under `state/runs/`
 - `src/examples/run-planning-demo.ts`: a runnable planning pipeline demo with direct and debate flows
 - `src/examples/run-orchestration-demo.ts`: a runnable mock orchestration flow
+- `tests/orchestrator-goose-runtime.test.mjs`: compiled-output runtime checks for goose-backed implementation dispatch with external quality gates
 - `tests/file-backed-run-store.test.mjs`: compiled-output checks for manifest/runtime/event-log persistence and inspection helpers
 - `tests/openclaw-model-resolution.test.mjs`: compiled-output checks for alias resolution and exact-model metadata
 - `tests/openclaw-runtime-adapter.test.mjs`: compiled-output checks for planning/worker envelope shaping
@@ -124,6 +129,7 @@ Useful commands:
 ```bash
 npm run typecheck
 npm run build
+npm run demo:goose
 npm run demo:persistence
 npm run test:adapter
 npm run test:planning

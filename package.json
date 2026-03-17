@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "demo:adapter": "npm run build && node dist/examples/run-openclaw-adapter-demo.js",
+    "demo:goose": "npm run build && node dist/examples/run-goose-worker-demo.js",
     "demo:persistence": "npm run build && node dist/examples/run-persistence-demo.js",
     "demo:planning": "npm run build && node dist/examples/run-planning-demo.js",
     "demo:orchestrator": "npm run build && node dist/examples/run-orchestration-demo.js",

@@ -1,5 +1,12 @@
 import type { AssignedAgent } from '../schemas/planning.js';
 import type { ExecutionNode, RuntimeState } from '../schemas/runtime.js';
+import type {
+  OpenClawWorkerRoleRequest,
+  OpenClawWorkerRoleResult,
+} from '../adapters/openclaw-runtime-adapter.js';
+import {
+  createOpenClawWorkerRoleRequest,
+} from '../adapters/openclaw-runtime-adapter.js';
 import {
   createImplementationWorkerExecutionRequest,
   type ImplementationWorkerExecutionResult,
@@ -22,6 +29,13 @@ export interface MockImplementationDecision extends Partial<Omit<ImplementationD
 
 export interface MockImplementationDispatcherOptions {
   taskDecisions?: Record<string, MockImplementationDecision[]>;
+}
+
+export interface GooseBackedImplementationDispatcherOptions {
+  executeRole: (
+    request: OpenClawWorkerRoleRequest,
+  ) => Promise<OpenClawWorkerRoleResult<ImplementationWorkerExecutionResult>>;
+  repoPath: string;
 }
 
 export class MockImplementationDispatcher implements ImplementationDispatcher {
@@ -109,4 +123,73 @@ export class MockImplementationDispatcher implements ImplementationDispatcher {
       ? (decision.delivery_metadata ?? null)
       : fallback;
   }
+}
+
+export class GooseBackedImplementationDispatcher implements ImplementationDispatcher {
+  private readonly executeRole: GooseBackedImplementationDispatcherOptions['executeRole'];
+  private readonly repoPath: string;
+
+  constructor(options: GooseBackedImplementationDispatcherOptions) {
+    this.executeRole = options.executeRole;
+    this.repoPath = options.repoPath;
+  }
+
+  async dispatch(task: ExecutionNode, runtime: RuntimeState): Promise<ImplementationDispatchResult> {
+    const request = createOpenClawWorkerRoleRequest({
+      role: task.assigned_agent,
+      task,
+      runtime,
+      repoPath: this.repoPath,
+      prompt: buildImplementationPrompt(task.assigned_agent),
+    });
+    const response = await this.executeRole(request);
+
+    if (!response.ok) {
+      return {
+        taskId: task.task_id,
+        role: task.assigned_agent,
+        status: 'failed',
+        summary: response.error.message,
+        changed_files: [...task.changed_files],
+        blocker_category: response.error.retryable ? 'unknown' : 'environment',
+        blocker_message: response.error.message,
+        implementation_evidence: [response.error.message],
+        test_evidence: [...task.test_evidence],
+        review_feedback: [...task.review_feedback],
+        commands_run: [...task.commands_run],
+        test_results: structuredClone(task.test_results),
+        risk_notes: [...task.risk_notes],
+        suggested_status: 'failed',
+        delivery_metadata: task.delivery_metadata ? structuredClone(task.delivery_metadata) : null,
+        prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
+      };
+    }
+    const output = response.output;
+
+    return {
+      taskId: task.task_id,
+      role: output.role,
+      status: output.status,
+      summary: output.summary,
+      changed_files: output.changed_files,
+      blocker_category: output.blocker_category,
+      blocker_message: output.blocker_message,
+      implementation_evidence: output.implementation_evidence,
+      test_evidence: output.test_evidence,
+      review_feedback: output.review_feedback,
+      commands_run: output.commands_run,
+      test_results: output.test_results,
+      risk_notes: output.risk_notes,
+      suggested_status: output.suggested_status,
+      delivery_metadata: output.delivery_metadata,
+      prior_attempt: output.prior_attempt,
+    };
+  }
+}
+
+function buildImplementationPrompt(role: AssignedAgent): OpenClawWorkerRoleRequest['prompt'] {
+  return {
+    prompt_id: role,
+    prompt_path: `prompts/${role}.md`,
+  };
 }
