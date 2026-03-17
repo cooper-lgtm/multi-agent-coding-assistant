@@ -290,9 +290,9 @@ function isWorkerTestResult(value: unknown): value is WorkerTestResult {
 function isWorkerDeliveryMetadata(value: unknown): value is WorkerDeliveryMetadata {
   return (
     isRecord(value) &&
-    (value.branch_name === undefined || typeof value.branch_name === 'string') &&
-    (value.commit_sha === undefined || typeof value.commit_sha === 'string') &&
-    (value.pr_url === undefined || typeof value.pr_url === 'string')
+    (value.branch_name === undefined || value.branch_name === null || typeof value.branch_name === 'string') &&
+    (value.commit_sha === undefined || value.commit_sha === null || typeof value.commit_sha === 'string') &&
+    (value.pr_url === undefined || value.pr_url === null || typeof value.pr_url === 'string')
   );
 }
 

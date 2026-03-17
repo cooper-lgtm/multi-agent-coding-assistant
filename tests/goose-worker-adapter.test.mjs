@@ -171,6 +171,47 @@ test('goose worker adapter rejects structured output with invalid field types', 
   assert.match(result.output.blocker_message, /not valid structured worker output/i);
 });
 
+test('goose worker adapter accepts null delivery metadata fields allowed by the schema', async () => {
+  const request = buildWorkerRequest('backend-agent');
+
+  const adapter = new GooseWorkerAdapter({
+    runGoose: async () => ({
+      ok: true,
+      exit_code: 0,
+      stdout: JSON.stringify({
+        status: 'implementation_done',
+        summary: 'Goose completed the task without delivery references yet.',
+        changed_files: ['src/api/contract.ts'],
+        blocker_category: null,
+        blocker_message: null,
+        implementation_evidence: ['Updated the API contract.'],
+        test_evidence: [],
+        review_feedback: [],
+        commands_run: ['npm run build'],
+        test_results: [],
+        risk_notes: [],
+        suggested_status: 'implementation_done',
+        delivery_metadata: {
+          branch_name: null,
+          commit_sha: null,
+          pr_url: null,
+        },
+        prior_attempt: null,
+      }),
+      stderr: '',
+    }),
+  });
+
+  const result = await adapter.execute(request);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.output.status, 'implementation_done');
+  assert.ok(result.output.delivery_metadata);
+  assert.equal(result.output.delivery_metadata?.branch_name, null);
+  assert.equal(result.output.delivery_metadata?.commit_sha, null);
+  assert.equal(result.output.delivery_metadata?.pr_url, null);
+});
+
 test('buildGooseProcessArgs serializes recipe inputs as goose params', () => {
   const args = buildGooseProcessArgs({
     recipe_path: '.goose/recipes/backend-implementation.yaml',
