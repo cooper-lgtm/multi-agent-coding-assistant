@@ -1,0 +1,127 @@
+{
+  "run_id": "run-1700000000000",
+  "epic": "Demo orchestrator runtime",
+  "final_status": "needs_fix",
+  "counts": {
+    "completed": 0,
+    "needs_fix": 1,
+    "blocked": 2,
+    "failed": 0,
+    "cancelled": 0,
+    "pending": 0
+  },
+  "tasks": [
+    {
+      "task_id": "task-api-contract",
+      "status": "needs_fix",
+      "assigned_agent": "backend-agent",
+      "model": "claude",
+      "retry_count": 2,
+      "test_status": "pass",
+      "review_status": "needs_fix",
+      "blocker_category": "quality",
+      "blocker_message": "Retry budget exhausted.",
+      "commands_run": [
+        "npm run build"
+      ],
+      "test_evidence": [
+        "test-agent passed for task-api-contract on codex."
+      ],
+      "review_feedback": [
+        "Retry budget exhausted."
+      ],
+      "delivery_metadata": {
+        "branch_name": "feat/task-api-contract",
+        "commit_sha": "abc1234",
+        "pr_url": "https://example.invalid/pr/task-api-contract"
+      },
+      "prior_attempt": {
+        "attempt": 2,
+        "status": "needs_fix",
+        "summary": "Review still requests changes.",
+        "changed_files": [
+          "src/goose/task-api-contract.ts"
+        ],
+        "blocker_category": "quality",
+        "blocker_message": "Review still requests changes.",
+        "implementation_evidence": [
+          "Goose implemented task-api-contract."
+        ],
+        "test_evidence": [
+          "test-agent passed for task-api-contract on codex."
+        ],
+        "review_feedback": [
+          "review-agent still requests changes for task-api-contract on claude."
+        ],
+        "commands_run": [
+          "npm run build"
+        ],
+        "test_results": [],
+        "risk_notes": [],
+        "suggested_status": "implementation_done",
+        "delivery_metadata": {
+          "branch_name": "feat/task-api-contract",
+          "commit_sha": "abc1234",
+          "pr_url": "https://example.invalid/pr/task-api-contract"
+        }
+      }
+    },
+    {
+      "task_id": "task-ui-shell",
+      "status": "blocked",
+      "assigned_agent": "frontend-agent",
+      "model": "codex",
+      "retry_count": 0,
+      "test_status": "pending",
+      "review_status": "pending",
+      "blocker_category": "dependency",
+      "blocker_message": "Dependency task-api-contract is not recoverable.",
+      "commands_run": [],
+      "test_evidence": [],
+      "review_feedback": [],
+      "delivery_metadata": null,
+      "prior_attempt": null
+    },
+    {
+      "task_id": "task-integration-wireup",
+      "status": "blocked",
+      "assigned_agent": "backend-agent",
+      "model": "codex",
+      "retry_count": 0,
+      "test_status": "pending",
+      "review_status": "pending",
+      "blocker_category": "dependency",
+      "blocker_message": "Dependency task-api-contract is not recoverable.",
+      "commands_run": [],
+      "test_evidence": [],
+      "review_feedback": [],
+      "delivery_metadata": null,
+      "prior_attempt": null
+    }
+  ],
+  "events": [
+    "Runtime initialized for epic Demo orchestrator runtime",
+    "Starting orchestration run run-1700000000000 for epic Demo orchestrator runtime.",
+    "Applied runtime policy: unbounded ready-task dispatch, default retry budget 2, risk threshold none.",
+    "Dispatching task-api-contract to backend-agent on codex.",
+    "Implementation completed for task-api-contract.",
+    "Running quality gates for task-api-contract.",
+    "Test gate for task-api-contract ran on codex.",
+    "Review gate for task-api-contract ran on claude.",
+    "Retry scheduled for task-api-contract: retry 1 will reuse codex.",
+    "Dispatching task-api-contract to backend-agent on codex.",
+    "Implementation completed for task-api-contract.",
+    "Running quality gates for task-api-contract.",
+    "Test gate for task-api-contract ran on codex.",
+    "Review gate for task-api-contract ran on claude.",
+    "Retry escalation for task-api-contract: retry 2 will use claude.",
+    "Dispatching task-api-contract to backend-agent on claude.",
+    "Implementation completed for task-api-contract.",
+    "Running quality gates for task-api-contract.",
+    "Test gate for task-api-contract ran on codex.",
+    "Review gate for task-api-contract ran on claude.",
+    "Retry budget exhausted for task-api-contract; keeping needs_fix.",
+    "Task task-ui-shell is blocked by dependency task-api-contract.",
+    "Task task-integration-wireup is blocked by dependency task-api-contract."
+  ]
+}

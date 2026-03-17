@@ -1,0 +1,78 @@
+{
+  "run_id": "run-1700000000000",
+  "epic": "Demo orchestrator runtime",
+  "final_status": "blocked",
+  "counts": {
+    "completed": 0,
+    "needs_fix": 0,
+    "blocked": 3,
+    "failed": 0,
+    "cancelled": 0,
+    "pending": 0
+  },
+  "tasks": [
+    {
+      "task_id": "task-api-contract",
+      "status": "blocked",
+      "assigned_agent": "backend-agent",
+      "model": "codex",
+      "retry_count": 0,
+      "test_status": "pending",
+      "review_status": "pending",
+      "blocker_category": "repository",
+      "blocker_message": "Required repository prerequisites are missing for goose execution.",
+      "commands_run": [
+        "npm run build"
+      ],
+      "test_evidence": [],
+      "review_feedback": [],
+      "delivery_metadata": {
+        "branch_name": "feat/task-api-contract",
+        "commit_sha": "abc1234",
+        "pr_url": "https://example.invalid/pr/task-api-contract"
+      },
+      "prior_attempt": null
+    },
+    {
+      "task_id": "task-ui-shell",
+      "status": "blocked",
+      "assigned_agent": "frontend-agent",
+      "model": "codex",
+      "retry_count": 0,
+      "test_status": "pending",
+      "review_status": "pending",
+      "blocker_category": "dependency",
+      "blocker_message": "Dependency task-api-contract is not recoverable.",
+      "commands_run": [],
+      "test_evidence": [],
+      "review_feedback": [],
+      "delivery_metadata": null,
+      "prior_attempt": null
+    },
+    {
+      "task_id": "task-integration-wireup",
+      "status": "blocked",
+      "assigned_agent": "backend-agent",
+      "model": "codex",
+      "retry_count": 0,
+      "test_status": "pending",
+      "review_status": "pending",
+      "blocker_category": "dependency",
+      "blocker_message": "Dependency task-api-contract is not recoverable.",
+      "commands_run": [],
+      "test_evidence": [],
+      "review_feedback": [],
+      "delivery_metadata": null,
+      "prior_attempt": null
+    }
+  ],
+  "events": [
+    "Runtime initialized for epic Demo orchestrator runtime",
+    "Starting orchestration run run-1700000000000 for epic Demo orchestrator runtime.",
+    "Applied runtime policy: unbounded ready-task dispatch, default retry budget 2, risk threshold none.",
+    "Dispatching task-api-contract to backend-agent on codex.",
+    "Task task-api-contract is blocked.",
+    "Task task-ui-shell is blocked by dependency task-api-contract.",
+    "Task task-integration-wireup is blocked by dependency task-api-contract."
+  ]
+}
