@@ -121,6 +121,11 @@ Example artifacts included in this MVP:
 - `src/examples/run-persistence-demo.ts`: a runnable persistence/pause/resume demo that writes run artifacts under `state/runs/`
 - `src/examples/run-planning-demo.ts`: a runnable planning pipeline demo with direct and debate flows
 - `src/examples/run-orchestration-demo.ts`: a runnable mock orchestration flow
+- `tests/orchestrator-e2e.test.mjs`: goose-backed golden-scenario coverage for happy-path, retry recovery, needs-fix, and blocked-runtime regressions
+- `tests/fixtures/planning/direct-plan-golden.json`: golden planning snapshot for the stable direct-plan fixture
+- `tests/fixtures/runtime/goose-needs-fix-golden.json`: golden runtime summary for exhausted external review feedback
+- `tests/fixtures/runtime/goose-blocked-golden.json`: golden runtime summary for repository prerequisite blockers
+- `docs/evals/known-limitations.md`: scope notes for deterministic goose evaluation coverage
 - `tests/orchestrator-goose-runtime.test.mjs`: compiled-output runtime checks for goose-backed implementation dispatch with external quality gates
 - `tests/file-backed-run-store.test.mjs`: compiled-output checks for manifest/runtime/event-log persistence and inspection helpers
 - `tests/openclaw-model-resolution.test.mjs`: compiled-output checks for alias resolution and exact-model metadata
@@ -135,6 +140,7 @@ Useful commands:
 ```bash
 npm run typecheck
 npm run build
+npm run test:e2e
 npm run demo:goose
 npm run demo:persistence
 npm run test:adapter

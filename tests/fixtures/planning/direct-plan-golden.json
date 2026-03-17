@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0.0",
+  "planning_mode": "direct",
+  "epic": "Deliver a planning preview panel backed by a stable plan contract.",
+  "recommended_plan": "Lock the plan contract first, then build the plan UI.",
+  "tasks": [
+    {
+      "id": "task-plan-contract",
+      "title": "Lock planning contract",
+      "description": "Define the backend planning contract that downstream UI work depends on.",
+      "assigned_agent": "backend-agent",
+      "complexity": "medium",
+      "risk": "medium",
+      "depends_on": [],
+      "acceptance_criteria": [
+        "The planning contract shape is explicit and stable for downstream consumers.",
+        "Implementation notes identify the backend contract surface."
+      ],
+      "quality_gate": {
+        "test_required": true,
+        "review_required": true,
+        "gate_reason": "Contract changes must pass tests and review before downstream work starts."
+      }
+    },
+    {
+      "id": "task-plan-ui",
+      "title": "Build planning UI flow",
+      "description": "Build the frontend planning UI against the locked backend contract.",
+      "assigned_agent": "frontend-agent",
+      "complexity": "medium",
+      "risk": "medium",
+      "depends_on": [
+        "task-plan-contract"
+      ],
+      "acceptance_criteria": [
+        "The UI reads from the contract produced by task-plan-contract.",
+        "Implementation notes identify the frontend change surface."
+      ],
+      "quality_gate": {
+        "test_required": true,
+        "review_required": true,
+        "gate_reason": "UI changes must pass tests and review before integration handoff."
+      }
+    }
+  ],
+  "notes_for_orchestrator": [
+    "Direct planning stayed on implementation tasks only."
+  ],
+  "risks": [
+    "UI delivery depends on the contract staying stable after the backend task."
+  ],
+  "planning_trace": {
+    "requested_mode": "direct",
+    "resolved_mode": "direct",
+    "planner_routes": [
+      {
+        "role": "planning-agent",
+        "selected_model": "codex",
+        "attempted_models": [
+          "codex",
+          "gemini"
+        ],
+        "selected_model_metadata": {
+          "requested_model": "codex",
+          "logical_model": "codex",
+          "exact_model_id": "openai-codex/gpt-5.4",
+          "provider": "openai-codex",
+          "aliases": [
+            "codex"
+          ]
+        }
+      }
+    ]
+  }
+}
