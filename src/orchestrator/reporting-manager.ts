@@ -87,6 +87,11 @@ export class ReportingManager {
       implementation_evidence: [...task.implementation_evidence],
       test_evidence: [...task.test_evidence],
       review_feedback: [...task.review_feedback],
+      commands_run: [...task.commands_run],
+      test_results: structuredClone(task.test_results),
+      risk_notes: [...task.risk_notes],
+      suggested_status: task.suggested_status,
+      delivery_metadata: task.delivery_metadata ? structuredClone(task.delivery_metadata) : null,
       prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
     };
   }
