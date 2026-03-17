@@ -18,6 +18,7 @@ export * from './planning/planning-controller.js';
 export * from './orchestrator/planning-validator.js';
 export * from './orchestrator/dag-builder.js';
 export * from './orchestrator/implementation-dispatcher.js';
+export * from './orchestrator/approval-manager.js';
 export * from './orchestrator/quality-gate-runner.js';
 export * from './orchestrator/retry-escalation-manager.js';
 export * from './orchestrator/reporting-manager.js';

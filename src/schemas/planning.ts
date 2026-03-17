@@ -38,6 +38,12 @@ export interface BudgetPolicy {
   maxRetriesPerTask?: number;
 }
 
+export type ExecutionControlMode = 'auto-execute' | 'confirm-before-run';
+
+export interface ExecutionControl {
+  mode: ExecutionControlMode;
+}
+
 export interface QualityGate {
   test_required: boolean;
   review_required: boolean;
@@ -97,5 +103,6 @@ export interface PlanningRequest {
   planning_mode: RequestedPlanningMode;
   constraints: string[];
   budget_policy?: BudgetPolicy;
+  execution_control?: ExecutionControl;
   existing_artifacts?: string[];
 }

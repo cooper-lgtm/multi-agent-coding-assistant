@@ -6,6 +6,7 @@ import type { QualityGateRunner } from './quality-gate-runner.js';
 import type { RetryCause, RetryDecision, RetryManager } from './retry-escalation-manager.js';
 import { ReportingManager } from './reporting-manager.js';
 import type { RunStore } from '../storage/run-store.js';
+import { ApprovalManager } from './approval-manager.js';
 import {
   applyWorkerExecutionContext,
   createWorkerRetryHandoff,
@@ -18,10 +19,15 @@ export interface OrchestratorDependencies {
   retryManager: RetryManager;
   reportingManager: ReportingManager;
   runStore: RunStore;
+  approvalManager?: ApprovalManager;
 }
 
 export class MainOrchestrator {
-  constructor(private readonly deps: OrchestratorDependencies) {}
+  private readonly approvalManager: ApprovalManager;
+
+  constructor(private readonly deps: OrchestratorDependencies) {
+    this.approvalManager = deps.approvalManager ?? new ApprovalManager();
+  }
 
   async run(request: PlanningRequest): Promise<OrchestrationRunResult> {
     const planningResult = await this.deps.createPlan(request);
@@ -30,12 +36,26 @@ export class MainOrchestrator {
     });
     const runtime = dag.runtime;
 
+    runtime.approval_state = this.approvalManager.initialize(runtime, request);
     runtime.status = 'running';
     this.deps.reportingManager.record(
       runtime,
       'orchestrator_started',
       `Starting orchestration run ${runtime.run_id} for epic ${runtime.epic}.`,
     );
+
+    if (!this.approvalManager.canExecute(runtime)) {
+      this.approvalManager.markAwaitingApproval(runtime);
+      this.deps.reportingManager.record(
+        runtime,
+        'awaiting_human_approval',
+        `Run ${runtime.run_id} is waiting for explicit approval before execution.`,
+      );
+      await this.persist(runtime);
+      await this.finalize(runtime);
+      return this.buildResult(runtime);
+    }
+
     await this.persist(runtime);
     await this.executeLoop(runtime);
     await this.finalize(runtime);
@@ -51,6 +71,18 @@ export class MainOrchestrator {
     }
 
     if (this.isRunFinished(runtime.status)) {
+      return this.buildResult(runtime);
+    }
+
+    if (!this.approvalManager.canExecute(runtime)) {
+      this.approvalManager.markAwaitingApproval(runtime);
+      this.deps.reportingManager.record(
+        runtime,
+        'awaiting_human_approval',
+        `Run ${runtime.run_id} is still waiting for approval before execution can resume.`,
+      );
+      await this.persist(runtime, { syncControl: false });
+      await this.finalize(runtime);
       return this.buildResult(runtime);
     }
 

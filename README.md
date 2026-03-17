@@ -37,6 +37,7 @@ This MVP now includes both:
 - a goose-backed implementation dispatch path that keeps `frontend-agent` / `backend-agent` work at the worker seam while preserving external quality gates
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
 - a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
+- approval controls that can pause after planning until a human explicitly approves execution
 - durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
 
 ## Current Structure
@@ -81,6 +82,7 @@ This MVP now includes both:
 ## Runtime Modules
 
 - `implementation-dispatcher`: dispatches ready implementation tasks to `frontend-agent` or `backend-agent`, including a goose-backed dispatcher option
+- `approval-manager`: keeps confirm-before-run approval as an orchestrator concern instead of pushing it into worker adapters
 - `quality-gate-runner`: runs `test-agent` and `review-agent` after implementation completes
 - `retry-escalation-manager`: applies the runtime retry policy and explicit per-role model fallback
 - `reporting-manager`: records runtime events and builds concise run summaries
@@ -94,6 +96,7 @@ This MVP now includes both:
   - `runtime.json`: the full typed `RuntimeState` snapshot and source of truth
   - `events.jsonl`: line-delimited runtime events for inspection and debugging
 - Resume is checkpoint-based, not replay-based
+- `execution_control.mode=confirm-before-run` can pause immediately after planning and persist a waiting-for-approval state
 - `implementation_done` is treated as a stable checkpoint so resumed runs can continue into quality gates without re-dispatching implementation work
 - `pause` and `cancel` are cooperative: the orchestrator stops at safe checkpoints instead of force-interrupting active workers
 

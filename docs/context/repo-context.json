@@ -1,6 +1,6 @@
 {
   "artifact_type": "repo-context",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "status": "refreshed",
   "repo_name": "multi-agent-coding-assistant",
   "repo_path": ".",
@@ -83,7 +83,7 @@
       {
         "id": 5,
         "title": "Implement PR6 human approval and orchestration controls",
-        "status": "pending"
+        "status": "completed"
       },
       {
         "id": 6,
@@ -123,6 +123,15 @@
       "runtime_test": "tests/orchestrator-goose-runtime.test.mjs",
       "demo": "src/examples/run-goose-worker-demo.ts",
       "script": "package.json#demo:goose"
+    },
+    "task5": {
+      "approval_manager": "src/orchestrator/approval-manager.ts",
+      "runtime_test": "tests/orchestrator-approval-controls.test.mjs",
+      "runtime_schema": "src/schemas/runtime.ts",
+      "store_contracts": [
+        "src/storage/run-store.ts",
+        "src/storage/file-backed-run-store.ts"
+      ]
     }
   },
   "validation": {
@@ -136,6 +145,9 @@
     "targeted_goose_runtime": [
       "npm run build && node --test tests/goose-worker-contract.test.mjs tests/goose-recipe-builder.test.mjs tests/goose-worker-adapter.test.mjs tests/orchestrator-goose-runtime.test.mjs"
     ],
+    "targeted_approval_runtime": [
+      "npm run build && node --test tests/orchestrator-approval-controls.test.mjs tests/orchestrator-persistence.test.mjs"
+    ],
     "doc_only_minimum": [
       "git diff --check"
     ]
@@ -147,13 +159,14 @@
     "merge_gate": "required local validation passes"
   },
   "baseline_observations": [
-    "tasks 1 through 4 from the active goose integration plan are present in the codebase",
+    "tasks 1 through 5 from the active goose integration plan are present in the codebase",
     "goose worker adapter path exists and is wired for implementation dispatch via GooseBackedImplementationDispatcher",
     "quality-gate ownership remains external to implementation dispatch and controlled by the orchestrator",
-    "demo:goose script is present in package.json"
+    "demo:goose script is present in package.json",
+    "approval controls can pause after planning and resume only after explicit approval is recorded in the run store"
   ],
   "drift": [
-    "Previous context artifact marked tasks 3 and 4 as pending; code/tests indicate they are completed in baseline.",
+    "Previous context artifact marked tasks 3 through 5 as pending; code/tests indicate they are completed in baseline.",
     "No contradiction detected between current code and root docs for orchestrator ownership and quality-gate boundaries."
   ]
 }

@@ -120,6 +120,7 @@ export function buildExecutionDag(
       pause_requested: false,
       cancel_requested: false,
     },
+    approval_state: null,
   };
 
   return {

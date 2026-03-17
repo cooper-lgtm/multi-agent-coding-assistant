@@ -2,6 +2,7 @@ import type {
   ExecutionNode,
   RunSummary,
   RunSummaryCounts,
+  RuntimeApprovalState,
   RuntimeEvent,
   RuntimeState,
   TaskRunSummary,
@@ -29,6 +30,7 @@ export class ReportingManager {
       run_id: runtime.run_id,
       epic: runtime.epic,
       final_status: runtime.status,
+      approval_state: runtime.approval_state ? cloneApprovalState(runtime.approval_state) : null,
       counts,
       tasks,
       events: runtime.events.map((event) => event.message),
@@ -95,4 +97,14 @@ export class ReportingManager {
       prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
     };
   }
+}
+
+function cloneApprovalState(approvalState: RuntimeApprovalState): RuntimeApprovalState {
+  return {
+    mode: approvalState.mode,
+    status: approvalState.status,
+    requested_at: approvalState.requested_at,
+    approved_at: approvalState.approved_at,
+    approved_by: approvalState.approved_by,
+  };
 }
