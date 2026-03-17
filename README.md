@@ -149,7 +149,18 @@ npm run test:runtime
 npm run demo:orchestrator
 npm run demo:adapter
 npm run demo:planning
+npm run cli -- --help
 ```
+
+## CLI Entry Points
+
+The repository now ships a lightweight CLI scaffold at `src/cli/main.ts` (compiled to `dist/cli/main.js`) with stable command/flag surfaces:
+
+- Commands: `plan`, `run`, `resume`
+- Flags: `--repo-path`, `--planning-mode`, `--execution-runtime=mock|goose`, `--output=json|text`
+
+Current behavior is intentionally minimal: it exposes the delivery interface and returns structured placeholders while deeper command wiring remains follow-up work.
+
 
 ## Next Implementation Milestones
 

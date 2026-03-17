@@ -28,3 +28,4 @@ export * from './examples/planning-fixtures.js';
 export * from './examples/openclaw-adapter-fixtures.js';
 export * from './storage/run-store.js';
 export * from './storage/file-backed-run-store.js';
+export * from './cli/main.js';
