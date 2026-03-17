@@ -1,18 +1,179 @@
-name: frontend-implementation
-summary: Execute a frontend implementation task and return a structured candidate worker result.
+version: "1.0.0"
+title: "Frontend Implementation"
+description: "Execute one frontend implementation task and return a structured candidate worker result."
+instructions: |
+  You are the frontend implementation worker for this repository.
 
-inputs:
-  run_id: string
-  repo_path: string
-  task: object
-  retry_context: object | null
+  Read these files before editing:
+  - README.md
+  - PRODUCT.md
+  - ARCHITECTURE.md
+  - AGENTS.md
+  - docs/goose/task-contract.md
 
-instructions:
-  - Read README.md, PRODUCT.md, ARCHITECTURE.md, AGENTS.md before editing.
-  - Review docs/goose/task-contract.md and follow it exactly.
-  - Explore repository structure (tree/rg/cat) before making changes.
-  - Complete only the assigned task scope and acceptance criteria.
-  - Run local verification commands required for the task before returning.
-  - Return candidate implementation evidence only; do not claim final orchestrator approval.
+  Then:
+  1. inspect the repository before making changes
+  2. complete only the assigned task scope
+  3. run the local verification commands required for the task
+  4. return only candidate implementation evidence
 
-output_schema: .goose/recipes/shared/worker-output-schema.json
+  Rules:
+  - Do not claim final orchestrator approval
+  - Keep `test-agent` and `review-agent` as external quality gates
+  - Preserve `needs_fix`, `blocked`, and `failed` as distinct states
+prompt: |
+  Execute the assigned frontend implementation task for run {{ run_id }} in repository {{ repo_path }}.
+
+  Task payload JSON:
+  {{ task }}
+
+  Retry context JSON:
+  {{ retry_context }}
+
+  Return only the structured worker result defined by the response schema.
+parameters:
+  - key: run_id
+    input_type: string
+    requirement: required
+    description: "Runtime run identifier"
+  - key: repo_path
+    input_type: string
+    requirement: required
+    description: "Absolute path to the repository root"
+  - key: task
+    input_type: string
+    requirement: required
+    description: "JSON-encoded worker task payload"
+  - key: retry_context
+    input_type: string
+    requirement: required
+    description: "JSON-encoded retry handoff context or null"
+extensions:
+  - type: builtin
+    name: developer
+    description: "File operations and shell access"
+settings:
+  max_turns: 120
+response:
+  json_schema:
+    $schema: "https://json-schema.org/draft/2020-12/schema"
+    title: "GooseImplementationWorkerOutput"
+    type: object
+    required:
+      - status
+      - summary
+      - changed_files
+      - blocker_category
+      - blocker_message
+      - implementation_evidence
+      - test_evidence
+      - review_feedback
+      - commands_run
+      - test_results
+      - risk_notes
+      - suggested_status
+      - delivery_metadata
+    properties:
+      status:
+        type: string
+        enum:
+          - implementation_done
+          - blocked
+          - failed
+      summary:
+        type: string
+        minLength: 1
+      changed_files:
+        type: array
+        items:
+          type: string
+      blocker_category:
+        type:
+          - string
+          - "null"
+        enum:
+          - requirements
+          - repository
+          - dependency
+          - environment
+          - quality
+          - unknown
+          - "null"
+      blocker_message:
+        type:
+          - string
+          - "null"
+      implementation_evidence:
+        type: array
+        items:
+          type: string
+      test_evidence:
+        type: array
+        items:
+          type: string
+      review_feedback:
+        type: array
+        items:
+          type: string
+      commands_run:
+        type: array
+        items:
+          type: string
+      test_results:
+        type: array
+        items:
+          type: object
+          required:
+            - name
+            - status
+          properties:
+            name:
+              type: string
+            status:
+              type: string
+              enum:
+                - pass
+                - fail
+                - skip
+                - pending
+            details:
+              type: string
+          additionalProperties: false
+      risk_notes:
+        type: array
+        items:
+          type: string
+      suggested_status:
+        type:
+          - string
+          - "null"
+        enum:
+          - implementation_done
+          - blocked
+          - failed
+          - completed
+          - needs_fix
+          - "null"
+      delivery_metadata:
+        type:
+          - object
+          - "null"
+        required:
+          - branch_name
+          - commit_sha
+          - pr_url
+        properties:
+          branch_name:
+            type:
+              - string
+              - "null"
+          commit_sha:
+            type:
+              - string
+              - "null"
+          pr_url:
+            type:
+              - string
+              - "null"
+        additionalProperties: false
+    additionalProperties: false

@@ -152,3 +152,14 @@ test('execute-next-plan-task relies on automatic codex review workflow', () => {
   assert.ok(!recipe.includes('@codex review'));
   assert.match(recipe, /automatic Codex review/i);
 });
+
+test('implementation recipes use goose-compatible instruction blocks', () => {
+  for (const recipePath of [
+    '.goose/recipes/frontend-implementation.yaml',
+    '.goose/recipes/backend-implementation.yaml',
+  ]) {
+    const recipe = fs.readFileSync(recipePath, 'utf8');
+
+    assert.match(recipe, /^instructions:\s*\|/m);
+  }
+});
