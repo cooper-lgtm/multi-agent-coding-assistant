@@ -1,6 +1,6 @@
 {
   "artifact_type": "repo-context",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "status": "refreshed",
   "repo_name": "multi-agent-coding-assistant",
   "repo_path": "/Users/openclaw/Documents/multi-agent-coding-assistant",
@@ -56,17 +56,6 @@
       "logical model labels should remain aligned with exact-model metadata"
     ]
   },
-  "module_map": {
-    "src/schemas": "planning, runtime, model contracts",
-    "src/planning": "planning mode resolution, pipeline, normalization, synthesis",
-    "src/orchestrator": "dag build, execution loop, implementation dispatch, quality gates, retry, reporting",
-    "src/adapters": "OpenClaw envelope shaping and model routing/resolution",
-    "src/workers": "worker execution and retry-handoff contracts",
-    "src/storage": "run-store contracts and file-backed runtime persistence",
-    "src/examples": "fixtures and runnable demos",
-    "tests": "adapter/planning/runtime/persistence tests",
-    "prompts": "role prompt assets"
-  },
   "active_plan": {
     "path": "docs/plans/2026-03-16-goose-integration-post-pr5.md",
     "execution_mode": "one_task_slice_per_pr",
@@ -74,12 +63,12 @@
       {
         "id": 1,
         "title": "Add structured goose worker-result contracts",
-        "status": "pending"
+        "status": "completed"
       },
       {
         "id": 2,
         "title": "Add goose recipe assets and task-to-recipe mapping",
-        "status": "pending"
+        "status": "completed"
       },
       {
         "id": 3,
@@ -113,6 +102,16 @@
       }
     ]
   },
+  "task2_evidence": {
+    "adapter": "src/adapters/goose-recipe-builder.ts",
+    "test": "tests/goose-recipe-builder.test.mjs",
+    "recipes": [
+      ".goose/recipes/frontend-implementation.yaml",
+      ".goose/recipes/backend-implementation.yaml"
+    ],
+    "schema": ".goose/recipes/shared/worker-output-schema.json",
+    "contract_doc": "docs/goose/task-contract.md"
+  },
   "validation": {
     "standard_commands": [
       "npm run typecheck",
@@ -132,11 +131,11 @@
     "merge_gate": "required local validation passes"
   },
   "baseline_observations": [
-    "goose integration slices are planned but not yet implemented in source/tests",
-    "package.json does not yet include goose-oriented scripts",
-    "runtime currently uses existing mock implementation dispatch path"
+    "task 1 and task 2 from the active goose integration plan are now in the codebase",
+    "goose worker adapter and runtime dispatch wiring remain future work",
+    "package.json does not yet include goose-oriented runtime scripts"
   ],
   "drift": [
-    "No canonical root-doc vs code contradiction detected; plan remains forward-looking relative to current baseline."
+    "Context artifact refreshed after merging Task 2 PR; no root-doc vs code contradiction detected."
   ]
 }
