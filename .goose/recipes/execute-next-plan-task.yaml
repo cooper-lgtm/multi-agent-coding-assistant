@@ -18,7 +18,7 @@ instructions: |
   Then:
   1. identify exactly one next unfinished major task from the active plan
   2. refresh your understanding of the affected source files and tests
-  3. create a branch for that task-sized slice
+  3. create a branch for that task-sized slice from {{ base_branch }}
   4. complete only that task's scope
   5. run the task's required validation commands
   6. create a PR
@@ -31,12 +31,16 @@ instructions: |
   - Keep `test-agent` and `review-agent` under orchestrator ownership
   - Do not collapse `needs_fix`, `blocked`, and `failed`
   - Do not invent completion if verification failed
+  - Use `task_hint` only if it is non-empty; otherwise choose the next unfinished task from the plan
   - If task scope is ambiguous, stop and return blocked
   - If there is no clearly next unfinished task, stop and return blocked
 
   Prefer one small, reviewable PR over a broad multi-task change.
 prompt: |
   Execute the next unfinished task from {{ plan_path }} for repository {{ repo_path }}.
+
+  Base branch for this run: {{ base_branch }}
+  Task hint for this run: {{ task_hint }}
 
   Before editing, confirm the selected task and affected modules from the plan.
   Finish after one task-sized PR has been validated, opened, commented with @codex review, and merged, then refresh the context artifacts.
