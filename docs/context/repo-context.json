@@ -1,0 +1,146 @@
+{
+  "artifact_type": "repo-context",
+  "version": "1.0.0",
+  "status": "bootstrap",
+  "repo_name": "multi-agent-coding-assistant",
+  "repo_path": "/Users/openclaw/Documents/multi-agent-coding-assistant",
+  "generated_from": [
+    "README.md",
+    "PRODUCT.md",
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "docs/plans/2026-03-16-goose-integration-post-pr5.md",
+    "docs/templates/task-template.md",
+    "docs/reviews/recurring-issues.md"
+  ],
+  "canonical_reading_order": [
+    "README.md",
+    "PRODUCT.md",
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "docs/plans/",
+    "source and tests for the active task"
+  ],
+  "product": {
+    "goal": "Turn multi-agent coding orchestration into a stable, inspectable, and recoverable execution kernel for OpenClaw-based development workflows.",
+    "priority_order": [
+      "correctness",
+      "recoverability",
+      "traceability",
+      "contract_clarity",
+      "breadth"
+    ],
+    "non_goals": [
+      "production-grade real worker execution engine before the contracts are ready",
+      "broad speculative abstraction without current MVP pressure",
+      "treating quality gates as planned task owners"
+    ]
+  },
+  "architecture": {
+    "global_controller": "main-orchestrator",
+    "implementation_roles": [
+      "frontend-agent",
+      "backend-agent"
+    ],
+    "quality_roles": [
+      "test-agent",
+      "review-agent"
+    ],
+    "invariants": [
+      "planning outputs implementation tasks only",
+      "quality-gate roles are post-implementation evaluators",
+      "needs_fix, blocked, and failed remain distinct",
+      "retry handoff preserves evidence and blocker metadata",
+      "logical model labels and exact model metadata stay aligned"
+    ]
+  },
+  "module_map": {
+    "src/schemas": "planning, runtime, and model contracts",
+    "src/planning": "planning mode resolution, direct/debate flow, normalization, synthesis",
+    "src/orchestrator": "dag build, runtime loop, dispatch, quality gates, retry, reporting",
+    "src/adapters": "openclaw envelopes, model routing, exact-model resolution",
+    "src/workers": "worker execution contracts and retry handoff",
+    "src/storage": "run persistence and resume support",
+    "src/examples": "fixtures and demos",
+    "tests": "adapter, planning, runtime, and persistence coverage",
+    "prompts": "role prompt assets"
+  },
+  "active_plan": {
+    "path": "docs/plans/2026-03-16-goose-integration-post-pr5.md",
+    "execution_mode": "one_task_per_pr",
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Add structured goose worker-result contracts",
+        "status": "pending"
+      },
+      {
+        "id": 2,
+        "title": "Add goose recipe assets and task-to-recipe mapping",
+        "status": "pending"
+      },
+      {
+        "id": 3,
+        "title": "Implement the goose worker adapter",
+        "status": "pending"
+      },
+      {
+        "id": 4,
+        "title": "Route implementation work through goose while keeping quality gates external",
+        "status": "pending"
+      },
+      {
+        "id": 5,
+        "title": "Implement PR6 human approval and orchestration controls",
+        "status": "pending"
+      },
+      {
+        "id": 6,
+        "title": "Implement PR7 budget, policy, and safety controls",
+        "status": "pending"
+      },
+      {
+        "id": 7,
+        "title": "Implement PR8 evaluation suite and golden scenarios",
+        "status": "pending"
+      },
+      {
+        "id": 8,
+        "title": "Implement PR9 CLI entry points and goose delivery workflow",
+        "status": "pending"
+      }
+    ]
+  },
+  "workflow": {
+    "branch_strategy": "one roadmap slice per branch",
+    "pr_strategy": "one task-sized PR at a time",
+    "review_comment": "@codex review",
+    "merge_policy": "local required verification must pass before merge",
+    "async_review_policy": "review may finish later and follow-up can land in a later PR"
+  },
+  "validation": {
+    "standard_commands": [
+      "npm run typecheck",
+      "npm run build",
+      "npm run test:adapter",
+      "npm run test:planning",
+      "npm run test:runtime"
+    ]
+  },
+  "context_refresh": {
+    "refresh_before_new_task": true,
+    "refresh_after_merge": true,
+    "artifact_priority": "L1",
+    "source_priority": "L2",
+    "notes": [
+      "Use this artifact for fast repository orientation.",
+      "Re-read affected source files and tests before editing.",
+      "Do not treat this artifact as a substitute for current code."
+    ]
+  },
+  "known_gaps": [
+    "goose is not yet wired into the implementation dispatcher",
+    "repo context automation is being bootstrapped",
+    "quality gates should remain orchestrator-owned during goose integration"
+  ]
+}
