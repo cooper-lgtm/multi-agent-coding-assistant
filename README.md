@@ -13,6 +13,8 @@ Start here before non-trivial changes:
 - `PRODUCT.md`: current goals, priorities, and non-goals
 - `ARCHITECTURE.md`: end-to-end system flow, role boundaries, and invariants
 - `AGENTS.md`: contributor workflow, repo map, and validation expectations
+- `docs/plans/2026-03-19-three-operating-modes-design.md`: product-facing definition of `all-plan`, `task-run`, and `end-to-end`
+- `docs/plans/2026-03-19-three-operating-modes.md`: staged implementation plan for the three-mode split
 - `docs/templates/task-template.md`: standard task input for non-trivial work
 - `docs/reviews/recurring-issues.md`: repeated review failures worth preventing
 
@@ -40,6 +42,20 @@ This MVP now includes both:
 - approval controls that can pause after planning until a human explicitly approves execution
 - a policy engine that keeps max parallelism, retry budgets, role-specific fallback chains, and high-risk manual-review guardrails in the orchestrator layer
 - durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
+
+## Operating Modes
+
+The repository is now documented around three product-facing operating modes that reuse the same kernel:
+
+- `all-plan`: natural-language request to validated `planning result`, then stop
+- `task-run`: existing `planning result` to implementation, quality gates, retry, and reporting
+- `end-to-end`: run `all-plan`, then continue into `task-run`
+
+Current status:
+
+- `task-run` is the strongest implemented kernel today
+- `end-to-end` is partially represented by the current orchestrator `run()` flow
+- `all-plan` exists at the planning-pipeline level, but PR19-style coordinator-led planning is still follow-up work
 
 ## Current Structure
 
@@ -169,3 +185,5 @@ Current behavior is intentionally minimal: it exposes the delivery interface and
 3. Richer operational tooling and CLI / chat entry integration on top of persisted run state
 4. Multi-run inspection and management surfaces for persisted manifests and event logs
 5. Stronger concurrency guarantees if the runtime grows beyond the current single-writer model
+
+The current follow-up direction also includes productizing the kernel into explicit `all-plan`, `task-run`, and `end-to-end` entry surfaces without breaking existing planning/runtime invariants.
