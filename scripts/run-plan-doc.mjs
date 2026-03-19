@@ -192,13 +192,14 @@ function createShellDependencies({ cwd }) {
         return { status: 'pending', findings: [] };
       }
 
-      const comments = JSON.parse(
+      const commentsResponse = JSON.parse(
         await runCommand(
           'gh',
-          ['api', '--paginate', `repos/${owner}/${repo}/pulls/${number}/comments`],
+          ['api', '--paginate', '--slurp', `repos/${owner}/${repo}/pulls/${number}/comments`],
           { cwd },
         ),
       );
+      const comments = flattenPaginatedComments(commentsResponse);
 
       const findings = comments
         .filter((comment) => {
@@ -252,6 +253,22 @@ function parseGitHubPrUrl(prUrl) {
     repo: segments[1],
     number: segments[3],
   };
+}
+
+function flattenPaginatedComments(commentsResponse) {
+  if (!Array.isArray(commentsResponse)) {
+    return [];
+  }
+
+  if (commentsResponse.length === 0) {
+    return [];
+  }
+
+  if (Array.isArray(commentsResponse[0])) {
+    return commentsResponse.flat();
+  }
+
+  return commentsResponse;
 }
 
 main().catch((error) => {
