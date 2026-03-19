@@ -18,6 +18,7 @@
           "title",
           "body",
           "confidence_score",
+          "priority",
           "code_location"
         ],
         "properties": {
@@ -36,9 +37,13 @@
             "maximum": 1
           },
           "priority": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 3
+            "type": "string",
+            "enum": [
+              "P0",
+              "P1",
+              "P2",
+              "P3"
+            ]
           },
           "code_location": {
             "type": "object",

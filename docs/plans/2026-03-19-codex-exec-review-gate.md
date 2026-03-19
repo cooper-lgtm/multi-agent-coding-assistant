@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add a real local `review-agent` quality gate that runs strict Codex review through `codex exec --json`, records observable progress, and maps results into the existing orchestrator runtime.
+**Goal:** Add a real local Codex review path that runs strict review through `codex exec --json`, replaces GitHub review scraping in the Goose automation loop, and stays reusable by the orchestrator quality-gate seam once that seam has the required review context.
 
-**Architecture:** Keep the current orchestrator contracts intact and add Codex at the adapter seam. Phase 1 uses a child-process runner plus structured output normalization so the local orchestrator can observe progress and persist evidence without introducing SDK-managed thread state yet.
+**Architecture:** Add Codex at the adapter seam, but integrate it in two phases. Phase 1 replaces GitHub review scraping in the Goose plan-runner flow with a local `codex exec` review adapter. Phase 2 reuses that same adapter inside `QualityGateRunner` after the runtime has explicit review-scope inputs and a persistence hook for mid-review progress.
 
 **Tech Stack:** TypeScript, Node child processes, Codex CLI, existing orchestrator/runtime modules, Node test runner
 
@@ -21,9 +21,9 @@
 Cover:
 - child-process stdout/stderr/exit-code capture
 - JSONL event parsing from `codex exec --json`
-- normalization of a clean review into `completed`
-- normalization of actionable findings into `needs_fix`
-- malformed output or non-zero exit into `failed`
+- normalization of a clean review into a clean local-review result
+- normalization of actionable findings into a findings result
+- malformed output, timeout, auth failure, or non-zero exit into a review-infrastructure result
 
 **Step 2: Run the new tests to verify they fail**
 
@@ -82,7 +82,7 @@ The prompt should:
 - stay short and high-signal
 - focus on correctness and actionable findings
 - prefer findings over summaries
-- support task-scoped review using changed files
+- support explicit diff-scoped review using changed files plus base/diff context
 - require structured output compatible with runtime normalization
 
 **Step 2: Add the strict rubric document**
@@ -101,6 +101,7 @@ Define a stable schema containing:
 - overall correctness
 - overall explanation
 - confidence score
+- explicit severity values aligned with the prompt and rubric
 
 **Step 4: Sanity-check the prompt assets**
 
@@ -122,22 +123,23 @@ Expected:
 **Step 1: Build task-scoped review input**
 
 Use:
-- `task.changed_files`
+- `repo_path`
+- `base_ref` or `base_sha`
+- changed files when available
 - task title and description
 - retry handoff context when present
-- repository path from the runtime invocation context
 
-The adapter should prefer file-scoped review when changed files exist and fall back to a repo diff strategy when they do not.
+The adapter should fail closed when explicit review scope is missing. It should not silently widen to a repository-wide review.
 
 **Step 2: Normalize Codex output**
 
 Map:
-- no actionable findings -> `completed`
-- one or more actionable findings -> `needs_fix`
-- process/runtime/schema failure -> `failed`
+- no actionable findings -> local result `clean`
+- one or more actionable findings -> local result `findings`
+- process/runtime/schema/auth/timeout failure -> local result `manual_review_required`
 
 Carry:
-- findings into `review_feedback`
+- findings into normalized review feedback
 - execution notes into `commands_run`
 - parser/process issues into `risk_notes`
 
@@ -152,22 +154,71 @@ npm run build && node --test tests/codex-exec-review-adapter.test.mjs
 Expected:
 - PASS
 
-### Task 5: Compose Codex review into the quality gate runner
+### Task 5: Integrate local Codex review into the Goose plan runner
+
+**Files:**
+- Modify: `src/automation/plan-runner.ts`
+- Modify: `scripts/run-plan-doc.mjs`
+- Modify: `tests/plan-runner.test.mjs`
+- Modify: `tests/run-plan-doc.test.mjs`
+
+**Step 1: Replace GitHub review scraping with the local review adapter**
+
+The Goose automation should:
+- keep required-check polling as-is
+- run local Codex review after required checks pass
+- use `repoPath`, `baseBranch`, changed files, and current task context as review scope
+- carry normalized findings back into the existing repair loop
+
+**Step 2: Preserve correct stop semantics**
+
+Map local review outcomes to the existing Goose automation states:
+- clean review -> merge and continue
+- findings -> rerun the same task with `prior_review`
+- review timeout/auth/process/schema failure -> `manual_review_required`
+
+Do not send local review infrastructure failures back through the implementation retry loop as if the author needs to change code.
+
+**Step 3: Add focused integration tests**
+
+Cover:
+- required checks still gate review
+- clean local review allows merge
+- local review findings rerun the same task
+- local review timeout or process failure stops as `manual_review_required`
+
+Run:
+
+```bash
+npm run build && node --test tests/plan-runner.test.mjs tests/run-plan-doc.test.mjs
+```
+
+Expected:
+- PASS
+
+### Task 6: Compose Codex review into the orchestrator quality gate seam
 
 **Files:**
 - Create: `src/orchestrator/codex-exec-quality-gate-runner.ts`
 - Modify: `src/orchestrator/quality-gate-runner.ts`
 - Modify: `src/orchestrator/main-orchestrator.ts`
 
-**Step 1: Add a real quality gate runner implementation**
+**Step 1: Add the missing runtime prerequisites**
+
+Before wiring in the real runner, add or confirm:
+- explicit review-scope input for `repo_path`, `base_ref` or `base_sha`, and diff target
+- a persistence hook for mid-review progress so long-running local review events survive process interruption
+- failure classification that distinguishes review infrastructure failure from author-fixable findings
+
+**Step 2: Add a real quality gate runner implementation**
 
 The new runner should:
 - preserve the current `QualityGateRunner` interface
 - use Codex review when `review_required` is true
 - preserve current fallback behavior for tests in this phase
-- expose enough hooks to record progress events through the existing reporting path
+- expose enough hooks to record and persist progress events while the process is still running
 
-**Step 2: Record progress events**
+**Step 3: Record progress events**
 
 Add runtime event recording for:
 - process spawn
@@ -176,7 +227,7 @@ Add runtime event recording for:
 - malformed output
 - process failure
 
-**Step 3: Add focused integration tests**
+**Step 4: Add focused integration tests**
 
 **Files:**
 - Create: `tests/codex-exec-quality-gate-runner.test.mjs`
@@ -190,7 +241,7 @@ npm run build && node --test tests/codex-exec-quality-gate-runner.test.mjs tests
 Expected:
 - PASS
 
-### Task 6: Add a runnable demo and documentation updates
+### Task 7: Add a runnable demo and documentation updates
 
 **Files:**
 - Create: `src/examples/run-codex-exec-review-demo.ts`
@@ -208,12 +259,13 @@ Demonstrate:
 **Step 2: Document the new local-review path**
 
 Document:
+- Goose automation integration points and state mapping
 - required Codex CLI/auth setup
 - where progress is visible
 - where findings are persisted
 - what remains deferred to the SDK phase
 
-### Task 7: Run repository validation
+### Task 8: Run repository validation
 
 **Files:**
 - Verify: `src/adapters/codex-exec-process-runner.ts`
@@ -233,7 +285,8 @@ Run:
 ```bash
 npm run typecheck
 npm run build
-node --test tests/codex-exec-process-runner.test.mjs tests/codex-exec-review-adapter.test.mjs tests/codex-exec-quality-gate-runner.test.mjs tests/orchestrator-runtime.test.mjs
+node --test tests/codex-exec-process-runner.test.mjs tests/codex-exec-review-adapter.test.mjs tests/plan-runner.test.mjs tests/run-plan-doc.test.mjs
+node --test tests/codex-exec-quality-gate-runner.test.mjs tests/orchestrator-runtime.test.mjs
 git diff --check
 ```
 
@@ -245,6 +298,7 @@ Expected:
 - a local Codex process runner
 - a repository-visible strict review rubric based on OpenAI review practices
 - a strict structured review prompt and output schema
-- a Codex-backed quality gate runner for `review-agent`
+- a Goose-integrated local Codex review path that replaces GitHub review scraping
+- an orchestrator-ready Codex-backed quality gate runner plan with explicit prerequisites
 - focused tests and a runnable demo
 - documentation covering usage, observability, and deferred SDK follow-up

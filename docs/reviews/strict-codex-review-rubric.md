@@ -64,6 +64,8 @@ Severity should be explicit and conservative:
 
 If severity is unclear, prefer the lower defensible level.
 
+When serialized in the strict JSON review schema, `priority` should use the string enum `P0` | `P1` | `P2` | `P3`.
+
 ### Output discipline
 
 Structured output should always include:
@@ -71,6 +73,7 @@ Structured output should always include:
 - overall correctness verdict
 - concise overall explanation
 - confidence score
+- explicit severity for each finding
 - exact file path and tight line range for each finding
 
 If no finding meets the threshold, return zero findings instead of stretching for coverage.
@@ -114,14 +117,16 @@ This shape stays close to the official OpenAI review example while adding reposi
 For local `codex exec` review:
 - prefer reviewing the current diff against an explicit base branch or base SHA
 - include changed files when available
+- fail closed if explicit review scope is missing instead of widening to the whole repository
 - require exact file/line references before publishing findings
-- treat malformed output, parse errors, and tool/runtime failures as execution failures, not as clean reviews
+- treat malformed output, parse errors, auth/runtime failures, and timeouts as review-infrastructure failures, not as clean reviews
+- do not route review-infrastructure failures back into author-fixable repair loops
 - persist review progress and final findings into repository runtime state so retries and postmortems remain explainable
 
 ## Source Notes
 
 OpenAI source materials that informed this rubric:
-- official Codex SDK code review example: actionable issues, exact file/line citations, overall verdict, structured output  
+- official Codex SDK code review example: actionable issues, exact file/line citations, overall verdict, structured output
   `https://developers.openai.com/cookbook/examples/codex/build_code_review_with_codex_sdk`
-- GPT-5-Codex prompting guidance: “less is more” and over-prompting can reduce quality  
+- GPT-5-Codex prompting guidance: “less is more” and over-prompting can reduce quality
   `https://cookbook.openai.com/examples/gpt-5-codex_prompting_guide`
