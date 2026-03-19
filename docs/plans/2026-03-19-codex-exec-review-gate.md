@@ -4,7 +4,7 @@
 
 **Goal:** Add a real local Codex review path that runs strict review through `codex exec --json`, replaces GitHub review scraping in the Goose automation loop, and stays reusable by the orchestrator quality-gate seam once that seam has the required review context.
 
-**Architecture:** Add Codex at the adapter seam, but integrate it in two phases. Phase 1 replaces GitHub review scraping in the Goose plan-runner flow with a local `codex exec` review adapter. If the PR20 automation slice is not yet present on the base branch, land that dependency first or retarget this phase to the checked-in Goose automation entrypoint that actually exists. Phase 2 reuses that same adapter inside `QualityGateRunner` after the runtime has explicit review-scope inputs and a persistence hook for mid-review progress.
+**Architecture:** Add Codex at the adapter seam, but integrate it in two phases. Phase 1 replaces GitHub review scraping in the Goose plan-runner flow with a local `codex exec` review adapter. If the PR20 automation slice is not yet present on the base branch, land that dependency first or retarget this phase to the checked-in Goose automation entrypoint that actually exists, and update the matching tests and validation commands in the same change. Phase 2 reuses that same adapter inside `QualityGateRunner` after the runtime has explicit review-scope inputs and a persistence hook for mid-review progress.
 
 **Tech Stack:** TypeScript, Node child processes, Codex CLI, existing orchestrator/runtime modules, Node test runner
 
@@ -48,15 +48,16 @@ Define:
 - invocation params for cwd, prompt path or prompt text, output schema path, and extra CLI args
 - result shape for exit code, stdout, stderr, parsed events, and final response payload
 - optional progress callback for streamed JSONL events
-- a separate adapter-level result contract for `clean | findings | manual_review_required`
 
 **Step 2: Implement the process runner**
 
 Implement:
-- `spawn('codex', ['exec', '--json', ...])`
+- `spawn('codex', ['exec', '--json', '-c', 'approval_policy=never', '--sandbox', 'read-only', ...])` or an equivalent non-interactive config profile
 - stdout/stderr buffering
 - line-by-line JSONL parsing
 - structured surfacing of process and parse failures
+
+The process runner should stay generic. Keep review-specific outcome mapping out of this layer so future non-review `codex exec` calls can reuse it.
 
 **Step 3: Run the process-runner tests**
 
@@ -147,6 +148,7 @@ Carry:
 Note:
 - the JSON schema constrains the model's successful review payload
 - infrastructure failures must be represented by the adapter contract rather than forced through the model-output schema
+- overall verdict fields such as correctness, explanation, and confidence should only be required when Codex returns a successful review payload, and should be omitted for `manual_review_required`
 
 **Step 3: Run adapter tests**
 
@@ -173,9 +175,10 @@ The Goose automation should:
 - keep required-check polling as-is
 - run local Codex review after required checks pass
 - use `repoPath`, `baseBranch`, changed files, and current task context as review scope
+- invoke Codex in a non-interactive mode with explicit approval policy and sandbox settings so automation cannot stall waiting for approval
 - carry normalized findings back into the existing repair loop
 
-If `src/automation/plan-runner.ts` and `scripts/run-plan-doc.mjs` are not present on the target base branch, first land that dependency or retarget this task to the checked-in Goose automation entrypoint that owns the PR-sized loop.
+If `src/automation/plan-runner.ts` and `scripts/run-plan-doc.mjs` are not present on the target base branch, first land that dependency or retarget this task to the checked-in Goose automation entrypoint that owns the PR-sized loop. When retargeting, update the affected file list, integration tests, and validation commands so they cover the actual entrypoint being changed.
 
 **Step 2: Preserve correct stop semantics**
 
@@ -193,6 +196,8 @@ Cover:
 - clean local review allows merge
 - local review findings rerun the same task
 - local review timeout or process failure stops as `manual_review_required`
+
+If this task was retargeted to a different Goose entrypoint, replace the test files below with the tests that directly exercise that entrypoint.
 
 Run:
 

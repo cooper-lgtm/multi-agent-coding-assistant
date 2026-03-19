@@ -117,7 +117,7 @@ Replacing GitHub comment scraping there gives the repository an immediately usab
 
 If the PR20 automation slice is not present on the branch where this work lands, this phase must either:
 - land that automation dependency first, or
-- retarget the integration plan to whichever checked-in Goose entrypoint actually exists on the base branch
+- retarget the integration plan to whichever checked-in Goose entrypoint actually exists on the base branch, updating the matching tests and validation commands in the same change
 
 ### Phase 2: Reuse the same local review adapter inside `QualityGateRunner`
 
@@ -134,6 +134,8 @@ Create a small adapter beside `goose-process-runner.ts` that:
 - supports `--json`
 - captures `stdout`, `stderr`, exit code, and parsed event lines
 - surfaces incremental callbacks so the orchestrator can record progress as runtime events
+
+For automation use, the invocation must also be explicitly non-interactive. The runner should pass an approval policy such as `approval_policy=never` together with an explicit sandbox mode so local review cannot hang waiting for approval prompts.
 
 Proposed file:
 - `src/adapters/codex-exec-process-runner.ts`
@@ -157,9 +159,10 @@ Create a Codex review adapter that:
 The adapter result should be a typed repository contract, separate from the model-output JSON schema. For example:
 - `outcome: clean | findings | manual_review_required`
 - `findings`
-- `overall_correctness`
-- `overall_explanation`
-- `overall_confidence_score`
+- `review_summary` only when `outcome` is `clean` or `findings`, containing:
+  - `overall_correctness`
+  - `overall_explanation`
+  - `overall_confidence_score`
 - `commands_run`
 - `risk_notes`
 - `failure_kind` for process/auth/schema/timeout failures when applicable
