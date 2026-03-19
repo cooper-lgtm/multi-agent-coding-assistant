@@ -179,6 +179,7 @@ Because Codex strict structured outputs reject conditional composition keywords 
 The adapter should fail closed:
 - if explicit review scope is missing, it should not silently widen to a repository-wide review
 - if schema parsing, auth, process execution, or timeouts fail, it should return a review-infrastructure result instead of pretending the patch is clean
+- if a successful payload reports findings but claims `overall_correctness = patch is correct` (or the inverse), adapter normalization should reject it instead of trusting the contradictory top-level verdict
 - if a successful payload contains impossible locations such as `line_range.end < line_range.start`, adapter normalization should reject it even though the JSON schema cannot express that comparison directly
 
 Proposed files:

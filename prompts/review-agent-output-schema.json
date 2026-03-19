@@ -82,7 +82,7 @@
       }
     },
     "overall_correctness": {
-      "description": "Use 'patch is correct' when findings is empty and 'patch is incorrect' when findings contains one or more items. Prompt instructions and adapter normalization must enforce this cross-field rule because the strict structured-output schema subset does not support conditional composition keywords such as allOf/if/then.",
+      "description": "Use 'patch is correct' when findings is empty and 'patch is incorrect' when findings contains one or more items. Prompt instructions and adapter normalization must enforce this cross-field rule because the strict structured-output schema subset does not support top-level oneOf/anyOf/allOf or conditionals such as if/then. Consumers should trust the adapter-normalized outcome, not this raw field alone, until that normalization step has run.",
       "type": "string",
       "enum": [
         "patch is correct",

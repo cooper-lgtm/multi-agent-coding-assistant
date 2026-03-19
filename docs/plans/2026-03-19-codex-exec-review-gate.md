@@ -23,6 +23,7 @@ Cover:
 - JSONL event parsing from `codex exec --json`
 - normalization of a clean review into a clean local-review result
 - normalization of actionable findings into a findings result
+- contradictory successful payloads such as `findings.length > 0` with `overall_correctness = patch is correct` being rejected during adapter normalization
 - malformed output, timeout, auth failure, or non-zero exit into a review-infrastructure result
 
 **Step 2: Run the new tests to verify they fail**
@@ -157,6 +158,7 @@ Note:
 - infrastructure failures must be represented by the adapter contract rather than forced through the model-output schema
 - overall verdict fields such as correctness, explanation, and confidence belong to the successful model payload described by the schema
 - `manual_review_required` is an adapter-only outcome for timeout/auth/process/schema failures, not a second model JSON shape
+- adapter normalization should reject contradictory successful payloads where the findings count and `overall_correctness` disagree, even though the strict schema subset cannot enforce that relationship directly
 - adapter normalization should also reject impossible successful payloads such as reversed line ranges even when the JSON schema cannot express that cross-field rule by itself
 
 **Step 3: Run adapter tests**
