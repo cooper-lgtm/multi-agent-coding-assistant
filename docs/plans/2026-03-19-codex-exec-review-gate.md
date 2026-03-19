@@ -4,7 +4,7 @@
 
 **Goal:** Add a real local Codex review path that runs strict review through `codex exec --json`, replaces GitHub review scraping in the Goose automation loop, and stays reusable by the orchestrator quality-gate seam once that seam has the required review context.
 
-**Architecture:** Add Codex at the adapter seam, but integrate it in two phases. Phase 1 replaces GitHub review scraping in the Goose plan-runner flow with a local `codex exec` review adapter. Phase 2 reuses that same adapter inside `QualityGateRunner` after the runtime has explicit review-scope inputs and a persistence hook for mid-review progress.
+**Architecture:** Add Codex at the adapter seam, but integrate it in two phases. Phase 1 replaces GitHub review scraping in the Goose plan-runner flow with a local `codex exec` review adapter. If the PR20 automation slice is not yet present on the base branch, land that dependency first or retarget this phase to the checked-in Goose automation entrypoint that actually exists. Phase 2 reuses that same adapter inside `QualityGateRunner` after the runtime has explicit review-scope inputs and a persistence hook for mid-review progress.
 
 **Tech Stack:** TypeScript, Node child processes, Codex CLI, existing orchestrator/runtime modules, Node test runner
 
@@ -48,6 +48,7 @@ Define:
 - invocation params for cwd, prompt path or prompt text, output schema path, and extra CLI args
 - result shape for exit code, stdout, stderr, parsed events, and final response payload
 - optional progress callback for streamed JSONL events
+- a separate adapter-level result contract for `clean | findings | manual_review_required`
 
 **Step 2: Implement the process runner**
 
@@ -143,6 +144,10 @@ Carry:
 - execution notes into `commands_run`
 - parser/process issues into `risk_notes`
 
+Note:
+- the JSON schema constrains the model's successful review payload
+- infrastructure failures must be represented by the adapter contract rather than forced through the model-output schema
+
 **Step 3: Run adapter tests**
 
 Run:
@@ -169,6 +174,8 @@ The Goose automation should:
 - run local Codex review after required checks pass
 - use `repoPath`, `baseBranch`, changed files, and current task context as review scope
 - carry normalized findings back into the existing repair loop
+
+If `src/automation/plan-runner.ts` and `scripts/run-plan-doc.mjs` are not present on the target base branch, first land that dependency or retarget this task to the checked-in Goose automation entrypoint that owns the PR-sized loop.
 
 **Step 2: Preserve correct stop semantics**
 

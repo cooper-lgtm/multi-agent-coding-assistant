@@ -105,7 +105,7 @@ This repository is already built around explicit adapters, local orchestration, 
 
 ### Phase 1: Replace GitHub review scraping in the Goose automation loop
 
-The first consumer should be the local Goose delivery loop introduced in PR20.
+The first consumer should be the local Goose delivery loop introduced in PR20, or the equivalent task-sized Goose automation entrypoint if PR20 has not landed on the current base branch yet.
 
 That path already has the key review inputs:
 - `repoPath`
@@ -114,6 +114,10 @@ That path already has the key review inputs:
 - the current task retry loop
 
 Replacing GitHub comment scraping there gives the repository an immediately usable local review path without first extending orchestrator contracts.
+
+If the PR20 automation slice is not present on the branch where this work lands, this phase must either:
+- land that automation dependency first, or
+- retarget the integration plan to whichever checked-in Goose entrypoint actually exists on the base branch
 
 ### Phase 2: Reuse the same local review adapter inside `QualityGateRunner`
 
@@ -149,6 +153,18 @@ Create a Codex review adapter that:
   - clean review
   - actionable findings
   - local review infrastructure failure
+
+The adapter result should be a typed repository contract, separate from the model-output JSON schema. For example:
+- `outcome: clean | findings | manual_review_required`
+- `findings`
+- `overall_correctness`
+- `overall_explanation`
+- `overall_confidence_score`
+- `commands_run`
+- `risk_notes`
+- `failure_kind` for process/auth/schema/timeout failures when applicable
+
+The JSON schema constrains only the model's successful review payload. It should not be treated as the full adapter contract for infrastructure failures.
 
 The adapter should fail closed:
 - if explicit review scope is missing, it should not silently widen to a repository-wide review
