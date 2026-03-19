@@ -40,3 +40,26 @@ node --test tests/cli-smoke.test.mjs
 - Do not collapse `needs_fix`, `blocked`, and `failed`.
 - Do not merge if any required local check fails.
 - Prefer one small, reviewable PR over broad multi-task changes.
+
+## Scripted Plan Runner
+
+For plan documents that should execute one task-sized PR at a time, the repository now includes:
+
+```bash
+node scripts/run-plan-doc.mjs \
+  --repo-path /absolute/path/to/repo \
+  --plan-path /absolute/path/to/plan.md \
+  --base-branch main
+```
+
+Current behavior:
+- parses `### Task N: ...` headings from the target plan document
+- runs goose once per task-sized slice
+- waits for required GitHub checks before merge
+- waits for a Codex review on the current PR head SHA before merge
+- reruns the same task when Codex leaves inline findings for the current head SHA
+- defaults both check and review waiting windows to 30 minutes
+- supports `--checks-timeout-ms` and `--review-timeout-ms` overrides
+- returns `manual_review_required` instead of `failed` when a gate times out
+
+This script is intentionally validated first through deterministic fake `gh` / fake `goose` integration tests so the control flow can be trusted before relying on live external systems.

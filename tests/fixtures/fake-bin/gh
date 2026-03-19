@@ -1,0 +1,176 @@
+#!/usr/bin/env node
+
+import fs from 'node:fs';
+
+const statePath = process.env.PLAN_RUNNER_FAKE_STATE;
+if (!statePath) {
+  process.stderr.write('PLAN_RUNNER_FAKE_STATE is required\n');
+  process.exit(1);
+}
+
+const argv = process.argv.slice(2);
+const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+state.commands.push({ bin: 'gh', argv });
+
+const [command, rawSubcommand, rawTarget] = argv;
+const { subcommand, target, paginate, slurp } = normalizeApiArguments(rawSubcommand, rawTarget, argv);
+
+if (command === 'pr' && subcommand === 'checks') {
+  const prNumber = parsePullRequestNumber(target);
+  const nextStatus = shiftQueue(state.checks[prNumber], 'pending');
+  writeState(statePath, state);
+  process.stdout.write(JSON.stringify([{ bucket: nextStatus }]));
+  process.exit(0);
+}
+
+if (command === 'pr' && subcommand === 'view') {
+  const prNumber = parsePullRequestNumber(target);
+  const nextHeadSha = shiftQueue(state.headShas[prNumber], '');
+  state.currentHeadShas = state.currentHeadShas ?? {};
+  state.currentHeadShas[prNumber] = nextHeadSha;
+  writeState(statePath, state);
+  process.stdout.write(nextHeadSha);
+  process.exit(0);
+}
+
+if (command === 'pr' && subcommand === 'merge') {
+  const prNumber = parsePullRequestNumber(target);
+  state.merged.push(prNumber);
+  writeState(statePath, state);
+  process.exit(0);
+}
+
+if (command === 'api') {
+  const apiTarget = subcommand;
+  if (typeof apiTarget !== 'string') {
+    writeState(statePath, state);
+    process.stderr.write('Missing API target\n');
+    process.exit(1);
+  }
+
+  const reviewMatch = apiTarget.match(/^repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/reviews$/);
+  if (reviewMatch) {
+    const prNumber = reviewMatch[3];
+    const headSha = state.currentHeadShas?.[prNumber];
+    const nextReview = shiftQueue(state.reviews?.[prNumber]?.[headSha], { status: 'pending' });
+    state.currentReviewIds = state.currentReviewIds ?? {};
+
+    if (nextReview.status === 'pending') {
+      writeState(statePath, state);
+      process.stdout.write(JSON.stringify([]));
+      process.exit(0);
+    }
+
+    state.currentReviewIds[prNumber] = String(nextReview.review_id);
+    writeState(statePath, state);
+    process.stdout.write(
+      JSON.stringify([
+        {
+          id: Number(nextReview.review_id),
+          commit_id: headSha,
+          user: { login: 'chatgpt-codex-connector[bot]' },
+        },
+      ]),
+    );
+    process.exit(0);
+  }
+
+  const commentMatch = apiTarget.match(/^repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/comments$/);
+  if (commentMatch) {
+    const prNumber = commentMatch[3];
+    const reviewId = state.currentReviewIds?.[prNumber];
+    const comments = formatCommentPages(state.comments?.[prNumber]?.[reviewId], reviewId, { paginate, slurp });
+    writeState(statePath, state);
+    process.stdout.write(comments.map((page) => JSON.stringify(page)).join(''));
+    process.exit(0);
+  }
+}
+
+writeState(statePath, state);
+process.stderr.write(`Unsupported fake gh command: ${argv.join(' ')}\n`);
+process.exit(1);
+
+function parsePullRequestNumber(value) {
+  const match = String(value).match(/\/pull\/(\d+)$/);
+  if (!match) {
+    throw new Error(`Could not parse pull request number from ${value}`);
+  }
+
+  return match[1];
+}
+
+function shiftQueue(queue, fallback) {
+  if (!Array.isArray(queue) || queue.length === 0) {
+    return fallback;
+  }
+
+  return queue.shift();
+}
+
+function normalizeApiArguments(subcommand, target, argv) {
+  if (argv[0] !== 'api') {
+    return { subcommand, target, paginate: false, slurp: false };
+  }
+
+  if (subcommand === '--paginate' && target === '--slurp') {
+    return {
+      subcommand: argv[3],
+      target: argv[4],
+      paginate: true,
+      slurp: true,
+    };
+  }
+
+  if (subcommand === '--paginate') {
+    return {
+      subcommand: target,
+      target: argv[3],
+      paginate: true,
+      slurp: false,
+    };
+  }
+
+  return {
+    subcommand,
+    target,
+    paginate: false,
+    slurp: false,
+  };
+}
+
+function formatCommentPages(commentState, reviewId, options) {
+  if (!Array.isArray(commentState)) {
+    return [[]];
+  }
+
+  if (commentState.length === 0) {
+    return [[]];
+  }
+
+  if (!Array.isArray(commentState[0])) {
+    return [serializeComments(commentState, reviewId)];
+  }
+
+  if (options.slurp) {
+    return [commentState.map((page) => serializeComments(page, reviewId))];
+  }
+
+  if (options.paginate) {
+    return commentState.map((page) => serializeComments(page, reviewId));
+  }
+
+  return [serializeComments(commentState[0] ?? [], reviewId)];
+}
+
+function serializeComments(comments, reviewId) {
+  return comments.map((comment) => ({
+    user: { login: 'chatgpt-codex-connector[bot]' },
+    pull_request_review_id: Number(reviewId),
+    path: comment.path ?? null,
+    body: comment.body,
+  }));
+}
+
+function writeState(statePath, state) {
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+}
