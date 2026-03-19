@@ -4,6 +4,7 @@ export * from './adapters/openclaw-runtime-adapter.js';
 export * from './adapters/goose-recipe-builder.js';
 export * from './adapters/goose-process-runner.js';
 export * from './adapters/goose-worker-adapter.js';
+export * from './automation/plan-runner.js';
 export * from './schemas/models.js';
 export * from './schemas/planning.js';
 export * from './schemas/runtime.js';

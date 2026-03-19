@@ -43,8 +43,10 @@ prompt: |
 
   Base branch for this run: {{ base_branch }}
   Task hint for this run: {{ task_hint }}
+  Prior Codex review findings JSON for this run: {{ prior_review }}
 
   Before editing, confirm the selected task and affected modules from the plan.
+  If `prior_review` is non-empty, treat it as machine-readable feedback from the previous Codex review on this task and address it before continuing.
   Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, opened, and merged. Codex review runs automatically via workflow, so no manual PR comment is needed.
 parameters:
   - key: repo_path
@@ -75,6 +77,11 @@ parameters:
     requirement: optional
     default: ""
     description: "Optional hint to force a specific task slice when needed"
+  - key: prior_review
+    input_type: string
+    requirement: optional
+    default: ""
+    description: "Optional machine-readable Codex review findings from the previous task attempt"
 extensions:
   - type: builtin
     name: developer

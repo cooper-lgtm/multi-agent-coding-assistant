@@ -150,7 +150,32 @@ npm run demo:orchestrator
 npm run demo:adapter
 npm run demo:planning
 npm run cli -- --help
+node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
 ```
+
+## Plan Runner Script
+
+The repository now includes a scriptable plan runner at `scripts/run-plan-doc.mjs`.
+
+It is aimed at the workflow where one plan document should execute as a sequence of:
+- one task-sized branch
+- one PR
+- required checks
+- Codex review on the current head SHA
+- merge only after the current review is clean
+
+Important behavior:
+- `--checks-timeout-ms` and `--review-timeout-ms` are available for explicit gate timeouts
+- both gates default to a 30 minute timeout when flags are omitted
+- timeout does not report `failed`; it returns `manual_review_required` so a human can inspect the PR and decide how to proceed
+
+The first implementation focuses on control-flow correctness and testability.
+Its regression surface lives in:
+- `tests/plan-runner.test.mjs`
+- `tests/run-plan-doc.test.mjs`
+- `tests/fixtures/fake-bin/`
+
+Those tests validate the automation logic deterministically; repository tests and human/review feedback still validate whether the generated code itself is correct.
 
 ## CLI Entry Points
 
