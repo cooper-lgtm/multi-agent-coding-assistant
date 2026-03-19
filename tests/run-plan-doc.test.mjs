@@ -134,13 +134,13 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after che
         'gh pr view https://github.com/example/repo/pull/101 --json headRefOid --jq .headRefOid',
         'gh api repos/example/repo/pulls/101/reviews',
         'gh api repos/example/repo/pulls/101/reviews',
-        'gh api repos/example/repo/pulls/101/comments',
+        'gh api --paginate repos/example/repo/pulls/101/comments',
         'gh pr merge https://github.com/example/repo/pull/101 --merge --delete-branch',
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 2: Second task',
         'gh pr checks https://github.com/example/repo/pull/102 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/102 --json headRefOid --jq .headRefOid',
         'gh api repos/example/repo/pulls/102/reviews',
-        'gh api repos/example/repo/pulls/102/comments',
+        'gh api --paginate repos/example/repo/pulls/102/comments',
         'gh pr merge https://github.com/example/repo/pull/102 --merge --delete-branch',
       ],
     );
@@ -205,7 +205,10 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
           },
           comments: {
             '201': {
-              '7001': [{ path: 'src/repair.ts', body: 'Please cover the retry edge case.' }],
+              '7001': [
+                [],
+                [{ path: 'src/repair.ts', body: 'Please cover the retry edge case.' }],
+              ],
               '7002': [],
             },
           },
@@ -262,6 +265,30 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
 
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['201']);
+    assert.deepEqual(finalState.commands[5], {
+      bin: 'goose',
+      argv: [
+        'run',
+        '--recipe',
+        '.goose/recipes/execute-next-plan-task.yaml',
+        '--quiet',
+        '--no-session',
+        '--output-format',
+        'json',
+        '--system',
+        'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging.',
+        '--params',
+        `repo_path=${projectRoot}`,
+        '--params',
+        `plan_path=${planPath}`,
+        '--params',
+        'base_branch=main',
+        '--params',
+        'task_hint=Task 1: Repair task',
+        '--params',
+        'prior_review=[{"path":"src/repair.ts","body":"Please cover the retry edge case."}]',
+      ],
+    });
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
@@ -269,12 +296,12 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
         'gh api repos/example/repo/pulls/201/reviews',
-        'gh api repos/example/repo/pulls/201/comments',
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task',
+        'gh api --paginate repos/example/repo/pulls/201/comments',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task --params prior_review=[{"path":"src/repair.ts","body":"Please cover the retry edge case."}]',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
         'gh api repos/example/repo/pulls/201/reviews',
-        'gh api repos/example/repo/pulls/201/comments',
+        'gh api --paginate repos/example/repo/pulls/201/comments',
         'gh pr merge https://github.com/example/repo/pull/201 --merge --delete-branch',
       ],
     );
@@ -392,6 +419,7 @@ test('run-plan-doc returns manual_review_required when Codex review exceeds the 
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Slow review task',
         'gh pr checks https://github.com/example/repo/pull/301 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/301 --json headRefOid --jq .headRefOid',
+        'gh api repos/example/repo/pulls/301/reviews',
         'gh api repos/example/repo/pulls/301/reviews',
         'gh api repos/example/repo/pulls/301/reviews',
       ],

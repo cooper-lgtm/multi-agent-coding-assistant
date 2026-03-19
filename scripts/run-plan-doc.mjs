@@ -51,8 +51,8 @@ function parseArgs(args) {
     pollIntervalMs: 30_000,
     checksTimeoutMs: 30 * 60_000,
     reviewTimeoutMs: 30 * 60_000,
-    maxCheckPolls: 60,
-    maxReviewPolls: 60,
+    maxCheckPolls: undefined,
+    maxReviewPolls: undefined,
     tasks: [],
   };
 
@@ -115,28 +115,34 @@ function extractPlanTaskHints(markdown) {
 
 function createShellDependencies({ cwd }) {
   return {
-    executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch }) => {
+    executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch, priorReview }) => {
+      const gooseArgs = [
+        'run',
+        '--recipe',
+        '.goose/recipes/execute-next-plan-task.yaml',
+        '--quiet',
+        '--no-session',
+        '--output-format',
+        'json',
+        '--system',
+        NO_MERGE_SYSTEM_PROMPT,
+        '--params',
+        `repo_path=${repoPath}`,
+        '--params',
+        `plan_path=${planPath}`,
+        '--params',
+        `base_branch=${baseBranch}`,
+        '--params',
+        `task_hint=${taskHint}`,
+      ];
+
+      if (priorReview && priorReview.findings.length > 0) {
+        gooseArgs.push('--params', `prior_review=${JSON.stringify(priorReview.findings)}`);
+      }
+
       const stdout = await runCommand(
         'goose',
-        [
-          'run',
-          '--recipe',
-          '.goose/recipes/execute-next-plan-task.yaml',
-          '--quiet',
-          '--no-session',
-          '--output-format',
-          'json',
-          '--system',
-          NO_MERGE_SYSTEM_PROMPT,
-          '--params',
-          `repo_path=${repoPath}`,
-          '--params',
-          `plan_path=${planPath}`,
-          '--params',
-          `base_branch=${baseBranch}`,
-          '--params',
-          `task_hint=${taskHint}`,
-        ],
+        gooseArgs,
         { cwd },
       );
 
@@ -189,7 +195,7 @@ function createShellDependencies({ cwd }) {
       const comments = JSON.parse(
         await runCommand(
           'gh',
-          ['api', `repos/${owner}/${repo}/pulls/${number}/comments`],
+          ['api', '--paginate', `repos/${owner}/${repo}/pulls/${number}/comments`],
           { cwd },
         ),
       );

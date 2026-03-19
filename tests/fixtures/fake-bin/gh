@@ -12,7 +12,8 @@ const argv = process.argv.slice(2);
 const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
 state.commands.push({ bin: 'gh', argv });
 
-const [command, subcommand, target] = argv;
+const [command, rawSubcommand, rawTarget] = argv;
+const { subcommand, target, paginate } = normalizeApiArguments(rawSubcommand, rawTarget, argv);
 
 if (command === 'pr' && subcommand === 'checks') {
   const prNumber = parsePullRequestNumber(target);
@@ -78,7 +79,7 @@ if (command === 'api') {
   if (commentMatch) {
     const prNumber = commentMatch[3];
     const reviewId = state.currentReviewIds?.[prNumber];
-    const comments = state.comments?.[prNumber]?.[reviewId] ?? [];
+    const comments = collectCommentPages(state.comments?.[prNumber]?.[reviewId], paginate);
     writeState(statePath, state);
     process.stdout.write(
       JSON.stringify(
@@ -113,6 +114,46 @@ function shiftQueue(queue, fallback) {
   }
 
   return queue.shift();
+}
+
+function normalizeApiArguments(subcommand, target, argv) {
+  if (argv[0] !== 'api') {
+    return { subcommand, target, paginate: false };
+  }
+
+  if (subcommand === '--paginate') {
+    return {
+      subcommand: target,
+      target: argv[3],
+      paginate: true,
+    };
+  }
+
+  return {
+    subcommand,
+    target,
+    paginate: false,
+  };
+}
+
+function collectCommentPages(commentState, paginate) {
+  if (!Array.isArray(commentState)) {
+    return [];
+  }
+
+  if (commentState.length === 0) {
+    return [];
+  }
+
+  if (!Array.isArray(commentState[0])) {
+    return commentState;
+  }
+
+  if (paginate) {
+    return commentState.flat();
+  }
+
+  return commentState[0] ?? [];
 }
 
 function writeState(statePath, state) {

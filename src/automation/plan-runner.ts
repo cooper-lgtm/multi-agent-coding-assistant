@@ -84,16 +84,8 @@ export async function runPlanTaskSequence(
   deps: PlanTaskSequenceDependencies,
 ): Promise<RunPlanTaskSequenceResult> {
   const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-  const maxCheckPolls = resolveMaxPolls(
-    input.checksTimeoutMs ?? DEFAULT_TIMEOUT_MS,
-    input.maxCheckPolls,
-    pollIntervalMs,
-  );
-  const maxReviewPolls = resolveMaxPolls(
-    input.reviewTimeoutMs ?? DEFAULT_TIMEOUT_MS,
-    input.maxReviewPolls,
-    pollIntervalMs,
-  );
+  const maxCheckPolls = resolveMaxPolls(input.maxCheckPolls, input.checksTimeoutMs ?? DEFAULT_TIMEOUT_MS, pollIntervalMs);
+  const maxReviewPolls = resolveMaxPolls(input.maxReviewPolls, input.reviewTimeoutMs ?? DEFAULT_TIMEOUT_MS, pollIntervalMs);
   const maxTaskAttempts = input.maxTaskAttempts ?? DEFAULT_MAX_TASK_ATTEMPTS;
 
   const tasks: RunPlanTaskSequenceTaskResult[] = [];
@@ -226,7 +218,7 @@ export async function runPlanTaskSequence(
           repaired: attempt > 1,
           branch_name: execution.branch_name,
           pr_url: execution.pr_url,
-          findings: review.findings,
+          findings: review.findings.length > 0 ? review.findings : priorReview?.findings ?? [],
           pending_gate: 'codex_review',
         });
 
@@ -316,16 +308,16 @@ async function waitForCodexReview(
 }
 
 function resolveMaxPolls(
-  timeoutMs: number | undefined,
   explicitMaxPolls: number | undefined,
+  timeoutMs: number | undefined,
   pollIntervalMs: number,
 ): number {
-  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
-    return Math.max(1, Math.ceil(timeoutMs / pollIntervalMs));
-  }
-
   if (typeof explicitMaxPolls === 'number' && Number.isFinite(explicitMaxPolls) && explicitMaxPolls > 0) {
     return explicitMaxPolls;
+  }
+
+  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    return Math.max(1, Math.floor(timeoutMs / pollIntervalMs) + 1);
   }
 
   return DEFAULT_MAX_POLLS;
