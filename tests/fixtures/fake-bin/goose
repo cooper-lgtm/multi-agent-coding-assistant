@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+
+import fs from 'node:fs';
+
+const statePath = process.env.PLAN_RUNNER_FAKE_STATE;
+if (!statePath) {
+  process.stderr.write('PLAN_RUNNER_FAKE_STATE is required\n');
+  process.exit(1);
+}
+
+const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+state.commands.push({ bin: 'goose', argv: process.argv.slice(2) });
+
+const next = state.gooseRuns.shift();
+if (!next) {
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  process.stderr.write('No goose run fixture remaining\n');
+  process.exit(1);
+}
+
+fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+process.stdout.write(JSON.stringify(next));
