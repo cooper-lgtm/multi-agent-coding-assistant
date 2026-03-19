@@ -8,6 +8,46 @@
     "overall_explanation",
     "overall_confidence_score"
   ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "findings": {
+            "maxItems": 0
+          }
+        },
+        "required": [
+          "findings"
+        ]
+      },
+      "then": {
+        "properties": {
+          "overall_correctness": {
+            "const": "patch is correct"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "findings": {
+            "minItems": 1
+          }
+        },
+        "required": [
+          "findings"
+        ]
+      },
+      "then": {
+        "properties": {
+          "overall_correctness": {
+            "const": "patch is incorrect"
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "findings": {
       "type": "array",

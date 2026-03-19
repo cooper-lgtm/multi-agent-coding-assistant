@@ -76,6 +76,10 @@ Structured output should always include:
 - explicit severity for each finding
 - exact file path and tight line range for each finding
 
+Verdict discipline:
+- when `findings` is empty, `overall_correctness` should be `patch is correct`
+- when `findings` contains one or more items, `overall_correctness` should be `patch is incorrect`
+
 If no finding meets the threshold, return zero findings instead of stretching for coverage.
 
 ## Prompt Design Rules

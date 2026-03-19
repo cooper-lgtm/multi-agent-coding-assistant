@@ -104,6 +104,7 @@ Define a stable schema containing:
 - overall explanation
 - confidence score
 - explicit severity values aligned with the prompt and rubric
+- a successful-review verdict rule that keeps `overall_correctness` consistent with the findings count
 
 **Step 4: Sanity-check the prompt assets**
 

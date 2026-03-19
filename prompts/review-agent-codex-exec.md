@@ -25,7 +25,8 @@ For each finding:
 Output rules:
 - return only JSON matching the provided schema
 - return zero findings if nothing meets the threshold
-- set `overall_correctness` to `patch is correct` or `patch is incorrect`
+- set `overall_correctness` to `patch is correct` when `findings` is empty
+- set `overall_correctness` to `patch is incorrect` when `findings` contains one or more items
 - ensure every cited file path and line number is exact
 
 Runtime context such as repository path, base ref, diff scope, changed files, and task metadata will be appended after this prompt.

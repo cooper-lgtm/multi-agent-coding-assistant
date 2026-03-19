@@ -169,6 +169,10 @@ The adapter result should be a typed repository contract, separate from the mode
 
 The JSON schema constrains only the model's successful review payload. It should not be treated as the full adapter contract for infrastructure failures.
 
+For successful review payloads, the schema and prompt should also keep `overall_correctness` deterministic:
+- zero findings -> `patch is correct`
+- one or more findings -> `patch is incorrect`
+
 The adapter should fail closed:
 - if explicit review scope is missing, it should not silently widen to a repository-wide review
 - if schema parsing, auth, process execution, or timeouts fail, it should return a review-infrastructure result instead of pretending the patch is clean
