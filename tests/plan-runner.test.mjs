@@ -155,3 +155,123 @@ test('runPlanTaskSequence reruns the same task when Codex review returns finding
     ['mergePullRequest', 'https://github.com/example/repo/pull/1'],
   ]);
 });
+
+test('runPlanTaskSequence returns manual_review_required when required checks do not finish before timeout', async () => {
+  const events = [];
+
+  const result = await runPlanTaskSequence(
+    {
+      repoPath: '/tmp/repo',
+      planPath: '/tmp/plan.md',
+      baseBranch: 'main',
+      taskHints: ['Task 1: Example'],
+      pollIntervalMs: 1,
+      checksTimeoutMs: 2,
+    },
+    {
+      executeTaskSlice: async ({ taskHint, attempt }) => {
+        events.push(['executeTaskSlice', taskHint, attempt]);
+        return buildTaskSliceResult(taskHint);
+      },
+      getRequiredCheckStatus: async ({ prUrl }) => {
+        events.push(['getRequiredCheckStatus', prUrl, 'pending']);
+        return 'pending';
+      },
+      getPullRequestHeadSha: async () => {
+        throw new Error('should not request head sha before checks pass');
+      },
+      getCodexReviewState: async () => {
+        throw new Error('should not poll review before checks pass');
+      },
+      mergePullRequest: async () => {
+        throw new Error('should not merge on timed out checks');
+      },
+      sleep: async (ms) => {
+        events.push(['sleep', ms]);
+      },
+    },
+  );
+
+  assert.equal(result.status, 'manual_review_required');
+  assert.deepEqual(result.tasks, [
+    {
+      task_hint: 'Task 1: Example',
+      selected_task: 'Task 1: Example',
+      status: 'manual_review_required',
+      attempts: 1,
+      repaired: false,
+      branch_name: 'codex/task-1',
+      pr_url: 'https://github.com/example/repo/pull/1',
+      findings: undefined,
+      pending_gate: 'required_checks',
+    },
+  ]);
+  assert.deepEqual(events, [
+    ['executeTaskSlice', 'Task 1: Example', 1],
+    ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pending'],
+    ['sleep', 1],
+    ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pending'],
+  ]);
+});
+
+test('runPlanTaskSequence returns manual_review_required when Codex review does not finish before timeout', async () => {
+  const events = [];
+
+  const result = await runPlanTaskSequence(
+    {
+      repoPath: '/tmp/repo',
+      planPath: '/tmp/plan.md',
+      baseBranch: 'main',
+      taskHints: ['Task 1: Example'],
+      pollIntervalMs: 1,
+      reviewTimeoutMs: 2,
+    },
+    {
+      executeTaskSlice: async ({ taskHint, attempt }) => {
+        events.push(['executeTaskSlice', taskHint, attempt]);
+        return buildTaskSliceResult(taskHint);
+      },
+      getRequiredCheckStatus: async ({ prUrl }) => {
+        events.push(['getRequiredCheckStatus', prUrl, 'pass']);
+        return 'pass';
+      },
+      getPullRequestHeadSha: async ({ prUrl }) => {
+        events.push(['getPullRequestHeadSha', prUrl, 'sha-current']);
+        return 'sha-current';
+      },
+      getCodexReviewState: async ({ prUrl, headSha }) => {
+        events.push(['getCodexReviewState', prUrl, headSha, 'pending']);
+        return { status: 'pending', findings: [] };
+      },
+      mergePullRequest: async () => {
+        throw new Error('should not merge on timed out review');
+      },
+      sleep: async (ms) => {
+        events.push(['sleep', ms]);
+      },
+    },
+  );
+
+  assert.equal(result.status, 'manual_review_required');
+  assert.deepEqual(result.tasks, [
+    {
+      task_hint: 'Task 1: Example',
+      selected_task: 'Task 1: Example',
+      status: 'manual_review_required',
+      attempts: 1,
+      repaired: false,
+      branch_name: 'codex/task-1',
+      pr_url: 'https://github.com/example/repo/pull/1',
+      findings: [],
+      pending_gate: 'codex_review',
+    },
+  ]);
+  assert.deepEqual(events, [
+    ['executeTaskSlice', 'Task 1: Example', 1],
+    ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pass'],
+    ['getPullRequestHeadSha', 'https://github.com/example/repo/pull/1', 'sha-current'],
+    ['getCodexReviewState', 'https://github.com/example/repo/pull/1', 'sha-current', 'pending'],
+    ['sleep', 1],
+    ['getCodexReviewState', 'https://github.com/example/repo/pull/1', 'sha-current', 'pending'],
+  ]);
+});

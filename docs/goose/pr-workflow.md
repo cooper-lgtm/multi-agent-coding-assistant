@@ -58,5 +58,8 @@ Current behavior:
 - waits for required GitHub checks before merge
 - waits for a Codex review on the current PR head SHA before merge
 - reruns the same task when Codex leaves inline findings for the current head SHA
+- defaults both check and review waiting windows to 30 minutes
+- supports `--checks-timeout-ms` and `--review-timeout-ms` overrides
+- returns `manual_review_required` instead of `failed` when a gate times out
 
 This script is intentionally validated first through deterministic fake `gh` / fake `goose` integration tests so the control flow can be trusted before relying on live external systems.

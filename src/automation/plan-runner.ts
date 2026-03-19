@@ -1,7 +1,8 @@
 export type PlanTaskExecutionStatus = 'completed' | 'blocked' | 'failed';
 export type PlanTaskMergeStatus = 'merged' | 'opened_not_merged' | 'not_opened';
-export type RequiredCheckStatus = 'pending' | 'pass' | 'fail';
-export type CodexReviewStatus = 'pending' | 'clean' | 'findings';
+export type RequiredCheckStatus = 'pending' | 'pass' | 'fail' | 'timed_out';
+export type CodexReviewStatus = 'pending' | 'clean' | 'findings' | 'timed_out';
+export type PlanRunnerPendingGate = 'required_checks' | 'codex_review';
 
 export interface CodexReviewFinding {
   path?: string;
@@ -32,6 +33,8 @@ export interface RunPlanTaskSequenceInput {
   baseBranch: string;
   taskHints: string[];
   pollIntervalMs?: number;
+  checksTimeoutMs?: number;
+  reviewTimeoutMs?: number;
   maxCheckPolls?: number;
   maxReviewPolls?: number;
   maxTaskAttempts?: number;
@@ -40,17 +43,18 @@ export interface RunPlanTaskSequenceInput {
 export interface RunPlanTaskSequenceTaskResult {
   task_hint: string;
   selected_task: string;
-  status: 'merged' | 'blocked' | 'failed';
+  status: 'merged' | 'blocked' | 'failed' | 'manual_review_required';
   attempts: number;
   repaired: boolean;
   branch_name?: string;
   pr_url?: string;
   review_id?: string;
   findings?: CodexReviewFinding[];
+  pending_gate?: PlanRunnerPendingGate;
 }
 
 export interface RunPlanTaskSequenceResult {
-  status: 'completed' | 'blocked' | 'failed';
+  status: 'completed' | 'blocked' | 'failed' | 'manual_review_required';
   tasks: RunPlanTaskSequenceTaskResult[];
 }
 
@@ -73,14 +77,23 @@ export interface PlanTaskSequenceDependencies {
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_MAX_POLLS = 60;
 const DEFAULT_MAX_TASK_ATTEMPTS = 5;
+const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 
 export async function runPlanTaskSequence(
   input: RunPlanTaskSequenceInput,
   deps: PlanTaskSequenceDependencies,
 ): Promise<RunPlanTaskSequenceResult> {
   const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-  const maxCheckPolls = input.maxCheckPolls ?? DEFAULT_MAX_POLLS;
-  const maxReviewPolls = input.maxReviewPolls ?? DEFAULT_MAX_POLLS;
+  const maxCheckPolls = resolveMaxPolls(
+    input.checksTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+    input.maxCheckPolls,
+    pollIntervalMs,
+  );
+  const maxReviewPolls = resolveMaxPolls(
+    input.reviewTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+    input.maxReviewPolls,
+    pollIntervalMs,
+  );
   const maxTaskAttempts = input.maxTaskAttempts ?? DEFAULT_MAX_TASK_ATTEMPTS;
 
   const tasks: RunPlanTaskSequenceTaskResult[] = [];
@@ -144,6 +157,22 @@ export async function runPlanTaskSequence(
       );
 
       if (checksStatus !== 'pass') {
+        if (checksStatus === 'timed_out') {
+          tasks.push({
+            task_hint: taskHint,
+            selected_task: execution.selected_task,
+            status: 'manual_review_required',
+            attempts: attempt,
+            repaired: attempt > 1,
+            branch_name: execution.branch_name,
+            pr_url: execution.pr_url,
+            findings: priorReview?.findings,
+            pending_gate: 'required_checks',
+          });
+
+          return { status: 'manual_review_required', tasks };
+        }
+
         tasks.push({
           task_hint: taskHint,
           selected_task: execution.selected_task,
@@ -186,6 +215,22 @@ export async function runPlanTaskSequence(
       if (review.status === 'findings') {
         priorReview = review;
         continue;
+      }
+
+      if (review.status === 'timed_out') {
+        tasks.push({
+          task_hint: taskHint,
+          selected_task: execution.selected_task,
+          status: 'manual_review_required',
+          attempts: attempt,
+          repaired: attempt > 1,
+          branch_name: execution.branch_name,
+          pr_url: execution.pr_url,
+          findings: review.findings,
+          pending_gate: 'codex_review',
+        });
+
+        return { status: 'manual_review_required', tasks };
       }
 
       tasks.push({
@@ -243,7 +288,7 @@ async function waitForRequiredChecks(
     }
   }
 
-  return 'fail';
+  return 'timed_out';
 }
 
 async function waitForCodexReview(
@@ -265,7 +310,23 @@ async function waitForCodexReview(
   }
 
   return {
-    status: 'pending',
+    status: 'timed_out',
     findings: [],
   };
+}
+
+function resolveMaxPolls(
+  timeoutMs: number | undefined,
+  explicitMaxPolls: number | undefined,
+  pollIntervalMs: number,
+): number {
+  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    return Math.max(1, Math.ceil(timeoutMs / pollIntervalMs));
+  }
+
+  if (typeof explicitMaxPolls === 'number' && Number.isFinite(explicitMaxPolls) && explicitMaxPolls > 0) {
+    return explicitMaxPolls;
+  }
+
+  return DEFAULT_MAX_POLLS;
 }

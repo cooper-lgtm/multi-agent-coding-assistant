@@ -164,6 +164,11 @@ It is aimed at the workflow where one plan document should execute as a sequence
 - Codex review on the current head SHA
 - merge only after the current review is clean
 
+Important behavior:
+- `--checks-timeout-ms` and `--review-timeout-ms` are available for explicit gate timeouts
+- both gates default to a 30 minute timeout when flags are omitted
+- timeout does not report `failed`; it returns `manual_review_required` so a human can inspect the PR and decide how to proceed
+
 The first implementation focuses on control-flow correctness and testability.
 Its regression surface lives in:
 - `tests/plan-runner.test.mjs`

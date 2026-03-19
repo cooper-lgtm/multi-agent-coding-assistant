@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -276,6 +276,124 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
         'gh api repos/example/repo/pulls/201/reviews',
         'gh api repos/example/repo/pulls/201/comments',
         'gh pr merge https://github.com/example/repo/pull/201 --merge --delete-branch',
+      ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc returns manual_review_required when Codex review exceeds the configured timeout', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-timeout-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Slow review task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Slow review task',
+              branch_name: 'codex/task-slow-review',
+              pr_url: 'https://github.com/example/repo/pull/301',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/slow-review.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '301': ['pass'],
+          },
+          headShas: {
+            '301': ['sha-301'],
+          },
+          reviews: {
+            '301': {
+              'sha-301': [{ status: 'pending' }, { status: 'pending' }],
+            },
+          },
+          comments: {
+            '301': {},
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--review-timeout-ms',
+        '2',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
+
+    assert.equal(result.status, 1);
+
+    const output = JSON.parse(result.stdout);
+    assert.deepEqual(output, {
+      status: 'manual_review_required',
+      tasks: [
+        {
+          task_hint: 'Task 1: Slow review task',
+          selected_task: 'Task 1: Slow review task',
+          status: 'manual_review_required',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-slow-review',
+          pr_url: 'https://github.com/example/repo/pull/301',
+          findings: [],
+          pending_gate: 'codex_review',
+        },
+      ],
+    });
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(finalState.merged, []);
+    assert.deepEqual(
+      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      [
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Slow review task',
+        'gh pr checks https://github.com/example/repo/pull/301 --required --json bucket',
+        'gh pr view https://github.com/example/repo/pull/301 --json headRefOid --jq .headRefOid',
+        'gh api repos/example/repo/pulls/301/reviews',
+        'gh api repos/example/repo/pulls/301/reviews',
       ],
     );
   } finally {

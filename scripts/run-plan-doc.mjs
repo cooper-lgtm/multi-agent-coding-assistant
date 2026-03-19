@@ -28,6 +28,8 @@ async function main() {
       baseBranch: options.baseBranch,
       taskHints,
       pollIntervalMs: options.pollIntervalMs,
+      checksTimeoutMs: options.checksTimeoutMs,
+      reviewTimeoutMs: options.reviewTimeoutMs,
       maxCheckPolls: options.maxCheckPolls,
       maxReviewPolls: options.maxReviewPolls,
     },
@@ -47,6 +49,8 @@ function parseArgs(args) {
     planPath: '',
     baseBranch: 'main',
     pollIntervalMs: 30_000,
+    checksTimeoutMs: 30 * 60_000,
+    reviewTimeoutMs: 30 * 60_000,
     maxCheckPolls: 60,
     maxReviewPolls: 60,
     tasks: [],
@@ -71,6 +75,14 @@ function parseArgs(args) {
         break;
       case '--poll-interval-ms':
         options.pollIntervalMs = Number(next);
+        index += 1;
+        break;
+      case '--checks-timeout-ms':
+        options.checksTimeoutMs = Number(next);
+        index += 1;
+        break;
+      case '--review-timeout-ms':
+        options.reviewTimeoutMs = Number(next);
         index += 1;
         break;
       case '--max-check-polls':
