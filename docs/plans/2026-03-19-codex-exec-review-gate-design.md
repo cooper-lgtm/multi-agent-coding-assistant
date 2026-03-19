@@ -14,6 +14,15 @@ This repository already has the right runtime seams for a local review worker:
 - `FileBackedRunStore` already writes `events.jsonl`, `runtime.json`, and `manifest.json`.
 - the repository already uses external-process adapters for worker execution through `goose-process-runner.ts`.
 
+OpenAI's published Codex review example also gives a strong baseline for this phase:
+- review should focus on correctness, performance, security, maintainability, and developer experience
+- findings should be actionable and introduced by the diff
+- comments should be short, direct, and tied to exact file/line locations
+- review should end with an overall correctness verdict and confidence score
+
+The GPT-5-Codex prompting guidance adds one more directly relevant rule:
+- keep the stable review prompt minimal and high-signal instead of over-prompting
+
 The missing piece is a real review gate implementation that:
 - runs locally instead of depending on GitHub-hosted `@codex review`
 - emits progress that a local orchestrator can observe
@@ -120,6 +129,7 @@ Proposed files:
 - `src/adapters/codex-exec-review-adapter.ts`
 - `prompts/review-agent-codex-exec.md`
 - `prompts/review-agent-output-schema.json`
+- `docs/reviews/strict-codex-review-rubric.md`
 
 ### 3. Compose review execution into the existing quality gate seam
 
@@ -161,6 +171,16 @@ If no actionable findings are returned:
 
 This keeps `MainOrchestrator.applyRetryDecision()` unchanged.
 
+### 6. Treat the strict review rubric as a first-class artifact
+
+Phase 1 should not bury review quality rules inside one prompt file alone.
+
+Add a stable rubric document under `docs/reviews/` so:
+- prompt text stays concise
+- repository-specific review rules stay reviewable
+- future backends can reuse the same review standard
+- the SDK phase can inherit the same correctness bar without rewriting policy
+
 ## Affected Modules
 
 - `src/adapters/`
@@ -168,6 +188,7 @@ This keeps `MainOrchestrator.applyRetryDecision()` unchanged.
 - `src/orchestrator/main-orchestrator.ts`
 - `src/workers/contracts.ts`
 - `src/examples/`
+- `docs/reviews/`
 - `prompts/`
 - `tests/`
 
@@ -185,6 +206,7 @@ This keeps `MainOrchestrator.applyRetryDecision()` unchanged.
 - [ ] the design keeps `QualityGateRunner` as the orchestrator seam
 - [ ] review outcomes map cleanly to `completed`, `needs_fix`, and `failed`
 - [ ] progress reporting is defined in a way that fits current runtime persistence
+- [ ] the design adds a repository-visible strict review rubric based on OpenAI's published review practices
 - [ ] the design explicitly defers SDK/thread abstraction to a later phase
 
 ## Validation

@@ -73,16 +73,28 @@ Expected:
 **Files:**
 - Create: `prompts/review-agent-codex-exec.md`
 - Create: `prompts/review-agent-output-schema.json`
+- Create: `docs/reviews/strict-codex-review-rubric.md`
 
 **Step 1: Add the strict review prompt**
 
 The prompt should:
+- follow the repository rubric in `docs/reviews/strict-codex-review-rubric.md`
+- stay short and high-signal
 - focus on correctness and actionable findings
 - prefer findings over summaries
 - support task-scoped review using changed files
 - require structured output compatible with runtime normalization
 
-**Step 2: Add the review schema**
+**Step 2: Add the strict rubric document**
+
+Document:
+- the OpenAI baseline rules from the official Codex review example
+- the repository-specific strictness extensions
+- severity discipline
+- output discipline
+- the “less is more” prompt rule from GPT-5-Codex guidance
+
+**Step 3: Add the review schema**
 
 Define a stable schema containing:
 - findings
@@ -90,7 +102,7 @@ Define a stable schema containing:
 - overall explanation
 - confidence score
 
-**Step 3: Sanity-check the prompt assets**
+**Step 4: Sanity-check the prompt assets**
 
 Run:
 
@@ -207,6 +219,7 @@ Document:
 - Verify: `src/adapters/codex-exec-process-runner.ts`
 - Verify: `src/adapters/codex-exec-review-adapter.ts`
 - Verify: `src/orchestrator/codex-exec-quality-gate-runner.ts`
+- Verify: `docs/reviews/strict-codex-review-rubric.md`
 - Verify: `prompts/review-agent-codex-exec.md`
 - Verify: `prompts/review-agent-output-schema.json`
 - Verify: `tests/codex-exec-process-runner.test.mjs`
@@ -230,6 +243,7 @@ Expected:
 ## Deliverables
 
 - a local Codex process runner
+- a repository-visible strict review rubric based on OpenAI review practices
 - a strict structured review prompt and output schema
 - a Codex-backed quality gate runner for `review-agent`
 - focused tests and a runnable demo
