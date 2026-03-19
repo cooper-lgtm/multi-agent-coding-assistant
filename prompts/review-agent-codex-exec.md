@@ -16,6 +16,7 @@ For each finding:
 - state the scenario or condition where it appears
 - keep the explanation short and direct
 - cite the exact file and the tightest useful line range
+- ensure `code_location.line_range.end` is greater than or equal to `code_location.line_range.start`
 - set `priority` to one of these conservative labels:
   - `P0` release-blocking or universally broken behavior
   - `P1` urgent issue for the next cycle

@@ -110,6 +110,7 @@
                     "minimum": 1
                   },
                   "end": {
+                    "description": "Must be greater than or equal to start; adapter normalization should reject reversed ranges.",
                     "type": "integer",
                     "minimum": 1
                   }

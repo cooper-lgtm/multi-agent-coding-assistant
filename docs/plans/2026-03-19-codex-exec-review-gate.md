@@ -46,6 +46,7 @@ Expected:
 
 Define:
 - invocation params for cwd, prompt path or prompt text, output schema path, and extra CLI args
+- timeout controls for the overall review duration and graceful/forced child-process termination
 - result shape for exit code, stdout, stderr, parsed events, and final response payload
 - optional progress callback for streamed JSONL events
 
@@ -53,6 +54,7 @@ Define:
 
 Implement:
 - `spawn('codex', ['exec', '--json', '-c', 'approval_policy=never', '--sandbox', 'read-only', ...])` or an equivalent non-interactive config profile
+- explicit timeout handling so stalled review processes are killed and surfaced as infrastructure failures
 - stdout/stderr buffering
 - line-by-line JSONL parsing
 - structured surfacing of process and parse failures
@@ -151,6 +153,7 @@ Note:
 - infrastructure failures must be represented by the adapter contract rather than forced through the model-output schema
 - overall verdict fields such as correctness, explanation, and confidence belong to the successful model payload described by the schema
 - `manual_review_required` is an adapter-only outcome for timeout/auth/process/schema failures, not a second model JSON shape
+- adapter normalization should also reject impossible successful payloads such as reversed line ranges even when the JSON schema cannot express that cross-field rule by itself
 
 **Step 3: Run adapter tests**
 
@@ -293,6 +296,8 @@ Document:
 - Verify: `tests/codex-exec-quality-gate-runner.test.mjs`
 
 **Step 1: Run focused validation**
+
+If Task 5 was retargeted to a different Goose entrypoint, replace the Phase 1 test commands below with the tests that directly exercise that entrypoint.
 
 Run:
 

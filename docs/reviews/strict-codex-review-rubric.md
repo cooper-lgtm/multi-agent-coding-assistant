@@ -53,6 +53,7 @@ Each finding should:
 - state the scenario or condition where the issue appears
 - remain short and direct
 - avoid praise, hedging, or filler
+- use an ordered line range where `end >= start`
 
 ### Severity discipline
 
@@ -78,6 +79,8 @@ Structured output should always include:
 
 This structured payload describes successful model review output only.
 Adapter-level outcomes such as `manual_review_required` for timeout/auth/process/schema failures live outside this schema and should not be forced through it.
+
+Because plain JSON Schema cannot compare `line_range.start` against `line_range.end`, adapter normalization should reject reversed ranges even after schema validation succeeds.
 
 Verdict discipline:
 - when `findings` is empty, `overall_correctness` should be `patch is correct`

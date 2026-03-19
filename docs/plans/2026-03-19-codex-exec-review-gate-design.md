@@ -132,6 +132,7 @@ That keeps Phase 1 small and useful while avoiding a partial orchestrator integr
 Create a small adapter beside `goose-process-runner.ts` that:
 - spawns `codex exec`
 - supports `--json`
+- enforces a configurable timeout and kills hung child processes
 - captures `stdout`, `stderr`, exit code, and parsed event lines
 - surfaces incremental callbacks so the orchestrator can record progress as runtime events
 
@@ -176,6 +177,7 @@ For successful review payloads, the schema and prompt should also keep `overall_
 The adapter should fail closed:
 - if explicit review scope is missing, it should not silently widen to a repository-wide review
 - if schema parsing, auth, process execution, or timeouts fail, it should return a review-infrastructure result instead of pretending the patch is clean
+- if a successful payload contains impossible locations such as `line_range.end < line_range.start`, adapter normalization should reject it even though the JSON schema cannot express that comparison directly
 
 Proposed files:
 - `src/adapters/codex-exec-review-adapter.ts`
