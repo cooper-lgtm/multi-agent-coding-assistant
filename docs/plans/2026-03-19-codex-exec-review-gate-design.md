@@ -167,7 +167,7 @@ The adapter result should be a typed repository contract, separate from the mode
 - `risk_notes`
 - `failure_kind` for process/auth/schema/timeout failures when applicable
 
-The JSON schema constrains only the model's successful review payload. It should not be treated as the full adapter contract for infrastructure failures.
+The JSON schema constrains only the model's successful review payload. It should not be treated as the full adapter contract for infrastructure failures, and `manual_review_required` should not be modeled as an alternate model JSON payload.
 
 For successful review payloads, the schema and prompt should also keep `overall_correctness` deterministic:
 - zero findings -> `patch is correct`

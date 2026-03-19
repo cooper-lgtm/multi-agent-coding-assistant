@@ -76,6 +76,9 @@ Structured output should always include:
 - explicit severity for each finding
 - exact file path and tight line range for each finding
 
+This structured payload describes successful model review output only.
+Adapter-level outcomes such as `manual_review_required` for timeout/auth/process/schema failures live outside this schema and should not be forced through it.
+
 Verdict discipline:
 - when `findings` is empty, `overall_correctness` should be `patch is correct`
 - when `findings` contains one or more items, `overall_correctness` should be `patch is incorrect`

@@ -149,7 +149,8 @@ Carry:
 Note:
 - the JSON schema constrains the model's successful review payload
 - infrastructure failures must be represented by the adapter contract rather than forced through the model-output schema
-- overall verdict fields such as correctness, explanation, and confidence should only be required when Codex returns a successful review payload, and should be omitted for `manual_review_required`
+- overall verdict fields such as correctness, explanation, and confidence belong to the successful model payload described by the schema
+- `manual_review_required` is an adapter-only outcome for timeout/auth/process/schema failures, not a second model JSON shape
 
 **Step 3: Run adapter tests**
 
