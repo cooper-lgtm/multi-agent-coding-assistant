@@ -1,5 +1,6 @@
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const HELP_TEXT = `multi-agent-coding-assistant CLI
 
@@ -61,7 +62,11 @@ function isCliEntrypoint(metaUrl: string): boolean {
     return false;
   }
 
-  return pathToFileURL(path.resolve(entryPath)).href === metaUrl;
+  try {
+    return realpathSync(path.resolve(entryPath)) === realpathSync(fileURLToPath(metaUrl));
+  } catch {
+    return pathToFileURL(path.resolve(entryPath)).href === metaUrl;
+  }
 }
 
 if (isCliEntrypoint(import.meta.url)) {

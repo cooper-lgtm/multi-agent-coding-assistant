@@ -1,6 +1,7 @@
 import type { AssignedAgent } from '../schemas/planning.js';
 import type { ExecutionNode, RuntimeState } from '../schemas/runtime.js';
 import type {
+  OpenClawExecutionError,
   OpenClawWorkerRoleRequest,
   OpenClawWorkerRoleResult,
 } from '../adapters/openclaw-runtime-adapter.js';
@@ -145,13 +146,15 @@ export class GooseBackedImplementationDispatcher implements ImplementationDispat
     const response = await this.executeRole(request);
 
     if (!response.ok) {
+      const status = response.error.retryable ? 'failed' : 'blocked';
+
       return {
         taskId: task.task_id,
         role: task.assigned_agent,
-        status: 'failed',
+        status,
         summary: response.error.message,
         changed_files: [...task.changed_files],
-        blocker_category: response.error.retryable ? 'unknown' : 'environment',
+        blocker_category: response.error.retryable ? 'unknown' : resolveAdapterErrorBlockerCategory(response.error),
         blocker_message: response.error.message,
         implementation_evidence: [response.error.message],
         test_evidence: [...task.test_evidence],
@@ -159,7 +162,7 @@ export class GooseBackedImplementationDispatcher implements ImplementationDispat
         commands_run: [...task.commands_run],
         test_results: structuredClone(task.test_results),
         risk_notes: [...task.risk_notes],
-        suggested_status: 'failed',
+        suggested_status: status,
         delivery_metadata: task.delivery_metadata ? structuredClone(task.delivery_metadata) : null,
         prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
       };
@@ -192,4 +195,16 @@ function buildImplementationPrompt(role: AssignedAgent): OpenClawWorkerRoleReque
     prompt_id: role,
     prompt_path: `prompts/${role}.md`,
   };
+}
+
+function resolveAdapterErrorBlockerCategory(error: OpenClawExecutionError): WorkerBlockerCategory {
+  if (error.code === 'invalid_payload') {
+    return 'requirements';
+  }
+
+  if (error.code === 'adapter_unavailable' || error.code === 'model_unavailable') {
+    return 'environment';
+  }
+
+  return 'unknown';
 }

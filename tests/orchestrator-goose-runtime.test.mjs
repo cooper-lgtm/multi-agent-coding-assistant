@@ -7,6 +7,7 @@ import {
   RetryEscalationManager,
   ReportingManager,
   buildDemoPlanningFixture,
+  buildExecutionDag,
   MockQualityGateRunner,
   GooseBackedImplementationDispatcher,
 } from '../dist/index.js';
@@ -52,6 +53,24 @@ function createGooseDispatcher(taskDecisions = {}) {
         },
       };
     },
+  });
+}
+
+function createGooseAdapterErrorDispatcher({ message, retryable, code = 'execution_failed' }) {
+  return new GooseBackedImplementationDispatcher({
+    repoPath: '/tmp/example-repo',
+    executeRole: async (request) => ({
+      envelope_version: 'openclaw.role-exec.v1',
+      ok: false,
+      role_type: request.role_type,
+      role: request.role,
+      model: request.model,
+      error: {
+        code,
+        message,
+        retryable,
+      },
+    }),
   });
 }
 
@@ -148,4 +167,50 @@ test('orchestrator retries goose implementation after needs_fix feedback and per
   const persisted = await runStore.load(result.runtime.run_id);
   assert.ok(persisted);
   assert.deepEqual(persisted.tasks['task-api-contract'].commands_run, task.commands_run);
+});
+
+test('orchestrator treats non-retryable goose adapter errors as terminal blocked work', async () => {
+  const fixture = buildDemoPlanningFixture();
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher: createGooseAdapterErrorDispatcher({
+      message: 'Goose binary is unavailable on this machine.',
+      retryable: false,
+      code: 'adapter_unavailable',
+    }),
+    qualityGateRunner: new MockQualityGateRunner(),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+  });
+
+  const task = result.runtime.tasks['task-api-contract'];
+  assert.equal(task.status, 'blocked');
+  assert.equal(task.retry_count, 0);
+  assert.equal(task.blocker_category, 'environment');
+  assert.match(task.blocker_message ?? '', /unavailable/i);
+  assert.ok(result.summary.events.every((event) => !/retry scheduled/i.test(event)));
+});
+
+test('retry escalation tolerates legacy tasks without fallback_models', () => {
+  const { runtime } = buildExecutionDag(buildDemoPlanningFixture(), { runId: 'legacy-fallback-models' });
+  const task = runtime.tasks['task-api-contract'];
+  const retryManager = new RetryEscalationManager({ availableModels: ['codex', 'claude'] });
+
+  task.retry_count = 1;
+  delete task.fallback_models;
+
+  const decision = retryManager.decide(task, 'implementation_failed');
+
+  assert.equal(decision.action, 'retry_with_upgraded_model');
+  assert.equal(decision.next_model, 'claude');
+  assert.equal(decision.retry_count, 2);
 });

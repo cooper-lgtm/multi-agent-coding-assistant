@@ -126,6 +126,28 @@ test('resume executes after explicit approval while preserving approval metadata
   assert.equal(resumed.runtime.approval_state?.approved_at !== null, true);
 });
 
+test('resume honors cancel requests before re-entering waiting-for-approval state', async () => {
+  const runStore = new FileBackedRunStore({ stateDir: buildStateDir('cancel-before-approval') });
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => buildDemoPlanningFixture(),
+    implementationDispatcher: new MockImplementationDispatcher(),
+    qualityGateRunner: new MockQualityGateRunner(),
+    retryManager: new RetryEscalationManager(),
+    reportingManager: new ReportingManager(),
+    runStore,
+  });
+
+  const initial = await orchestrator.run(buildRequest({ execution_control: { mode: 'confirm-before-run' } }));
+  await runStore.requestCancel(initial.runtime.run_id);
+
+  const resumed = await orchestrator.resume(initial.runtime.run_id);
+
+  assert.equal(resumed.runtime.status, 'cancelled');
+  assert.equal(resumed.summary.final_status, 'cancelled');
+  assert.equal(resumed.runtime.control.cancel_requested, true);
+  assert.ok(Object.values(resumed.runtime.tasks).every((task) => task.status === 'cancelled'));
+});
+
 test('summary exposes blocked and repeated-failure escalation paths', async () => {
   const runStore = new FileBackedRunStore({ stateDir: buildStateDir('summary') });
   const orchestrator = new MainOrchestrator({

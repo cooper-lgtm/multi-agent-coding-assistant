@@ -27,9 +27,9 @@ export interface WorkerTestResult {
 }
 
 export interface WorkerDeliveryMetadata {
-  branch_name?: string;
-  commit_sha?: string;
-  pr_url?: string;
+  branch_name?: string | null;
+  commit_sha?: string | null;
+  pr_url?: string | null;
 }
 
 export interface WorkerRetryHandoff {

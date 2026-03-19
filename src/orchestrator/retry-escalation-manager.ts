@@ -122,13 +122,17 @@ export class RetryEscalationManager implements RetryManager {
   private routeNextImplementationModel(
     agent: AssignedAgent,
     currentModel: string,
-    fallbackModels: string[],
+    fallbackModels?: string[] | null,
   ) {
+    const preferredModels = Array.isArray(fallbackModels) && fallbackModels.length > 0
+      ? fallbackModels
+      : undefined;
+
     return this.router.routeNext(
       agent,
       currentModel,
       { availableModels: this.availableModels },
-      { preferredModels: fallbackModels.length > 0 ? fallbackModels : undefined },
+      { preferredModels },
     );
   }
 
