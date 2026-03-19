@@ -106,7 +106,10 @@ Define a stable schema containing:
 - overall explanation
 - confidence score
 - explicit severity values aligned with the prompt and rubric
-- a successful-review verdict rule that keeps `overall_correctness` consistent with the findings count
+- successful-review field shapes that remain compatible with Codex strict structured outputs
+
+Keep the verdict rule that ties `overall_correctness` to the findings count in prompt instructions plus adapter normalization.
+Do not rely on JSON Schema conditionals such as `allOf` / `if` / `then`, because the strict structured-output schema subset rejects them.
 
 **Step 4: Sanity-check the prompt assets**
 
@@ -114,10 +117,11 @@ Run:
 
 ```bash
 node -e "JSON.parse(require('node:fs').readFileSync('prompts/review-agent-output-schema.json','utf8'))"
+codex exec --json --ephemeral -s read-only -c approval_policy=never --output-schema prompts/review-agent-output-schema.json 'Return an empty review with no findings, overall_correctness set to patch is correct, a short overall_explanation, and overall_confidence_score 0.5.'
 ```
 
 Expected:
-- command exits successfully
+- both commands exit successfully
 
 ### Task 4: Add the Codex review adapter
 

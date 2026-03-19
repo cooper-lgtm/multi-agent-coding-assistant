@@ -8,46 +8,6 @@
     "overall_explanation",
     "overall_confidence_score"
   ],
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "findings": {
-            "maxItems": 0
-          }
-        },
-        "required": [
-          "findings"
-        ]
-      },
-      "then": {
-        "properties": {
-          "overall_correctness": {
-            "const": "patch is correct"
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "findings": {
-            "minItems": 1
-          }
-        },
-        "required": [
-          "findings"
-        ]
-      },
-      "then": {
-        "properties": {
-          "overall_correctness": {
-            "const": "patch is incorrect"
-          }
-        }
-      }
-    }
-  ],
   "properties": {
     "findings": {
       "type": "array",
@@ -122,6 +82,7 @@
       }
     },
     "overall_correctness": {
+      "description": "Use 'patch is correct' when findings is empty and 'patch is incorrect' when findings contains one or more items. Prompt instructions and adapter normalization must enforce this cross-field rule because the strict structured-output schema subset does not support conditional composition keywords such as allOf/if/then.",
       "type": "string",
       "enum": [
         "patch is correct",

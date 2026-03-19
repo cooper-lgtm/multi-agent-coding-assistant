@@ -174,6 +174,8 @@ For successful review payloads, the schema and prompt should also keep `overall_
 - zero findings -> `patch is correct`
 - one or more findings -> `patch is incorrect`
 
+Because Codex strict structured outputs reject conditional composition keywords such as `allOf`, `if`, and `then`, keep that cross-field rule in prompt instructions plus adapter normalization instead of trying to enforce it inside the JSON schema itself.
+
 The adapter should fail closed:
 - if explicit review scope is missing, it should not silently widen to a repository-wide review
 - if schema parsing, auth, process execution, or timeouts fail, it should return a review-infrastructure result instead of pretending the patch is clean

@@ -80,6 +80,11 @@ Structured output should always include:
 This structured payload describes successful model review output only.
 Adapter-level outcomes such as `manual_review_required` for timeout/auth/process/schema failures live outside this schema and should not be forced through it.
 
+The strict structured-output schema subset currently rejects conditional composition keywords such as `allOf`, `if`, and `then`, so verdict consistency cannot be enforced in the schema itself.
+Prompt instructions plus adapter normalization should enforce:
+- `findings = []` -> `overall_correctness = patch is correct`
+- `findings.length > 0` -> `overall_correctness = patch is incorrect`
+
 Because plain JSON Schema cannot compare `line_range.start` against `line_range.end`, adapter normalization should reject reversed ranges even after schema validation succeeds.
 
 Verdict discipline:
