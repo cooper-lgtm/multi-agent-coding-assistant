@@ -63,10 +63,17 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after che
           },
           reviews: {
             '101': {
-              'sha-101': [{ status: 'pending' }, { status: 'clean', review_id: 5001 }],
+              'sha-101': [
+                { status: 'pending' },
+                { status: 'clean', review_id: 5001 },
+                { status: 'clean', review_id: 5001 },
+              ],
             },
             '102': {
-              'sha-102': [{ status: 'clean', review_id: 5002 }],
+              'sha-102': [
+                { status: 'clean', review_id: 5002 },
+                { status: 'clean', review_id: 5002 },
+              ],
             },
           },
           comments: {
@@ -135,10 +142,14 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after che
         'gh api repos/example/repo/pulls/101/reviews',
         'gh api repos/example/repo/pulls/101/reviews',
         'gh api --paginate --slurp repos/example/repo/pulls/101/comments',
+        'gh api repos/example/repo/pulls/101/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/101/comments',
         'gh pr merge https://github.com/example/repo/pull/101 --merge --delete-branch',
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 2: Second task',
         'gh pr checks https://github.com/example/repo/pull/102 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/102 --json headRefOid --jq .headRefOid',
+        'gh api repos/example/repo/pulls/102/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/102/comments',
         'gh api repos/example/repo/pulls/102/reviews',
         'gh api --paginate --slurp repos/example/repo/pulls/102/comments',
         'gh pr merge https://github.com/example/repo/pull/102 --merge --delete-branch',
@@ -200,7 +211,10 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
           reviews: {
             '201': {
               'sha-201-a': [{ status: 'clean', review_id: 7001 }],
-              'sha-201-b': [{ status: 'clean', review_id: 7002 }],
+              'sha-201-b': [
+                { status: 'clean', review_id: 7002 },
+                { status: 'clean', review_id: 7002 },
+              ],
             },
           },
           comments: {
@@ -302,11 +316,273 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
         'gh api repos/example/repo/pulls/201/reviews',
         'gh api --paginate --slurp repos/example/repo/pulls/201/comments',
+        'gh api repos/example/repo/pulls/201/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/201/comments',
         'gh pr merge https://github.com/example/repo/pull/201 --merge --delete-branch',
       ],
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc keeps polling when a current-head review exists before its inline findings land', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-review-race-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Race task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Race task',
+              branch_name: 'codex/task-race',
+              pr_url: 'https://github.com/example/repo/pull/401',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/race.ts'],
+              validation_commands: ['npm run build'],
+            },
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Race task',
+              branch_name: 'codex/task-race',
+              pr_url: 'https://github.com/example/repo/pull/401',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/race.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '401': ['pass', 'pass'],
+          },
+          headShas: {
+            '401': ['sha-401-a', 'sha-401-b'],
+          },
+          reviews: {
+            '401': {
+              'sha-401-a': [
+                { status: 'clean', review_id: 8001 },
+                { status: 'clean', review_id: 8001 },
+              ],
+              'sha-401-b': [
+                { status: 'clean', review_id: 8002 },
+                { status: 'clean', review_id: 8002 },
+              ],
+            },
+          },
+          comments: {
+            '401': {
+              '8001': {
+                polls: [
+                  [],
+                  [{ path: 'src/race.ts', body: 'Late finding lands after review object.' }],
+                ],
+              },
+              '8002': {
+                polls: [[], []],
+              },
+            },
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const output = execFileSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-check-polls',
+        '5',
+        '--max-review-polls',
+        '5',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
+
+    const result = JSON.parse(output);
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(result.tasks, [
+      {
+        task_hint: 'Task 1: Race task',
+        selected_task: 'Task 1: Race task',
+        status: 'merged',
+        attempts: 2,
+        repaired: true,
+        branch_name: 'codex/task-race',
+        pr_url: 'https://github.com/example/repo/pull/401',
+        review_id: '8002',
+      },
+    ]);
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(finalState.merged, ['401']);
+    assert.deepEqual(
+      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      [
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task',
+        'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
+        'gh pr view https://github.com/example/repo/pull/401 --json headRefOid --jq .headRefOid',
+        'gh api repos/example/repo/pulls/401/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/401/comments',
+        'gh api repos/example/repo/pulls/401/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/401/comments',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task --params prior_review=[{"path":"src/race.ts","body":"Late finding lands after review object."}]',
+        'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
+        'gh pr view https://github.com/example/repo/pull/401 --json headRefOid --jq .headRefOid',
+        'gh api repos/example/repo/pulls/401/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/401/comments',
+        'gh api repos/example/repo/pulls/401/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/401/comments',
+        'gh pr merge https://github.com/example/repo/pull/401 --merge --delete-branch',
+      ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc treats cancelled and skipped required checks as terminal failures', async () => {
+  for (const bucket of ['cancel', 'skipping']) {
+    const tempRoot = await mkdtemp(path.join(tmpdir(), `plan-runner-check-${bucket}-`));
+    const planPath = path.join(tempRoot, 'plan.md');
+    const statePath = path.join(tempRoot, 'state.json');
+
+    try {
+      await writeFile(
+        planPath,
+        [
+          '# Example Plan',
+          '',
+          '### Task 1: Terminal check task',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+
+      await writeFile(
+        statePath,
+        JSON.stringify(
+          {
+            commands: [],
+            gooseRuns: [
+              {
+                status: 'completed',
+                selected_task: 'Task 1: Terminal check task',
+                branch_name: 'codex/task-terminal-check',
+                pr_url: 'https://github.com/example/repo/pull/501',
+                merge_status: 'opened_not_merged',
+                changed_files: ['src/terminal-check.ts'],
+                validation_commands: ['npm run build'],
+              },
+            ],
+            checks: {
+              '501': [bucket],
+            },
+            headShas: {
+              '501': ['sha-should-not-be-read'],
+            },
+            reviews: {},
+            comments: {},
+            merged: [],
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+
+      const result = spawnSync(
+        'node',
+        [
+          scriptPath,
+          '--repo-path',
+          projectRoot,
+          '--plan-path',
+          planPath,
+          '--base-branch',
+          'main',
+          '--poll-interval-ms',
+          '1',
+          '--checks-timeout-ms',
+          '2',
+        ],
+        {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+            PLAN_RUNNER_FAKE_STATE: statePath,
+          },
+        },
+      );
+
+      assert.equal(result.status, 1);
+
+      const output = JSON.parse(result.stdout);
+      assert.deepEqual(output, {
+        status: 'failed',
+        tasks: [
+          {
+            task_hint: 'Task 1: Terminal check task',
+            selected_task: 'Task 1: Terminal check task',
+            status: 'failed',
+            attempts: 1,
+            repaired: false,
+            branch_name: 'codex/task-terminal-check',
+            pr_url: 'https://github.com/example/repo/pull/501',
+          },
+        ],
+      });
+
+      const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+      assert.deepEqual(finalState.merged, []);
+      assert.deepEqual(
+        finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+        [
+          'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal check task',
+          'gh pr checks https://github.com/example/repo/pull/501 --required --json bucket',
+        ],
+      );
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
   }
 });
 

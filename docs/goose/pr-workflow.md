@@ -72,7 +72,9 @@ Current behavior:
 - parses `### Task N: ...` headings from the target plan document
 - runs goose once per task-sized slice
 - waits for required GitHub checks before merge
+- treats required-check terminal buckets like `cancel` / `skipping` as immediate failures instead of polling until timeout
 - waits for a Codex review on the current PR head SHA before merge
+- requires the same zero-finding current-head Codex review to be observed twice before treating it as clean, so delayed inline comments cannot race the merge
 - reruns the same task when Codex leaves inline findings for the current head SHA
 - defaults both check and review waiting windows to 30 minutes
 - supports `--checks-timeout-ms` and `--review-timeout-ms` overrides

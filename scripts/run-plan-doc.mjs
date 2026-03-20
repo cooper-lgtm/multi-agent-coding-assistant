@@ -114,6 +114,8 @@ function extractPlanTaskHints(markdown) {
 }
 
 function createShellDependencies({ cwd }) {
+  const cleanReviewObservationByHead = new Map();
+
   return {
     executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch, priorReview }) => {
       const gooseArgs = [
@@ -160,7 +162,11 @@ function createShellDependencies({ cwd }) {
         return 'pending';
       }
 
-      if (checks.some((check) => check.bucket === 'fail')) {
+      if (
+        checks.some((check) => {
+          return ['fail', 'cancel', 'cancelled', 'skipping', 'skipped'].includes(check.bucket);
+        })
+      ) {
         return 'fail';
       }
 
@@ -174,6 +180,7 @@ function createShellDependencies({ cwd }) {
       );
     },
     getCodexReviewState: async ({ prUrl, headSha }) => {
+      const observationKey = `${prUrl}::${headSha}`;
       const { owner, repo, number } = parseGitHubPrUrl(prUrl);
       const reviews = JSON.parse(
         await runCommand(
@@ -189,6 +196,7 @@ function createShellDependencies({ cwd }) {
 
       const latestReview = matchingReviews.at(-1);
       if (!latestReview) {
+        cleanReviewObservationByHead.delete(observationKey);
         return { status: 'pending', findings: [] };
       }
 
@@ -213,9 +221,25 @@ function createShellDependencies({ cwd }) {
           body: comment.body,
         }));
 
+      const reviewId = String(latestReview.id);
+      if (findings.length === 0) {
+        const previousObservation = cleanReviewObservationByHead.get(observationKey);
+        cleanReviewObservationByHead.set(observationKey, reviewId);
+
+        if (previousObservation !== reviewId) {
+          return {
+            status: 'pending',
+            review_id: reviewId,
+            findings: [],
+          };
+        }
+      } else {
+        cleanReviewObservationByHead.delete(observationKey);
+      }
+
       return {
         status: findings.length > 0 ? 'findings' : 'clean',
-        review_id: String(latestReview.id),
+        review_id: reviewId,
         findings,
       };
     },

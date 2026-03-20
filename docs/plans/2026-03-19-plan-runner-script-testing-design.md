@@ -131,8 +131,10 @@ Add two complementary test layers:
 
 These tests should prove:
 - checks must pass before merge
+- terminal required-check buckets like `cancel` or `skipping` stop the loop immediately instead of timing out
 - a green Codex request workflow is not enough
 - only reviews for the current PR head SHA count
+- a zero-finding current-head review is only considered clean after a stable re-poll, so delayed inline comments cannot race the merge
 - inline findings force a repair loop
 - no findings on the current SHA allow merge and continuation
 

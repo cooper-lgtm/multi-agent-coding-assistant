@@ -139,6 +139,15 @@ function normalizeApiArguments(subcommand, target, argv) {
 }
 
 function formatCommentPages(commentState, reviewId, options) {
+  if (commentState && typeof commentState === 'object' && !Array.isArray(commentState)) {
+    if (Array.isArray(commentState.polls)) {
+      const nextPoll = shiftQueue(commentState.polls, []);
+      return formatCommentPages(nextPoll, reviewId, options);
+    }
+
+    return [[]];
+  }
+
   if (!Array.isArray(commentState)) {
     return [[]];
   }
