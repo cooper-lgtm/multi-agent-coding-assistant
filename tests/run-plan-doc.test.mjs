@@ -477,112 +477,468 @@ test('run-plan-doc keeps polling when a current-head review exists before its in
   }
 });
 
-test('run-plan-doc treats cancelled and skipped required checks as terminal failures', async () => {
-  for (const bucket of ['cancel', 'skipping']) {
-    const tempRoot = await mkdtemp(path.join(tmpdir(), `plan-runner-check-${bucket}-`));
-    const planPath = path.join(tempRoot, 'plan.md');
-    const statePath = path.join(tempRoot, 'state.json');
+test('run-plan-doc treats cancelled required checks as terminal failures', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-check-cancel-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
 
-    try {
-      await writeFile(
-        planPath,
-        [
-          '# Example Plan',
-          '',
-          '### Task 1: Terminal check task',
-          '',
-        ].join('\n'),
-        'utf8',
-      );
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Terminal check task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
 
-      await writeFile(
-        statePath,
-        JSON.stringify(
-          {
-            commands: [],
-            gooseRuns: [
-              {
-                status: 'completed',
-                selected_task: 'Task 1: Terminal check task',
-                branch_name: 'codex/task-terminal-check',
-                pr_url: 'https://github.com/example/repo/pull/501',
-                merge_status: 'opened_not_merged',
-                changed_files: ['src/terminal-check.ts'],
-                validation_commands: ['npm run build'],
-              },
-            ],
-            checks: {
-              '501': [bucket],
-            },
-            headShas: {
-              '501': ['sha-should-not-be-read'],
-            },
-            reviews: {},
-            comments: {},
-            merged: [],
-          },
-          null,
-          2,
-        ),
-        'utf8',
-      );
-
-      const result = spawnSync(
-        'node',
-        [
-          scriptPath,
-          '--repo-path',
-          projectRoot,
-          '--plan-path',
-          planPath,
-          '--base-branch',
-          'main',
-          '--poll-interval-ms',
-          '1',
-          '--checks-timeout-ms',
-          '2',
-        ],
+    await writeFile(
+      statePath,
+      JSON.stringify(
         {
-          cwd: projectRoot,
-          encoding: 'utf8',
-          env: {
-            ...process.env,
-            PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
-            PLAN_RUNNER_FAKE_STATE: statePath,
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Terminal check task',
+              branch_name: 'codex/task-terminal-check',
+              pr_url: 'https://github.com/example/repo/pull/501',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/terminal-check.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '501': ['cancel'],
           },
+          headShas: {
+            '501': ['sha-should-not-be-read'],
+          },
+          reviews: {},
+          comments: {},
+          merged: [],
         },
-      );
+        null,
+        2,
+      ),
+      'utf8',
+    );
 
-      assert.equal(result.status, 1);
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--checks-timeout-ms',
+        '2',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
 
-      const output = JSON.parse(result.stdout);
-      assert.deepEqual(output, {
-        status: 'failed',
-        tasks: [
-          {
-            task_hint: 'Task 1: Terminal check task',
-            selected_task: 'Task 1: Terminal check task',
-            status: 'failed',
-            attempts: 1,
-            repaired: false,
-            branch_name: 'codex/task-terminal-check',
-            pr_url: 'https://github.com/example/repo/pull/501',
+    assert.equal(result.status, 1);
+
+    const output = JSON.parse(result.stdout);
+    assert.deepEqual(output, {
+      status: 'failed',
+      tasks: [
+        {
+          task_hint: 'Task 1: Terminal check task',
+          selected_task: 'Task 1: Terminal check task',
+          status: 'failed',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-terminal-check',
+          pr_url: 'https://github.com/example/repo/pull/501',
+        },
+      ],
+    });
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(finalState.merged, []);
+    assert.deepEqual(
+      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      [
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal check task',
+        'gh pr checks https://github.com/example/repo/pull/501 --required --json bucket',
+      ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc treats skipped required checks as pass-equivalent when review is clean', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-check-skipping-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Skipped check task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Skipped check task',
+              branch_name: 'codex/task-skipping-check',
+              pr_url: 'https://github.com/example/repo/pull/502',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/skipping-check.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '502': ['skipping'],
           },
-        ],
-      });
+          headShas: {
+            '502': ['sha-502'],
+          },
+          reviews: {
+            '502': {
+              'sha-502': [
+                { status: 'clean', review_id: 9001 },
+                { status: 'clean', review_id: 9001 },
+              ],
+            },
+          },
+          comments: {
+            '502': {
+              '9001': [],
+            },
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
 
-      const finalState = JSON.parse(await readFile(statePath, 'utf8'));
-      assert.deepEqual(finalState.merged, []);
-      assert.deepEqual(
-        finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
-        [
-          'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal check task',
-          'gh pr checks https://github.com/example/repo/pull/501 --required --json bucket',
-        ],
-      );
-    } finally {
-      await rm(tempRoot, { recursive: true, force: true });
-    }
+    const output = execFileSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-review-polls',
+        '5',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
+
+    const result = JSON.parse(output);
+    assert.deepEqual(result, {
+      status: 'completed',
+      tasks: [
+        {
+          task_hint: 'Task 1: Skipped check task',
+          selected_task: 'Task 1: Skipped check task',
+          status: 'merged',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-skipping-check',
+          pr_url: 'https://github.com/example/repo/pull/502',
+          review_id: '9001',
+        },
+      ],
+    });
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(finalState.merged, ['502']);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc confirms a clean review when max review polls is 1', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-single-review-poll-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: One poll task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: One poll task',
+              branch_name: 'codex/task-one-poll',
+              pr_url: 'https://github.com/example/repo/pull/503',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/one-poll.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '503': ['pass'],
+          },
+          headShas: {
+            '503': ['sha-503'],
+          },
+          reviews: {
+            '503': {
+              'sha-503': [
+                { status: 'clean', review_id: 9101 },
+                { status: 'clean', review_id: 9101 },
+              ],
+            },
+          },
+          comments: {
+            '503': {
+              '9101': [],
+            },
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const output = execFileSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-review-polls',
+        '1',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
+
+    const result = JSON.parse(output);
+    assert.deepEqual(result, {
+      status: 'completed',
+      tasks: [
+        {
+          task_hint: 'Task 1: One poll task',
+          selected_task: 'Task 1: One poll task',
+          status: 'merged',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-one-poll',
+          pr_url: 'https://github.com/example/repo/pull/503',
+          review_id: '9101',
+        },
+      ],
+    });
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(finalState.merged, ['503']);
+    assert.deepEqual(
+      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      [
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: One poll task',
+        'gh pr checks https://github.com/example/repo/pull/503 --required --json bucket',
+        'gh pr view https://github.com/example/repo/pull/503 --json headRefOid --jq .headRefOid',
+        'gh api repos/example/repo/pulls/503/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/503/comments',
+        'gh api repos/example/repo/pulls/503/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/503/comments',
+        'gh pr merge https://github.com/example/repo/pull/503 --merge --delete-branch',
+      ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc does not bypass the clean-review debounce on the final poll when more than one review poll is configured', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-final-review-debounce-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Final poll debounce task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Final poll debounce task',
+              branch_name: 'codex/task-final-poll-debounce',
+              pr_url: 'https://github.com/example/repo/pull/504',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/final-poll-debounce.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '504': ['pass'],
+          },
+          headShas: {
+            '504': ['sha-504'],
+          },
+          reviews: {
+            '504': {
+              'sha-504': [
+                { status: 'pending' },
+                { status: 'clean', review_id: 9201 },
+                { status: 'clean', review_id: 9201 },
+              ],
+            },
+          },
+          comments: {
+            '504': {
+              '9201': [],
+            },
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-review-polls',
+        '2',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
+
+    assert.equal(result.status, 1);
+
+    const output = JSON.parse(result.stdout);
+    assert.deepEqual(output, {
+      status: 'manual_review_required',
+      tasks: [
+        {
+          task_hint: 'Task 1: Final poll debounce task',
+          selected_task: 'Task 1: Final poll debounce task',
+          status: 'manual_review_required',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-final-poll-debounce',
+          pr_url: 'https://github.com/example/repo/pull/504',
+          findings: [],
+          pending_gate: 'codex_review',
+        },
+      ],
+    });
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(finalState.merged, []);
+    assert.deepEqual(
+      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      [
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Final poll debounce task',
+        'gh pr checks https://github.com/example/repo/pull/504 --required --json bucket',
+        'gh pr view https://github.com/example/repo/pull/504 --json headRefOid --jq .headRefOid',
+        'gh api repos/example/repo/pulls/504/reviews',
+        'gh api repos/example/repo/pulls/504/reviews',
+        'gh api --paginate --slurp repos/example/repo/pulls/504/comments',
+      ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
   }
 });
 

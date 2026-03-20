@@ -164,13 +164,13 @@ function createShellDependencies({ cwd }) {
 
       if (
         checks.some((check) => {
-          return ['fail', 'cancel', 'cancelled', 'skipping', 'skipped'].includes(check.bucket);
+          return ['fail', 'cancel', 'cancelled'].includes(check.bucket);
         })
       ) {
         return 'fail';
       }
 
-      return checks.every((check) => check.bucket === 'pass') ? 'pass' : 'pending';
+      return checks.every((check) => ['pass', 'skipping', 'skipped'].includes(check.bucket)) ? 'pass' : 'pending';
     },
     getPullRequestHeadSha: async ({ prUrl }) => {
       return runCommand(

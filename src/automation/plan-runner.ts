@@ -85,7 +85,15 @@ export async function runPlanTaskSequence(
 ): Promise<RunPlanTaskSequenceResult> {
   const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const maxCheckPolls = resolveMaxPolls(input.maxCheckPolls, input.checksTimeoutMs ?? DEFAULT_TIMEOUT_MS, pollIntervalMs);
-  const maxReviewPolls = resolveMaxPolls(input.maxReviewPolls, input.reviewTimeoutMs ?? DEFAULT_TIMEOUT_MS, pollIntervalMs);
+  const reviewTimeoutMs = (
+    typeof input.reviewTimeoutMs === 'number' &&
+    Number.isFinite(input.reviewTimeoutMs) &&
+    input.reviewTimeoutMs > 0
+  )
+    ? input.reviewTimeoutMs
+    : DEFAULT_TIMEOUT_MS;
+  const maxReviewPolls = resolveMaxPolls(input.maxReviewPolls, reviewTimeoutMs, pollIntervalMs);
+  const singlePollConfirmationDelayMs = Math.min(pollIntervalMs, reviewTimeoutMs);
   const maxTaskAttempts = input.maxTaskAttempts ?? DEFAULT_MAX_TASK_ATTEMPTS;
 
   const tasks: RunPlanTaskSequenceTaskResult[] = [];
@@ -185,6 +193,7 @@ export async function runPlanTaskSequence(
         headSha,
         maxReviewPolls,
         pollIntervalMs,
+        singlePollConfirmationDelayMs,
         deps,
       );
 
@@ -288,12 +297,28 @@ async function waitForCodexReview(
   headSha: string,
   maxPolls: number,
   pollIntervalMs: number,
+  singlePollConfirmationDelayMs: number,
   deps: Pick<PlanTaskSequenceDependencies, 'getCodexReviewState' | 'sleep'>,
 ): Promise<CodexReviewState> {
   for (let poll = 1; poll <= maxPolls; poll += 1) {
     const state = await deps.getCodexReviewState({ prUrl, headSha });
     if (state.status !== 'pending') {
       return state;
+    }
+
+    // Only the single-poll configuration gets an extra debounce wait.
+    // Multi-poll runs must keep using their later scheduled poll so delayed
+    // inline comments cannot race the merge.
+    if (
+      maxPolls === 1 &&
+      typeof state.review_id === 'string' &&
+      state.findings.length === 0
+    ) {
+      await deps.sleep(singlePollConfirmationDelayMs);
+      const confirmedState = await deps.getCodexReviewState({ prUrl, headSha });
+      if (confirmedState.status !== 'pending') {
+        return confirmedState;
+      }
     }
 
     if (poll < maxPolls) {

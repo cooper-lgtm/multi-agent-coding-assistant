@@ -62,7 +62,7 @@ node --test tests/cli-smoke.test.mjs
 For plan documents that should execute one task-sized PR at a time, the repository now includes:
 
 ```bash
-node scripts/run-plan-doc.mjs \
+npm run build && node scripts/run-plan-doc.mjs \
   --repo-path /absolute/path/to/repo \
   --plan-path /absolute/path/to/plan.md \
   --base-branch main
@@ -72,9 +72,11 @@ Current behavior:
 - parses `### Task N: ...` headings from the target plan document
 - runs goose once per task-sized slice
 - waits for required GitHub checks before merge
-- treats required-check terminal buckets like `cancel` / `skipping` as immediate failures instead of polling until timeout
+- treats required-check terminal buckets like `cancel` as immediate failures instead of polling until timeout
+- treats skipped required checks as pass-equivalent when GitHub already considers the required check merge-safe
 - waits for a Codex review on the current PR head SHA before merge
-- requires the same zero-finding current-head Codex review to be observed twice before treating it as clean, so delayed inline comments cannot race the merge
+- requires the same zero-finding current-head Codex review to be observed twice before treating it as clean when a follow-up poll is available, so delayed inline comments cannot race the merge
+- when only one review poll is configured, waits up to one poll interval, capped by the configured review timeout, and then performs one confirmation pass before treating a debounced zero-finding review as clean
 - reruns the same task when Codex leaves inline findings for the current head SHA
 - defaults both check and review waiting windows to 30 minutes
 - supports `--checks-timeout-ms` and `--review-timeout-ms` overrides

@@ -150,12 +150,14 @@ npm run demo:orchestrator
 npm run demo:adapter
 npm run demo:planning
 npm run cli -- --help
-node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
+npm run build && node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
 ```
 
 ## Plan Runner Script
 
 The repository now includes a scriptable plan runner at `scripts/run-plan-doc.mjs`.
+
+Run `npm run build` before invoking it so `dist/index.js` matches the current checked-out TypeScript sources.
 
 It is aimed at the workflow where one plan document should execute as a sequence of:
 - one task-sized branch

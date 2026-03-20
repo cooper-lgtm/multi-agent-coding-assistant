@@ -200,6 +200,8 @@ Map local review outcomes to the existing Goose automation states:
 
 Do not send local review infrastructure failures back through the implementation retry loop as if the author needs to change code.
 
+When this blocking gate becomes the checked-in Goose runtime behavior, update the active workflow docs in the same change so they stop advertising the pre-PR21 async merge contract. At minimum, reconcile `docs/goose/pr-workflow.md` and the current Goose rollout plan doc that still describes the non-blocking review baseline.
+
 **Step 3: Add focused integration tests**
 
 Cover:
