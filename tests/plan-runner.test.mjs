@@ -331,6 +331,72 @@ test('runPlanTaskSequence confirms a debounced clean review when only one review
   ]);
 });
 
+test('runPlanTaskSequence uses the one-poll confirmation pass even when the first poll has no review id yet', async () => {
+  const events = [];
+  const reviewStates = [
+    {
+      status: 'pending',
+      findings: [],
+    },
+    {
+      status: 'clean',
+      review_id: 'review-late',
+      findings: [],
+    },
+  ];
+
+  const result = await runPlanTaskSequence(
+    {
+      repoPath: '/tmp/repo',
+      planPath: '/tmp/plan.md',
+      baseBranch: 'main',
+      taskHints: ['Task 1: Example'],
+      pollIntervalMs: 1,
+      maxReviewPolls: 1,
+    },
+    {
+      executeTaskSlice: async ({ taskHint, attempt }) => {
+        events.push(['executeTaskSlice', taskHint, attempt]);
+        return buildTaskSliceResult(taskHint);
+      },
+      getRequiredCheckStatus: async ({ prUrl }) => {
+        events.push(['getRequiredCheckStatus', prUrl, 'pass']);
+        return 'pass';
+      },
+      getPullRequestHeadSha: async ({ prUrl }) => {
+        events.push(['getPullRequestHeadSha', prUrl, 'sha-current']);
+        return 'sha-current';
+      },
+      getCodexReviewState: async ({ prUrl, headSha }) => {
+        const state = reviewStates.shift() ?? {
+          status: 'clean',
+          review_id: 'review-late',
+          findings: [],
+        };
+        events.push(['getCodexReviewState', prUrl, headSha, state.status, state.review_id ?? null]);
+        return state;
+      },
+      mergePullRequest: async ({ prUrl }) => {
+        events.push(['mergePullRequest', prUrl]);
+      },
+      sleep: async (ms) => {
+        events.push(['sleep', ms]);
+      },
+    },
+  );
+
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(events, [
+    ['executeTaskSlice', 'Task 1: Example', 1],
+    ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pass'],
+    ['getPullRequestHeadSha', 'https://github.com/example/repo/pull/1', 'sha-current'],
+    ['getCodexReviewState', 'https://github.com/example/repo/pull/1', 'sha-current', 'pending', null],
+    ['sleep', 1],
+    ['getCodexReviewState', 'https://github.com/example/repo/pull/1', 'sha-current', 'clean', 'review-late'],
+    ['mergePullRequest', 'https://github.com/example/repo/pull/1'],
+  ]);
+});
+
 test('runPlanTaskSequence keeps the debounce on the final poll when more than one review poll is configured', async () => {
   const events = [];
   const reviewStates = [

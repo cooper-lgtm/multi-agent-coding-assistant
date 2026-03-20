@@ -309,11 +309,7 @@ async function waitForCodexReview(
     // Only the single-poll configuration gets an extra debounce wait.
     // Multi-poll runs must keep using their later scheduled poll so delayed
     // inline comments cannot race the merge.
-    if (
-      maxPolls === 1 &&
-      typeof state.review_id === 'string' &&
-      state.findings.length === 0
-    ) {
+    if (maxPolls === 1) {
       await deps.sleep(singlePollConfirmationDelayMs);
       const confirmedState = await deps.getCodexReviewState({ prUrl, headSha });
       if (confirmedState.status !== 'pending') {
