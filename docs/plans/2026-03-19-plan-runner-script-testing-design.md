@@ -131,8 +131,12 @@ Add two complementary test layers:
 
 These tests should prove:
 - checks must pass before merge
+- terminal required-check buckets like `cancel` stop the loop immediately instead of timing out
+- skipped required checks can still satisfy the gate when GitHub treats the required check as merge-safe
 - a green Codex request workflow is not enough
 - only reviews for the current PR head SHA count
+- a zero-finding current-head review is only considered clean after a stable re-poll when another poll is available, so delayed inline comments cannot race the merge
+- one-poll configurations wait up to one poll interval, capped by the configured review timeout, and use one confirmation pass instead of regressing to `manual_review_required`
 - inline findings force a repair loop
 - no findings on the current SHA allow merge and continuation
 

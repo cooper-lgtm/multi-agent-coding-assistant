@@ -153,6 +153,17 @@ test('execute-next-plan-task relies on automatic codex review workflow', () => {
   assert.match(recipe, /automatic Codex review/i);
 });
 
+test('execute-next-plan-task refreshes checked-in context before merge', () => {
+  const recipe = fs.readFileSync('.goose/recipes/execute-next-plan-task.yaml', 'utf8');
+  const refreshIndex = recipe.indexOf('refresh the repository context artifacts on the task branch');
+  const mergeIndex = recipe.indexOf('merge without waiting for the automatic Codex review workflow to finish');
+
+  assert.notEqual(refreshIndex, -1);
+  assert.notEqual(mergeIndex, -1);
+  assert.ok(refreshIndex < mergeIndex, 'Expected context refresh step to occur before merge.');
+  assert.match(recipe, /include those updates in the same PR before merge/i);
+});
+
 test('implementation recipes use goose-compatible instruction blocks', () => {
   for (const recipePath of [
     '.goose/recipes/frontend-implementation.yaml',
