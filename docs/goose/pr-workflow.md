@@ -33,6 +33,7 @@ After the local Codex review adapter and Goose integration described by PR21 act
 Before opening/merging a PR, run:
 
 ```bash
+npm run review:local
 npm run typecheck
 npm run build
 npm run test:adapter
@@ -47,6 +48,15 @@ node --test tests/orchestrator-policy-engine.test.mjs
 node --test tests/orchestrator-e2e.test.mjs
 node --test tests/cli-smoke.test.mjs
 ```
+
+`npm run review:local` is the repository-standard local Codex review gate. It fails closed:
+- exit `0` means the structured local review was clean
+- exit `1` means Codex returned actionable findings
+- exit `2` means the local review process failed or did not return a valid structured payload
+- a stalled local `codex exec` is cut off by a 30 minute watchdog by default; override with `LOCAL_CODEX_REVIEW_TIMEOUT_MS` using a positive millisecond value
+- when run inside this repository, uncommitted-mode review loads the prompt/schema from trusted mainline refs instead of the current branch's committed copies
+- same-repo review also re-executes the runner from a frozen baseline before review logic starts: trusted mainline refs first, then the committed/staged same-repo runner when this branch has not landed on main yet
+- same-repo `--base main` / `--base master` review may bootstrap from the explicit local mainline ref when no trusted remote mainline ref exists
 
 ## Guardrails
 
@@ -72,11 +82,11 @@ Current behavior:
 - parses `### Task N: ...` headings from the target plan document
 - runs goose once per task-sized slice
 - waits for required GitHub checks before merge
-- treats required-check terminal buckets like `cancel` as immediate failures instead of polling until timeout
-- treats skipped required checks as pass-equivalent when GitHub already considers the required check merge-safe
+- treats required-check `fail` buckets as immediate failures, gives `cancel` / `cancelled` one grace poll so reruns can start, then fails fast if the required checks stay cancelled
+- treats skipped required checks as pass-equivalent based on the required-check buckets themselves, so unrelated PR-level blockers such as pending review approval do not stall the checks gate
 - waits for a Codex review on the current PR head SHA before merge
 - requires the same zero-finding current-head Codex review to be observed twice before treating it as clean when a follow-up poll is available, so delayed inline comments cannot race the merge
-- when only one review poll is configured, waits up to one poll interval, capped by the configured review timeout, and then performs one confirmation pass before treating a debounced zero-finding review as clean
+- when only one review poll is configured, waits up to one poll interval, capped by the configured review timeout, and if the review first appears during that confirmation pass it spends one additional debounce wait capped by the remaining timeout before treating it as clean; if the first pending observation already had a `review_id`, a clean confirmation can inherit that id even when GitHub omits it on the follow-up fetch
 - reruns the same task when Codex leaves inline findings for the current head SHA
 - defaults both check and review waiting windows to 30 minutes
 - supports `--checks-timeout-ms` and `--review-timeout-ms` overrides

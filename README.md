@@ -150,8 +150,28 @@ npm run demo:orchestrator
 npm run demo:adapter
 npm run demo:planning
 npm run cli -- --help
+npm run review:local
 npm run build && node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
 ```
+
+Local strict review gate:
+
+```bash
+npm run review:local
+npm run review:local -- --base origin/main
+```
+
+Behavior:
+- exits `0` only when the structured local review is clean
+- exits `1` when structured findings are returned
+- exits `2` when the local review process fails or the structured payload is invalid
+- applies a 30 minute watchdog by default so a stalled `codex exec` fails closed; override with `LOCAL_CODEX_REVIEW_TIMEOUT_MS` as a positive millisecond value
+- `npm run review:local` reviews the current uncommitted worktree delta, including untracked files
+- `npm run review:local -- --base origin/main` reviews the current tracked worktree state against the merge-base, plus current untracked worktree files, so local pre-push review covers both committed branch changes and the latest tracked/untracked edits before `git add`
+- when `npm run review:local` is run inside this repository, the review prompt and schema are loaded from trusted mainline refs such as `origin/main` instead of the current branch's committed copies
+- same-repo `review:local` also re-executes the runner from a frozen baseline before review logic starts: trusted mainline refs first, then the committed/staged same-repo runner when this branch has not landed on main yet
+- same-repo `--base main` / `--base master` review can also bootstrap from the explicit local mainline ref when no trusted remote mainline ref exists
+- runs Codex in an isolated `CODEX_HOME` and strips desktop-thread `CODEX_*` variables so local automation does not inherit the interactive Codex Desktop session context
 
 ## Plan Runner Script
 
