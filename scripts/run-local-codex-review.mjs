@@ -144,15 +144,26 @@ function resolveCommittedRunnerBootstrapRevision(repoRoot, options) {
   return runGit(repoRoot, ['rev-parse', '--verify', 'HEAD'], { allowedExitCodes: [0, 128] }).trim() || null;
 }
 
-async function main() {
-  const options = parseArgs(process.argv.slice(2));
+export async function runLocalCodexReview({
+  cwd = process.cwd(),
+  reviewOptions,
+  extraEnv = {},
+  sourceCodexHome,
+  structuredReviewTimeoutMs,
+} = {}) {
   let runTempRoot;
   let isolatedCodexHome;
+  let projectRoot;
 
   try {
-    const projectRoot = resolveRepositoryRoot(process.cwd());
-    const sourceCodexHome = process.env.LOCAL_CODEX_REVIEW_SOURCE_HOME ?? resolveDefaultCodexHome();
-    const structuredReviewTimeoutMs = resolveStructuredReviewTimeoutMs(process.env.LOCAL_CODEX_REVIEW_TIMEOUT_MS);
+    const invocationEnv = { ...process.env, ...extraEnv };
+    projectRoot = resolveRepositoryRoot(cwd);
+    const resolvedReviewOptions = reviewOptions ?? { mode: 'uncommitted', target: null };
+    const resolvedSourceCodexHome = sourceCodexHome
+      ?? invocationEnv.LOCAL_CODEX_REVIEW_SOURCE_HOME
+      ?? resolveDefaultCodexHome(invocationEnv);
+    const resolvedStructuredReviewTimeoutMs = structuredReviewTimeoutMs
+      ?? resolveStructuredReviewTimeoutMs(invocationEnv.LOCAL_CODEX_REVIEW_TIMEOUT_MS);
     runTempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-run-'));
     isolatedCodexHome = await mkdtemp(path.join(tmpdir(), 'local-codex-review-home-'));
     const emptyFilePath = path.join(runTempRoot, 'empty-file.txt');
@@ -161,16 +172,16 @@ async function main() {
     const schemaPath = path.join(runTempRoot, 'review-schema.json');
 
     await mkdir(isolatedCodexHome, { recursive: true });
-    await copyConfigToml(sourceCodexHome, isolatedCodexHome);
-    await copyAuthJsonIfPresent(sourceCodexHome, isolatedCodexHome);
+    await copyConfigToml(resolvedSourceCodexHome, isolatedCodexHome);
+    await copyAuthJsonIfPresent(resolvedSourceCodexHome, isolatedCodexHome);
     await writeFile(emptyFilePath, '', 'utf8');
 
-    const scope = collectReviewScope(projectRoot, options, emptyFilePath);
+    const scope = collectReviewScope(projectRoot, resolvedReviewOptions, emptyFilePath);
     const postImageHunkLineRanges = collectPostImageHunkLineRanges(projectRoot, scope.patch);
     const deletedLineRanges = collectDeletedLineRanges(projectRoot, scope.patch);
     const renamedFilePathAliases = collectRenamedFilePathAliases(projectRoot, scope.patch);
-    const reviewAssets = await loadTrustedReviewAssets(projectRoot, options);
-    const prompt = buildPrompt(projectRoot, options, scope, reviewAssets.promptTemplate);
+    const reviewAssets = await loadTrustedReviewAssets(projectRoot, resolvedReviewOptions);
+    const prompt = buildPrompt(projectRoot, resolvedReviewOptions, scope, reviewAssets.promptTemplate);
     const outputSchema = tightenStructuredReviewSchema(reviewAssets.outputSchema);
     await writeFile(promptPath, prompt, 'utf8');
     await writeFile(schemaPath, outputSchema, 'utf8');
@@ -181,7 +192,8 @@ async function main() {
       outputPath,
       outputSchemaPath: schemaPath,
       prompt,
-      timeoutMs: structuredReviewTimeoutMs,
+      timeoutMs: resolvedStructuredReviewTimeoutMs,
+      env: invocationEnv,
     });
 
     const review = parseStructuredReview(result.lastMessage, {
@@ -192,21 +204,39 @@ async function main() {
       deletedLineRanges,
       renamedFilePathAliases,
     });
+    const normalizedRepoRoot = normalizeComparablePath(projectRoot, projectRoot);
 
-    if (review.findings.length > 0) {
-      printFindings(review, {
-        repoRoot: projectRoot,
-        deletedLineRanges,
-        renamedFilePathAliases,
-      });
-      return 1;
-    }
-
-    process.stdout.write('Structured review is clean.\n');
-    return 0;
+    return {
+      status: review.findings.length > 0 ? 'findings' : 'clean',
+      findings: review.findings.map((finding) => ({
+        path: path.relative(
+          normalizedRepoRoot,
+          normalizeComparablePath(finding.code_location.absolute_file_path, projectRoot),
+        ),
+        body: finding.body,
+      })),
+      review,
+      repoRoot: projectRoot,
+      deletedLineRanges,
+      renamedFilePathAliases,
+      failure_message: null,
+      review_summary: {
+        overall_correctness: review.overall_correctness,
+        overall_explanation: review.overall_explanation,
+        overall_confidence_score: review.overall_confidence_score,
+      },
+    };
   } catch (error) {
-    process.stdout.write(`${String(error.message ?? error)}\n`);
-    return 2;
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      review: null,
+      repoRoot: projectRoot ?? null,
+      deletedLineRanges: new Map(),
+      renamedFilePathAliases: new Map(),
+      failure_message: String(error.message ?? error),
+      review_summary: null,
+    };
   } finally {
     if (runTempRoot) {
       await rm(runTempRoot, { recursive: true, force: true }).catch(() => {});
@@ -215,6 +245,31 @@ async function main() {
       await rm(isolatedCodexHome, { recursive: true, force: true }).catch(() => {});
     }
   }
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const result = await runLocalCodexReview({
+    cwd: process.cwd(),
+    reviewOptions: options,
+  });
+
+  if (result.status === 'findings') {
+    printFindings(result.review, {
+      repoRoot: result.repoRoot,
+      deletedLineRanges: result.deletedLineRanges,
+      renamedFilePathAliases: result.renamedFilePathAliases,
+    });
+    return 1;
+  }
+
+  if (result.status === 'clean') {
+    process.stdout.write('Structured review is clean.\n');
+    return 0;
+  }
+
+  process.stdout.write(`${result.failure_message}\n`);
+  return 2;
 }
 
 function parseArgs(argv) {
@@ -277,17 +332,17 @@ function parseArgs(argv) {
   return options;
 }
 
-function resolveDefaultCodexHome() {
-  const homeDir = process.env.HOME ?? process.env.USERPROFILE;
+function resolveDefaultCodexHome(env = process.env) {
+  const homeDir = env.HOME ?? env.USERPROFILE;
   if (!homeDir) {
     throw new Error('Could not resolve the default Codex home. Set HOME or LOCAL_CODEX_REVIEW_SOURCE_HOME.');
   }
 
-  const callerCodexHome = process.env.CODEX_HOME?.trim();
+  const callerCodexHome = env.CODEX_HOME?.trim();
   const desktopSessionCodexHome =
-    Boolean(process.env.CODEX_SESSION_CONTEXT)
-    || Boolean(process.env.CODEX_THREAD_ID)
-    || Boolean(process.env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE);
+    Boolean(env.CODEX_SESSION_CONTEXT)
+    || Boolean(env.CODEX_THREAD_ID)
+    || Boolean(env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE);
 
   if (callerCodexHome && !desktopSessionCodexHome) {
     return callerCodexHome;
@@ -775,6 +830,8 @@ function readTomlSectionName(sectionBlock) {
 function buildPrompt(repoRoot, options, scope, promptTemplate) {
   const scopeLine = options.mode === 'base'
     ? `- Review changes against base ref: ${options.target}, plus any current untracked worktree files so newly created local files are not missed before git add. Ignore obviously unrelated scratch or generated artifacts.`
+    : options.mode === 'head-range'
+      ? `- Review changes against base ref: ${options.baseRef} and head ref: ${options.headRef ?? 'HEAD'}. Review only the tracked PR diff and ignore unrelated untracked worktree files.`
     : options.mode === 'commit'
       ? `- Review only commit: ${options.target}.`
       : '- Review only the current uncommitted diff.';
@@ -1073,6 +1130,16 @@ function readGitIndexFile(repoRoot, relativePath) {
 }
 
 function collectReviewScope(repoRoot, options, emptyFilePath) {
+  if (options.mode === 'head-range') {
+    const headRef = options.headRef ?? 'HEAD';
+    const mergeBase = runGit(repoRoot, ['merge-base', options.baseRef, headRef]).trim();
+    return {
+      changedFiles: readGitLines(repoRoot, ['diff', '--name-only', '-z', mergeBase, headRef]),
+      lineRangeExemptFiles: readGitLines(repoRoot, ['diff', '--name-only', '--diff-filter=D', '-z', mergeBase, headRef]),
+      patch: runGit(repoRoot, ['diff', '--no-ext-diff', '--unified=3', mergeBase, headRef]),
+    };
+  }
+
   if (options.mode === 'base') {
     const mergeBase = runGit(repoRoot, ['merge-base', options.target, 'HEAD']).trim();
     return mergeReviewScopes(
@@ -1188,8 +1255,8 @@ function resolveTrackedWorktreeBaseRef(repoRoot) {
   return result.status === 0 ? 'HEAD' : EMPTY_TREE_HASH;
 }
 
-async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputSchemaPath, prompt, timeoutMs }) {
-  const childEnv = await buildChildEnv(isolatedCodexHome);
+async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputSchemaPath, prompt, timeoutMs, env = process.env }) {
+  const childEnv = await buildChildEnv(isolatedCodexHome, env);
 
   return await new Promise((resolve, reject) => {
     let settled = false;
@@ -1318,8 +1385,8 @@ async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputS
   });
 }
 
-async function buildChildEnv(isolatedCodexHome) {
-  const childEnv = { ...process.env, CODEX_HOME: isolatedCodexHome };
+async function buildChildEnv(isolatedCodexHome, env = process.env) {
+  const childEnv = { ...env, CODEX_HOME: isolatedCodexHome };
   const allowedCodexEnvKeys = await collectAllowedCodexEnvKeys(isolatedCodexHome);
 
   for (const key of Object.keys(childEnv)) {
@@ -2031,10 +2098,15 @@ function printFindings(review, scope = {}) {
   }
 }
 
-try {
-  const trustedRunnerExitCode = await maybeRunTrustedSameRepoRunner(process.argv.slice(2));
-  process.exitCode = trustedRunnerExitCode ?? await main();
-} catch (error) {
-  process.stdout.write(`${String(error.message ?? error)}\n`);
-  process.exitCode = 2;
+if (
+  process.argv[1]
+  && normalizeComparablePath(process.argv[1]) === normalizeComparablePath(fileURLToPath(import.meta.url))
+) {
+  try {
+    const trustedRunnerExitCode = await maybeRunTrustedSameRepoRunner(process.argv.slice(2));
+    process.exitCode = trustedRunnerExitCode ?? await main();
+  } catch (error) {
+    process.stdout.write(`${String(error.message ?? error)}\n`);
+    process.exitCode = 2;
+  }
 }

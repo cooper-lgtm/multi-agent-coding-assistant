@@ -9,6 +9,22 @@ const projectRoot = process.cwd();
 const scriptPath = path.join(projectRoot, 'scripts', 'run-plan-doc.mjs');
 const fakeBinPath = path.join(projectRoot, 'tests', 'fixtures', 'fake-bin');
 
+function localReviewCommand({ headSha, taskHint, changedFiles }) {
+  return [
+    'local-review',
+    '--repo-path',
+    projectRoot,
+    '--base-branch',
+    'main',
+    '--head-sha',
+    headSha,
+    '--task-hint',
+    taskHint,
+    '--changed-files-json',
+    JSON.stringify(changedFiles),
+  ].join(' ');
+}
+
 test('run-plan-doc executes parsed plan tasks in order and merges only after checks and clean reviews', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-script-'));
   const planPath = path.join(tempRoot, 'plan.md');
@@ -61,27 +77,16 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after che
             '101': ['sha-101'],
             '102': ['sha-102'],
           },
-          reviews: {
+          localReviews: {
             '101': {
               'sha-101': [
-                { status: 'pending' },
-                { status: 'clean', review_id: 5001 },
-                { status: 'clean', review_id: 5001 },
+                { status: 'clean', findings: [] },
               ],
             },
             '102': {
               'sha-102': [
-                { status: 'clean', review_id: 5002 },
-                { status: 'clean', review_id: 5002 },
+                { status: 'clean', findings: [] },
               ],
-            },
-          },
-          comments: {
-            '101': {
-              '5001': [],
-            },
-            '102': {
-              '5002': [],
             },
           },
           merged: [],
@@ -139,19 +144,12 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after che
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/101 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/101/reviews',
-        'gh api repos/example/repo/pulls/101/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/101/comments',
-        'gh api repos/example/repo/pulls/101/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/101/comments',
+        'local-review --repo-path ' + projectRoot + ' --base-branch main --head-sha sha-101 --task-hint Task 1: First task --changed-files-json ["src/task-one.ts"]',
         'gh pr merge https://github.com/example/repo/pull/101 --merge --delete-branch',
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 2: Second task',
         'gh pr checks https://github.com/example/repo/pull/102 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/102 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/102/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/102/comments',
-        'gh api repos/example/repo/pulls/102/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/102/comments',
+        'local-review --repo-path ' + projectRoot + ' --base-branch main --head-sha sha-102 --task-hint Task 2: Second task --changed-files-json ["src/task-two.ts"]',
         'gh pr merge https://github.com/example/repo/pull/102 --merge --delete-branch',
       ],
     );
@@ -208,22 +206,17 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
           headShas: {
             '201': ['sha-201-a', 'sha-201-b'],
           },
-          reviews: {
+          localReviews: {
             '201': {
-              'sha-201-a': [{ status: 'clean', review_id: 7001 }],
+              'sha-201-a': [
+                {
+                  status: 'findings',
+                  findings: [{ path: 'src/repair.ts', body: 'Please cover the retry edge case.' }],
+                },
+              ],
               'sha-201-b': [
-                { status: 'clean', review_id: 7002 },
-                { status: 'clean', review_id: 7002 },
+                { status: 'clean', findings: [] },
               ],
-            },
-          },
-          comments: {
-            '201': {
-              '7001': [
-                [],
-                [{ path: 'src/repair.ts', body: 'Please cover the retry edge case.' }],
-              ],
-              '7002': [],
             },
           },
           merged: [],
@@ -273,13 +266,12 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
         repaired: true,
         branch_name: 'codex/task-repair',
         pr_url: 'https://github.com/example/repo/pull/201',
-        review_id: '7002',
       },
     ]);
 
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['201']);
-    assert.deepEqual(finalState.commands[5], {
+    assert.deepEqual(finalState.commands[4], {
       bin: 'goose',
       argv: [
         'run',
@@ -309,15 +301,11 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/201/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/201/comments',
+        'local-review --repo-path ' + projectRoot + ' --base-branch main --head-sha sha-201-a --task-hint Task 1: Repair task --changed-files-json ["src/repair.ts"]',
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task --params prior_review=[{"path":"src/repair.ts","body":"Please cover the retry edge case."}]',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/201/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/201/comments',
-        'gh api repos/example/repo/pulls/201/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/201/comments',
+        'local-review --repo-path ' + projectRoot + ' --base-branch main --head-sha sha-201-b --task-hint Task 1: Repair task --changed-files-json ["src/repair.ts"]',
         'gh pr merge https://github.com/example/repo/pull/201 --merge --delete-branch',
       ],
     );
@@ -458,17 +446,19 @@ test('run-plan-doc keeps polling when a current-head review exists before its in
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task',
         'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/401 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/401/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/401/comments',
-        'gh api repos/example/repo/pulls/401/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/401/comments',
+        localReviewCommand({
+          headSha: 'sha-401-a',
+          taskHint: 'Task 1: Race task',
+          changedFiles: ['src/race.ts'],
+        }),
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task --params prior_review=[{"path":"src/race.ts","body":"Late finding lands after review object."}]',
         'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/401 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/401/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/401/comments',
-        'gh api repos/example/repo/pulls/401/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/401/comments',
+        localReviewCommand({
+          headSha: 'sha-401-b',
+          taskHint: 'Task 1: Race task',
+          changedFiles: ['src/race.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/401 --merge --delete-branch',
       ],
     );
@@ -594,10 +584,11 @@ test('run-plan-doc keeps waiting when required checks are cancelled and later re
         'gh api --paginate --slurp repos/example/repo/commits/sha-501/check-runs',
         'gh pr checks https://github.com/example/repo/pull/501 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/501 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/501/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/501/comments',
-        'gh api repos/example/repo/pulls/501/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/501/comments',
+        localReviewCommand({
+          headSha: 'sha-501',
+          taskHint: 'Task 1: Terminal check task',
+          changedFiles: ['src/terminal-check.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/501 --merge --delete-branch',
       ],
     );
@@ -749,10 +740,11 @@ test('run-plan-doc resets the cancelled-check grace poll when a new workflow gen
         'gh api --paginate --slurp repos/example/repo/commits/sha-512/check-runs',
         'gh pr checks https://github.com/example/repo/pull/512 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/512 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/512/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/512/comments',
-        'gh api repos/example/repo/pulls/512/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/512/comments',
+        localReviewCommand({
+          headSha: 'sha-512',
+          taskHint: 'Task 1: Cancelled generation reset task',
+          changedFiles: ['src/cancel-generation-reset.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/512 --merge --delete-branch',
       ],
     );
@@ -1034,10 +1026,11 @@ test('run-plan-doc trusts mixed detailed cancelled rows when the latest run for 
         'gh pr view https://github.com/example/repo/pull/513 --json headRefOid --jq .headRefOid',
         'gh api --paginate --slurp repos/example/repo/commits/sha-513/check-runs',
         'gh pr view https://github.com/example/repo/pull/513 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/513/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/513/comments',
-        'gh api repos/example/repo/pulls/513/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/513/comments',
+        localReviewCommand({
+          headSha: 'sha-513',
+          taskHint: 'Task 1: Cancelled detail mixed pass task',
+          changedFiles: ['src/cancel-detail-mixed-pass.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/513 --merge --delete-branch',
       ],
     );
@@ -3570,10 +3563,11 @@ test('run-plan-doc treats skipped required checks as pass-equivalent', async () 
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped check task',
         'gh pr checks https://github.com/example/repo/pull/502 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/502 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/502/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/502/comments',
-        'gh api repos/example/repo/pulls/502/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/502/comments',
+        localReviewCommand({
+          headSha: 'sha-502',
+          taskHint: 'Task 1: Skipped check task',
+          changedFiles: ['src/skipping-check.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/502 --merge --delete-branch',
       ],
     );
@@ -3699,10 +3693,11 @@ test('run-plan-doc treats skipped required checks as pass-equivalent even when m
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped unstable task',
         'gh pr checks https://github.com/example/repo/pull/506 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/506 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/506/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/506/comments',
-        'gh api repos/example/repo/pulls/506/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/506/comments',
+        localReviewCommand({
+          headSha: 'sha-506',
+          taskHint: 'Task 1: Skipped unstable task',
+          changedFiles: ['src/skipping-unstable.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/506 --merge --delete-branch',
       ],
     );
@@ -3935,10 +3930,11 @@ test('run-plan-doc treats skipped required checks as pass-equivalent even when m
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped but unconfirmed task',
         'gh pr checks https://github.com/example/repo/pull/509 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/509 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/509/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/509/comments',
-        'gh api repos/example/repo/pulls/509/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/509/comments',
+        localReviewCommand({
+          headSha: 'sha-509',
+          taskHint: 'Task 1: Skipped but unconfirmed task',
+          changedFiles: ['src/skipping-unconfirmed.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/509 --merge --delete-branch',
       ],
     );
@@ -4062,7 +4058,11 @@ test('run-plan-doc advances skipped required checks to the Codex review gate eve
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Review blocked but mergeable',
         'gh pr checks https://github.com/example/repo/pull/507 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/507 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/507/reviews',
+        localReviewCommand({
+          headSha: 'sha-507',
+          taskHint: 'Task 1: Review blocked but mergeable',
+          changedFiles: ['src/review-blocked.ts'],
+        }),
       ],
     );
   } finally {
@@ -4070,7 +4070,7 @@ test('run-plan-doc advances skipped required checks to the Codex review gate eve
   }
 });
 
-test('run-plan-doc confirms a clean review when max review polls is 1', async () => {
+test('run-plan-doc confirms a clean local review when max review polls is 1', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-single-review-poll-'));
   const planPath = path.join(tempRoot, 'plan.md');
   const statePath = path.join(tempRoot, 'state.json');
@@ -4109,17 +4109,9 @@ test('run-plan-doc confirms a clean review when max review polls is 1', async ()
           headShas: {
             '503': ['sha-503'],
           },
-          reviews: {
+          localReviews: {
             '503': {
-              'sha-503': [
-                { status: 'clean', review_id: 9101 },
-                { status: 'clean', review_id: 9101 },
-              ],
-            },
-          },
-          comments: {
-            '503': {
-              '9101': [],
+              'sha-503': [{ status: 'clean', review_id: '9101', findings: [] }],
             },
           },
           merged: [],
@@ -4181,10 +4173,11 @@ test('run-plan-doc confirms a clean review when max review polls is 1', async ()
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: One poll task',
         'gh pr checks https://github.com/example/repo/pull/503 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/503 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/503/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/503/comments',
-        'gh api repos/example/repo/pulls/503/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/503/comments',
+        localReviewCommand({
+          headSha: 'sha-503',
+          taskHint: 'Task 1: One poll task',
+          changedFiles: ['src/one-poll.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/503 --merge --delete-branch',
       ],
     );
@@ -4193,7 +4186,7 @@ test('run-plan-doc confirms a clean review when max review polls is 1', async ()
   }
 });
 
-test('run-plan-doc does not bypass the clean-review debounce on the final poll when more than one review poll is configured', async () => {
+test('run-plan-doc treats max review polls as a no-op for synchronous local review', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-final-review-debounce-'));
   const planPath = path.join(tempRoot, 'plan.md');
   const statePath = path.join(tempRoot, 'state.json');
@@ -4232,18 +4225,9 @@ test('run-plan-doc does not bypass the clean-review debounce on the final poll w
           headShas: {
             '504': ['sha-504'],
           },
-          reviews: {
+          localReviews: {
             '504': {
-              'sha-504': [
-                { status: 'pending' },
-                { status: 'clean', review_id: 9201 },
-                { status: 'clean', review_id: 9201 },
-              ],
-            },
-          },
-          comments: {
-            '504': {
-              '9201': [],
+              'sha-504': [{ status: 'clean', review_id: '9201', findings: [] }],
             },
           },
           merged: [],
@@ -4280,37 +4264,39 @@ test('run-plan-doc does not bypass the clean-review debounce on the final poll w
       },
     );
 
-    assert.equal(result.status, 1);
+    assert.equal(result.status, 0);
 
     const output = JSON.parse(result.stdout);
     assert.deepEqual(output, {
-      status: 'manual_review_required',
+      status: 'completed',
       tasks: [
         {
           task_hint: 'Task 1: Final poll debounce task',
           selected_task: 'Task 1: Final poll debounce task',
-          status: 'manual_review_required',
+          status: 'merged',
           attempts: 1,
           repaired: false,
           branch_name: 'codex/task-final-poll-debounce',
           pr_url: 'https://github.com/example/repo/pull/504',
-          findings: [],
-          pending_gate: 'codex_review',
+          review_id: '9201',
         },
       ],
     });
 
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
-    assert.deepEqual(finalState.merged, []);
+    assert.deepEqual(finalState.merged, ['504']);
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Final poll debounce task',
         'gh pr checks https://github.com/example/repo/pull/504 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/504 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/504/reviews',
-        'gh api repos/example/repo/pulls/504/reviews',
-        'gh api --paginate --slurp repos/example/repo/pulls/504/comments',
+        localReviewCommand({
+          headSha: 'sha-504',
+          taskHint: 'Task 1: Final poll debounce task',
+          changedFiles: ['src/final-poll-debounce.ts'],
+        }),
+        'gh pr merge https://github.com/example/repo/pull/504 --merge --delete-branch',
       ],
     );
   } finally {
@@ -4427,7 +4413,11 @@ test('run-plan-doc returns manual_review_required when Codex review exceeds the 
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Slow review task',
         'gh pr checks https://github.com/example/repo/pull/301 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/301 --json headRefOid --jq .headRefOid',
-        'gh api repos/example/repo/pulls/301/reviews',
+        localReviewCommand({
+          headSha: 'sha-301',
+          taskHint: 'Task 1: Slow review task',
+          changedFiles: ['src/slow-review.ts'],
+        }),
       ],
     );
   } finally {
