@@ -22,6 +22,9 @@ test('package.json exposes repository-local lint commands', () => {
 
 test('repository ships a dedicated CI Lint workflow backed by super-linter', () => {
   const workflow = readRepoFile('.github/workflows/ci-lint.yml');
+  const validateAssignments = [...workflow.matchAll(/^\s+(VALIDATE_[A-Z0-9_]+):\s+(true|false)$/gm)]
+    .filter(([, key]) => key !== 'VALIDATE_ALL_CODEBASE');
+  const validateValues = new Set(validateAssignments.map(([, , value]) => value));
 
   assert.match(workflow, /^name:\s+CI Lint$/m);
   assert.match(workflow, /npm run lint/);
@@ -33,6 +36,7 @@ test('repository ships a dedicated CI Lint workflow backed by super-linter', () 
   assert.match(workflow, /VALIDATE_JAVASCRIPT_ES:\s+true/);
   assert.match(workflow, /VALIDATE_MARKDOWN:\s+true/);
   assert.match(workflow, /VALIDATE_GITHUB_ACTIONS:\s+true/);
+  assert.deepEqual([...validateValues], ['true']);
 });
 
 test('architecture docs keep future lint execution under test-agent using local commands', () => {
