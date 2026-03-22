@@ -9,19 +9,15 @@ const projectRoot = process.cwd();
 const scriptPath = path.join(projectRoot, 'scripts', 'run-plan-doc.mjs');
 const fakeBinPath = path.join(projectRoot, 'tests', 'fixtures', 'fake-bin');
 
-function localReviewCommand({ headSha, taskHint, changedFiles }) {
+function localReviewCommand({ headSha, baseBranch = 'main' }) {
   return [
-    'local-review',
-    '--repo-path',
-    projectRoot,
-    '--base-branch',
-    'main',
-    '--head-sha',
+    'node',
+    path.join(projectRoot, 'scripts', 'run-local-codex-review.mjs'),
+    '--head-range',
+    baseBranch,
     headSha,
-    '--task-hint',
-    taskHint,
-    '--changed-files-json',
-    JSON.stringify(changedFiles),
+    '--output-format',
+    'json',
   ].join(' ');
 }
 
@@ -144,12 +140,12 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after che
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/101 --json headRefOid --jq .headRefOid',
-        'local-review --repo-path ' + projectRoot + ' --base-branch main --head-sha sha-101 --task-hint Task 1: First task --changed-files-json ["src/task-one.ts"]',
+        localReviewCommand({ headSha: 'sha-101' }),
         'gh pr merge https://github.com/example/repo/pull/101 --merge --delete-branch',
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 2: Second task',
         'gh pr checks https://github.com/example/repo/pull/102 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/102 --json headRefOid --jq .headRefOid',
-        'local-review --repo-path ' + projectRoot + ' --base-branch main --head-sha sha-102 --task-hint Task 2: Second task --changed-files-json ["src/task-two.ts"]',
+        localReviewCommand({ headSha: 'sha-102' }),
         'gh pr merge https://github.com/example/repo/pull/102 --merge --delete-branch',
       ],
     );
@@ -301,11 +297,11 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
-        'local-review --repo-path ' + projectRoot + ' --base-branch main --head-sha sha-201-a --task-hint Task 1: Repair task --changed-files-json ["src/repair.ts"]',
+        localReviewCommand({ headSha: 'sha-201-a' }),
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task --params prior_review=[{"path":"src/repair.ts","body":"Please cover the retry edge case."}]',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
-        'local-review --repo-path ' + projectRoot + ' --base-branch main --head-sha sha-201-b --task-hint Task 1: Repair task --changed-files-json ["src/repair.ts"]',
+        localReviewCommand({ headSha: 'sha-201-b' }),
         'gh pr merge https://github.com/example/repo/pull/201 --merge --delete-branch',
       ],
     );
