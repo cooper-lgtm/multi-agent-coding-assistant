@@ -141,6 +141,7 @@ These roles own planned implementation tasks.
 
 These roles evaluate completed implementation work.
 They can return approval, repair pressure, or failure, but they do not become task owners.
+When lint becomes part of repository execution, `test-agent` should call the repository-local lint command surface rather than invoking the GitHub Action container directly.
 
 ---
 
