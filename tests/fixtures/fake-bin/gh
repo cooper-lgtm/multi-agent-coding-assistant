@@ -62,6 +62,24 @@ if (command === 'pr' && subcommand === 'view') {
     process.exit(0);
   }
 
+  if (jsonField === 'baseRefName') {
+    state.currentBaseRefNames = state.currentBaseRefNames ?? {};
+    const nextBaseRefName = shiftQueue(state.baseRefNames?.[prNumber], state.currentBaseRefNames[prNumber] ?? 'main');
+    state.currentBaseRefNames[prNumber] = nextBaseRefName;
+    writeState(statePath, state);
+    process.stdout.write(nextBaseRefName);
+    process.exit(0);
+  }
+
+  if (jsonField === 'baseRefOid') {
+    state.currentBaseRefOids = state.currentBaseRefOids ?? {};
+    const nextBaseRefOid = shiftQueue(state.baseRefOids?.[prNumber], state.currentBaseRefOids[prNumber] ?? 'main');
+    state.currentBaseRefOids[prNumber] = nextBaseRefOid;
+    writeState(statePath, state);
+    process.stdout.write(nextBaseRefOid);
+    process.exit(0);
+  }
+
   state.currentHeadShas = state.currentHeadShas ?? {};
   const nextHeadSha = shiftQueue(state.headShas?.[prNumber], state.currentHeadShas[prNumber] ?? '');
   state.currentHeadShas[prNumber] = nextHeadSha;

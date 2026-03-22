@@ -9,12 +9,16 @@ const projectRoot = process.cwd();
 const scriptPath = path.join(projectRoot, 'scripts', 'run-plan-doc.mjs');
 const fakeBinPath = path.join(projectRoot, 'tests', 'fixtures', 'fake-bin');
 
-function localReviewCommand({ headSha, baseBranch = 'main' }) {
+function localReviewCommand({
+  headSha,
+  baseRef = 'main',
+  runnerPath = path.join(projectRoot, 'scripts', 'run-local-codex-review.mjs'),
+}) {
   return [
     'node',
-    path.join(projectRoot, 'scripts', 'run-local-codex-review.mjs'),
+    runnerPath,
     '--head-range',
-    baseBranch,
+    baseRef,
     headSha,
     '--output-format',
     'json',
@@ -149,6 +153,256 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after che
         'gh pr merge https://github.com/example/repo/pull/102 --merge --delete-branch',
       ],
     );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc accepts oversized machine-readable local review output without hitting execFile maxBuffer', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-large-local-review-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+  const oversizedLocalReviewRunnerPath = path.join(tempRoot, 'oversized-local-review.mjs');
+  const oversizedLocalReviewCapturePath = path.join(tempRoot, 'oversized-local-review-capture.json');
+
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Large local review output task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Large local review output task',
+              branch_name: 'codex/task-large-review',
+              pr_url: 'https://github.com/example/repo/pull/401',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/large-review.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '401': ['pass'],
+          },
+          baseRefNames: {
+            '401': ['missing-base-401'],
+          },
+          baseRefOids: {
+            '401': ['base-sha-401'],
+          },
+          headShas: {
+            '401': ['sha-401'],
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    await writeFile(
+      oversizedLocalReviewRunnerPath,
+      [
+        "import { writeFileSync } from 'node:fs';",
+        "const capturePath = process.env.OVERSIZED_LOCAL_REVIEW_CAPTURE_PATH;",
+        'if (capturePath) {',
+        "  writeFileSync(capturePath, JSON.stringify({ argv: process.argv.slice(2), timeoutMs: process.env.LOCAL_CODEX_REVIEW_TIMEOUT_MS ?? null }));",
+        '}',
+        'const payload = {',
+        "  status: 'clean',",
+        '  findings: [],',
+        "  padding: 'x'.repeat(2 * 1024 * 1024),",
+        '};',
+        "process.stdout.write(`${JSON.stringify(payload)}\\n`);",
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'missing-fallback-401',
+        '--poll-interval-ms',
+        '1',
+        '--max-check-polls',
+        '5',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+          PLAN_RUNNER_FORCE_LOCAL_REVIEW_CLI: '1',
+          PLAN_RUNNER_LOCAL_REVIEW_RUNNER_PATH: oversizedLocalReviewRunnerPath,
+          OVERSIZED_LOCAL_REVIEW_CAPTURE_PATH: oversizedLocalReviewCapturePath,
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+
+    const output = JSON.parse(result.stdout);
+    assert.deepEqual(output, {
+      status: 'completed',
+      tasks: [
+        {
+          task_hint: 'Task 1: Large local review output task',
+          selected_task: 'Task 1: Large local review output task',
+          status: 'merged',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-large-review',
+          pr_url: 'https://github.com/example/repo/pull/401',
+        },
+      ],
+    });
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    const localReviewCapture = JSON.parse(await readFile(oversizedLocalReviewCapturePath, 'utf8'));
+    assert.deepEqual(finalState.merged, ['401']);
+    assert.deepEqual(localReviewCapture, {
+      argv: ['--head-range', 'base-sha-401', 'sha-401', '--output-format', 'json'],
+      timeoutMs: '1800000',
+    });
+    assert.deepEqual(
+      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      [
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=missing-fallback-401 --params task_hint=Task 1: Large local review output task',
+        'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
+        'gh pr view https://github.com/example/repo/pull/401 --json headRefOid --jq .headRefOid',
+        'gh pr view https://github.com/example/repo/pull/401 --json baseRefName --jq .baseRefName',
+        'gh pr view https://github.com/example/repo/pull/401 --json baseRefOid --jq .baseRefOid',
+        'gh pr merge https://github.com/example/repo/pull/401 --merge --delete-branch',
+      ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc fails closed when a local review clean result omits findings', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-invalid-clean-review-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Invalid clean review task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Invalid clean review task',
+              branch_name: 'codex/task-invalid-clean-review',
+              pr_url: 'https://github.com/example/repo/pull/402',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/invalid-clean-review.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '402': ['pass'],
+          },
+          headShas: {
+            '402': ['sha-402'],
+          },
+          localReviews: {
+            '402': {
+              'sha-402': [
+                { status: 'clean' },
+              ],
+            },
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-check-polls',
+        '5',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
+
+    assert.equal(result.status, 1);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      status: 'manual_review_required',
+      tasks: [
+        {
+          task_hint: 'Task 1: Invalid clean review task',
+          selected_task: 'Task 1: Invalid clean review task',
+          status: 'manual_review_required',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-invalid-clean-review',
+          pr_url: 'https://github.com/example/repo/pull/402',
+          findings: [],
+          risk_notes: ['Local review returned a non-array findings payload.'],
+          pending_gate: 'codex_review',
+        },
+      ],
+    });
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(finalState.merged, []);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -4041,6 +4295,7 @@ test('run-plan-doc advances skipped required checks to the Codex review gate eve
           branch_name: 'codex/task-review-blocked',
           pr_url: 'https://github.com/example/repo/pull/507',
           findings: [],
+          risk_notes: ['Fake local review fixture remained pending.'],
           pending_gate: 'codex_review',
         },
       ],
@@ -4396,6 +4651,7 @@ test('run-plan-doc returns manual_review_required when Codex review exceeds the 
           branch_name: 'codex/task-slow-review',
           pr_url: 'https://github.com/example/repo/pull/301',
           findings: [],
+          risk_notes: ['Fake local review fixture remained pending.'],
           pending_gate: 'codex_review',
         },
       ],

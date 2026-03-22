@@ -45,15 +45,15 @@ test('runPlanTaskSequence waits for required checks and a clean local review bef
         events.push(['getPullRequestHeadSha', prUrl, 'sha-current']);
         return 'sha-current';
       },
-      runCodexReview: async ({ prUrl, headSha, repoPath, baseBranch, changedFiles, taskHint }) => {
+      runCodexReview: async (reviewInput) => {
+        assert.equal('baseBranch' in reviewInput, false);
         events.push([
           'runCodexReview',
-          prUrl,
-          headSha,
-          repoPath,
-          baseBranch,
-          changedFiles.join(','),
-          taskHint,
+          reviewInput.prUrl,
+          reviewInput.headSha,
+          reviewInput.repoPath,
+          reviewInput.changedFiles.join(','),
+          reviewInput.taskHint,
           null,
         ]);
         return { status: 'clean', findings: [] };
@@ -85,7 +85,7 @@ test('runPlanTaskSequence waits for required checks and a clean local review bef
     ['sleep', 1],
     ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pass'],
     ['getPullRequestHeadSha', 'https://github.com/example/repo/pull/1', 'sha-current'],
-    ['runCodexReview', 'https://github.com/example/repo/pull/1', 'sha-current', '/tmp/repo', 'main', 'src/example.ts', 'Task 1: Example', null],
+    ['runCodexReview', 'https://github.com/example/repo/pull/1', 'sha-current', '/tmp/repo', 'src/example.ts', 'Task 1: Example', null],
     ['mergePullRequest', 'https://github.com/example/repo/pull/1'],
   ]);
 });
@@ -235,6 +235,7 @@ test('runPlanTaskSequence returns manual_review_required when local review infra
         branch_name: 'codex/task-1',
         pr_url: 'https://github.com/example/repo/pull/1',
         findings: [],
+        risk_notes: ['Structured review process timed out after 1000ms.'],
         pending_gate: 'codex_review',
       },
     ],

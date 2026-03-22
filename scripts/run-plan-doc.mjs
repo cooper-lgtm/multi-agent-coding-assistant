@@ -11,7 +11,9 @@ import { runPlanTaskSequence } from '../dist/index.js';
 const execFileAsync = promisify(execFile);
 const NO_MERGE_SYSTEM_PROMPT =
   'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging.';
-const localReviewRunnerPath = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
+const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
+const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
+const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -260,23 +262,27 @@ function createShellDependencies({ cwd }) {
         { cwd },
       );
     },
-    runCodexReview: async ({ prUrl, headSha, repoPath, baseBranch, changedFiles, taskHint, reviewTimeoutMs }) => {
-      if (process.env.PLAN_RUNNER_FAKE_STATE) {
+    runCodexReview: async ({ prUrl, headSha, repoPath, changedFiles, taskHint, reviewTimeoutMs }) => {
+      if (process.env.PLAN_RUNNER_FAKE_STATE && process.env.PLAN_RUNNER_FORCE_LOCAL_REVIEW_CLI !== '1') {
         return runFakeLocalReview({
           statePath: process.env.PLAN_RUNNER_FAKE_STATE,
           prUrl,
           headSha,
           repoPath,
-          baseBranch,
           changedFiles,
           taskHint,
           reviewTimeoutMs,
         });
       }
 
+      const baseRef = await resolveLocalReviewBaseRef({
+        prUrl,
+        cwd,
+      });
+
       return runLocalReviewCli({
         repoPath,
-        baseBranch,
+        baseRef,
         headSha,
         reviewTimeoutMs,
       });
@@ -607,18 +613,21 @@ async function runCommand(command, args, options) {
     cwd: options.cwd,
     encoding: 'utf8',
     env: options.env ?? process.env,
+    maxBuffer: options.maxBuffer,
+    timeout: options.timeout,
   });
 
   return stdout.trim();
 }
 
-function buildLocalReviewCommand({ baseBranch, headSha }) {
+function buildLocalReviewCommand({ baseRef, headSha }) {
+  const runnerPath = process.env.PLAN_RUNNER_LOCAL_REVIEW_RUNNER_PATH?.trim() || DEFAULT_LOCAL_REVIEW_RUNNER_PATH;
   return {
     bin: 'node',
     argv: [
-      localReviewRunnerPath,
+      runnerPath,
       '--head-range',
-      baseBranch,
+      baseRef,
       headSha,
       '--output-format',
       'json',
@@ -635,16 +644,36 @@ function buildLocalReviewEnv(reviewTimeoutMs) {
   return env;
 }
 
-async function runLocalReviewCli({ repoPath, baseBranch, headSha, reviewTimeoutMs }) {
-  const command = buildLocalReviewCommand({ baseBranch, headSha });
+async function runLocalReviewCli({ repoPath, baseRef, headSha, reviewTimeoutMs }) {
+  const command = buildLocalReviewCommand({ baseRef, headSha });
   let stdout = '';
+  const outerTimeoutMs = (
+    typeof reviewTimeoutMs === 'number' &&
+    Number.isFinite(reviewTimeoutMs) &&
+    reviewTimeoutMs > 0
+  )
+    ? reviewTimeoutMs + LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS
+    : undefined;
+  const env = buildLocalReviewEnv(reviewTimeoutMs);
 
   try {
-    stdout = await runCommand(process.execPath, command.argv, {
+    const result = await execFileAsync(process.execPath, command.argv, {
       cwd: repoPath,
-      env: buildLocalReviewEnv(reviewTimeoutMs),
+      encoding: 'utf8',
+      env,
+      maxBuffer: LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES,
+      timeout: outerTimeoutMs,
     });
+    stdout = result.stdout.trim();
   } catch (error) {
+    if (typeof error?.signal === 'string' && error.signal.length > 0) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        risk_notes: [`Local review runner exceeded the outer timeout after ${outerTimeoutMs}ms.`],
+      };
+    }
+
     if (typeof error?.code !== 'number' || ![1, 2].includes(error.code)) {
       throw error;
     }
@@ -671,24 +700,80 @@ async function runLocalReviewCli({ repoPath, baseBranch, headSha, reviewTimeoutM
   }
 }
 
+async function resolveLocalReviewBaseRef({ prUrl, cwd }) {
+  const baseRefName = await runCommand(
+    'gh',
+    ['pr', 'view', prUrl, '--json', 'baseRefName', '--jq', '.baseRefName'],
+    { cwd },
+  );
+  const baseRefOid = await runCommand(
+    'gh',
+    ['pr', 'view', prUrl, '--json', 'baseRefOid', '--jq', '.baseRefOid'],
+    { cwd },
+  );
+
+  if (baseRefOid && await gitCommitObjectExists(cwd, baseRefOid)) {
+    return baseRefOid;
+  }
+
+  const candidateRefs = [
+    ...(baseRefName ? [
+      `refs/remotes/origin/${baseRefName}`,
+      `origin/${baseRefName}`,
+      `refs/heads/${baseRefName}`,
+      baseRefName,
+    ] : []),
+  ];
+
+  for (const candidateRef of new Set(candidateRefs)) {
+    if (await gitCommitRefExists(cwd, candidateRef)) {
+      return candidateRef;
+    }
+  }
+
+  if (baseRefOid) {
+    return baseRefOid;
+  }
+
+  throw new Error(`Could not resolve a local review base ref for ${prUrl}.`);
+}
+
+async function gitCommitObjectExists(cwd, revision) {
+  try {
+    await runCommand('git', ['cat-file', '-e', `${revision}^{commit}`], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function gitCommitRefExists(cwd, revision) {
+  try {
+    await runCommand('git', ['rev-parse', '--verify', '--quiet', `${revision}^{commit}`], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function runFakeLocalReview({
   statePath,
   prUrl,
   headSha,
   repoPath,
-  baseBranch,
   changedFiles,
   taskHint,
   reviewTimeoutMs,
 }) {
   const state = JSON.parse(await readFile(statePath, 'utf8'));
-  const command = buildLocalReviewCommand({ baseBranch, headSha });
+  const prNumber = parseGitHubPrUrl(prUrl).number;
+  const baseRef = state.currentBaseRefOids?.[prNumber] ?? state.baseRefOids?.[prNumber]?.[0] ?? 'main';
+  const command = buildLocalReviewCommand({ baseRef, headSha });
   state.commands.push({
     bin: command.bin,
     argv: command.argv,
   });
 
-  const prNumber = parseGitHubPrUrl(prUrl).number;
   const localReviewState = shiftQueue(state.localReviews?.[prNumber]?.[headSha], null);
   const normalizedLocalReviewState = localReviewState
     ? normalizeLocalReviewResult(localReviewState)
@@ -765,10 +850,18 @@ function normalizeLocalReviewResult(reviewResult) {
   }
 
   if (reviewResult.status === 'clean' || reviewResult.status === 'findings') {
+    if (!Array.isArray(reviewResult.findings)) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        risk_notes: ['Local review returned a non-array findings payload.'],
+      };
+    }
+
     return {
       status: reviewResult.status,
       review_id: typeof reviewResult.review_id === 'string' ? reviewResult.review_id : undefined,
-      findings: Array.isArray(reviewResult.findings) ? reviewResult.findings : [],
+      findings: reviewResult.findings,
       risk_notes: Array.isArray(reviewResult.risk_notes) ? reviewResult.risk_notes : [],
     };
   }

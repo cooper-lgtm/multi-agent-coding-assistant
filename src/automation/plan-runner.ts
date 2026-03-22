@@ -14,6 +14,7 @@ export interface CodexReviewState {
   review_id?: string;
   findings: CodexReviewFinding[];
   risk_notes?: string[];
+  failure_message?: string;
 }
 
 export interface ExecutedTaskSlice {
@@ -51,6 +52,7 @@ export interface RunPlanTaskSequenceTaskResult {
   pr_url?: string;
   review_id?: string;
   findings?: CodexReviewFinding[];
+  risk_notes?: string[];
   pending_gate?: PlanRunnerPendingGate;
 }
 
@@ -74,7 +76,6 @@ export interface PlanTaskSequenceDependencies {
     prUrl: string;
     headSha: string;
     repoPath: string;
-    baseBranch: string;
     changedFiles: string[];
     taskHint: string;
     priorReview: CodexReviewState | null;
@@ -202,7 +203,6 @@ export async function runPlanTaskSequence(
           prUrl: execution.pr_url,
           headSha,
           repoPath: input.repoPath,
-          baseBranch: input.baseBranch,
           changedFiles: execution.changed_files,
           taskHint: execution.selected_task,
           priorReview,
@@ -246,6 +246,9 @@ export async function runPlanTaskSequence(
         branch_name: execution.branch_name,
         pr_url: execution.pr_url,
         findings: review.findings.length > 0 ? review.findings : priorReview?.findings ?? [],
+        ...(Array.isArray(review.risk_notes) && review.risk_notes.length > 0
+          ? { risk_notes: review.risk_notes }
+          : {}),
         pending_gate: 'codex_review',
       });
 

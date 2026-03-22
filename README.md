@@ -151,6 +151,7 @@ npm run demo:adapter
 npm run demo:planning
 npm run cli -- --help
 npm run review:local
+npm run verify:local-review-gate
 npm run build && node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
 ```
 
@@ -159,6 +160,7 @@ Local strict review gate:
 ```bash
 npm run review:local
 npm run review:local -- --base origin/main
+npm run verify:local-review-gate
 ```
 
 Behavior:
@@ -169,6 +171,7 @@ Behavior:
 - `npm run review:local` reviews the current uncommitted worktree delta, including untracked files
 - `npm run review:local -- --base origin/main` reviews the current tracked worktree state against the merge-base, plus current untracked worktree files, so local pre-push review covers both committed branch changes and the latest tracked/untracked edits before `git add`
 - automation can also call `node scripts/run-local-codex-review.mjs --head-range <base-ref> <head-ref> --output-format json` for a PR-scoped machine-readable review that excludes unrelated untracked worktree files
+- `npm run verify:local-review-gate` builds the repo, runs the local review regression suites, executes a PR-scoped machine-readable local review against the current branch head, and finishes with `git diff --check`; pass `-- --base-ref <ref> --head-ref <ref>` to override the review range
 - when `npm run review:local` is run inside this repository, the review prompt and schema are loaded from trusted mainline refs such as `origin/main` instead of the current branch's committed copies
 - same-repo `review:local` also re-executes the runner from a frozen baseline before review logic starts: trusted mainline refs first, then the committed/staged same-repo runner when this branch has not landed on main yet
 - same-repo `--base main` / `--base master` review can also bootstrap from the explicit local mainline ref when no trusted remote mainline ref exists
