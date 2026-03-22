@@ -3,6 +3,13 @@
 **Date:** 2026-03-15
 **Purpose:** checkpoint the implementation roadmap inside the repository so later sessions can recover the planned delivery sequence even if chat context is truncated.
 
+## Follow-on Roadmap
+
+PR1 through PR9 are now complete.
+The follow-on runtime-success phase is tracked in:
+- `docs/roadmap/2026-03-22-runtime-success-roadmap.md`
+- `docs/plans/2026-03-22-runtime-success-harness-design.md`
+
 ## Roadmap Principles
 
 1. Build the system as an orchestrator product, not as a loose pile of standalone agents.

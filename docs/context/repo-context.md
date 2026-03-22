@@ -8,12 +8,13 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
 2. `PRODUCT.md`
 3. `ARCHITECTURE.md`
 4. `AGENTS.md`
-5. `docs/plans/2026-03-16-goose-integration-post-pr5.md`
-6. `docs/templates/task-template.md`
-7. `docs/reviews/recurring-issues.md`
-8. relevant `src/` modules and `tests/`
+5. `docs/roadmap/2026-03-22-runtime-success-roadmap.md`
+6. `docs/plans/2026-03-22-runtime-success-harness-design.md`
+7. `docs/templates/task-template.md`
+8. `docs/reviews/recurring-issues.md`
+9. relevant `src/` modules and `tests/`
 
-## Current Baseline (2026-03-17)
+## Current Baseline (2026-03-22)
 - TypeScript orchestration kernel is active for planning, DAG execution, implementation dispatch, quality gates, retry/escalation, reporting, and file-backed persistence/resume.
 - Planning/runtime invariants remain enforced in root docs and tests:
   - `main-orchestrator` is sole global controller
@@ -22,7 +23,12 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
   - `test-agent` / `review-agent` are post-implementation quality gates
   - `needs_fix`, `blocked`, `failed` remain distinct
   - model routing should preserve logical labels plus exact-model metadata
-- Goose integration baseline has advanced through Task 8 of the active plan:
+- The next planned delivery phase is a runtime-first harness program aimed at improving real task success rate:
+  - PR10 rich context injection
+  - PR11 self-verification guardrails
+  - PR12 retry diagnosis and loop detection
+  - PR13 structured trace analysis and feedback loop
+- Goose integration baseline advanced through the prior active plan:
   - structured goose worker-result contracts are present
   - goose recipe assets and role-to-recipe mapping are present
   - goose worker adapter + goose process runner are present
@@ -35,17 +41,13 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
 - Runtime evidence now carries implementation execution context (commands, tests, risk notes, suggested status, delivery metadata, retry handoff) through dispatch, reporting, and persisted runtime state.
 
 ## Active Plan and Task Slices
-Primary plan: `docs/plans/2026-03-16-goose-integration-post-pr5.md`
+Primary plan: `docs/roadmap/2026-03-22-runtime-success-roadmap.md`
 
 Planned slices (status inferred from repository state):
-1. Structured goose worker-result contracts — **completed**
-2. Goose recipe assets + task-to-recipe mapping — **completed**
-3. Goose worker adapter — **completed**
-4. Route implementation dispatch through goose (quality gates remain external) — **completed**
-5. PR6 approval/orchestration controls — **completed**
-6. PR7 budget/policy/safety controls — **completed**
-7. PR8 eval suite + golden scenarios — **completed**
-8. PR9 CLI entry points + goose delivery workflow — **completed**
+1. PR10 rich context injection — **planned**
+2. PR11 self-verification guardrails — **planned**
+3. PR12 retry diagnosis and loop detection — **planned**
+4. PR13 trace analysis feedback loop — **planned**
 
 ## Module Map
 - `src/schemas/`: shared planning/runtime/model contracts
@@ -68,7 +70,7 @@ npm run test:planning
 npm run test:runtime
 ```
 
-Full required gate from active plan:
+Current baseline regression gate:
 ```bash
 npm run typecheck
 npm run build
@@ -94,6 +96,6 @@ node --test tests/cli-smoke.test.mjs
 
 ## Artifact Metadata
 - artifact_type: `repo-context`
-- version: `1.6.0`
+- version: `1.7.0`
 - status: `refreshed`
-- refreshed_on: `2026-03-17`
+- refreshed_on: `2026-03-22`
