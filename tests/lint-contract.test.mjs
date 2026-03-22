@@ -30,6 +30,7 @@ test('repository ships a dedicated CI Lint workflow backed by super-linter', () 
   assert.match(workflow, /npm run lint/);
   assert.match(workflow, /uses:\s+actions\/checkout@v[0-9]+/);
   assert.match(workflow, /fetch-depth:\s+0/);
+  assert.match(workflow, /LINTER_RULES_PATH:\s+\./);
   assert.match(workflow, /uses:\s+super-linter\/super-linter@v8/);
   assert.match(workflow, /VALIDATE_ALL_CODEBASE:\s+false/);
   assert.match(workflow, /VALIDATE_TYPESCRIPT_ES:\s+true/);
