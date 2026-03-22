@@ -114,22 +114,11 @@ function readBootstrapRunnerSource(repoRoot, options) {
     }
   }
 
-  const committedFallbackRevision = resolveCommittedRunnerBootstrapRevision(repoRoot, options);
-  if (committedFallbackRevision !== null) {
-    const committedRunner = readGitFile(repoRoot, committedFallbackRevision, RUNNER_SCRIPT_RELATIVE_PATH);
-    if (committedRunner !== null && runnerSourceSupportsRequestedOptions(committedRunner, options)) {
-      return committedRunner;
-    }
-  }
+  throw new Error(buildTrustedRunnerResolutionError());
+}
 
-  const indexedRunner = readGitIndexFile(repoRoot, RUNNER_SCRIPT_RELATIVE_PATH);
-  if (indexedRunner !== null && runnerSourceSupportsRequestedOptions(indexedRunner, options)) {
-    return indexedRunner;
-  }
-
-  throw new Error(
-    `Could not resolve trusted review runner ${RUNNER_SCRIPT_RELATIVE_PATH}. Fetch origin/main (or another trusted mainline ref), or stage the runner first, so same-repo bootstrap review can run from a frozen baseline.`,
-  );
+function buildTrustedRunnerResolutionError() {
+  return `Could not resolve trusted review runner ${RUNNER_SCRIPT_RELATIVE_PATH} from a trusted mainline ref. Fetch origin/main (or another trusted mainline ref) so same-repo bootstrap review can run from a frozen mainline baseline.`;
 }
 
 function runnerSourceSupportsRequestedOptions(source, options) {
@@ -170,18 +159,6 @@ function extractFunctionSource(source, signaturePattern) {
   }
 
   return endIndex === -1 ? '' : source.slice(startIndex, endIndex);
-}
-
-function resolveCommittedRunnerBootstrapRevision(repoRoot, options) {
-  if (!repositoryMatchesScriptRepo(repoRoot)) {
-    return null;
-  }
-
-  if (options.mode === 'commit') {
-    return runGit(repoRoot, ['rev-parse', '--verify', options.target], { allowedExitCodes: [0, 128] }).trim() || null;
-  }
-
-  return runGit(repoRoot, ['rev-parse', '--verify', 'HEAD'], { allowedExitCodes: [0, 128] }).trim() || null;
 }
 
 export async function runLocalCodexReview({
@@ -307,6 +284,8 @@ function parseArgs(argv) {
     mode: 'uncommitted',
     target: null,
     outputFormat: 'text',
+    changedFiles: [],
+    taskHint: null,
   };
   let selectedScopeFlag = null;
 
@@ -379,6 +358,26 @@ function parseArgs(argv) {
         throw new Error('--output-format must be either text or json.');
       }
       options.outputFormat = outputFormat;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--changed-file') {
+      const changedFile = argv[index + 1];
+      if (!changedFile || changedFile.startsWith('--')) {
+        throw new Error('--changed-file requires a value.');
+      }
+      options.changedFiles.push(changedFile);
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--task-hint') {
+      const taskHint = argv[index + 1];
+      if (!taskHint || taskHint.startsWith('--')) {
+        throw new Error('--task-hint requires a value.');
+      }
+      options.taskHint = taskHint;
       index += 1;
       continue;
     }
@@ -957,6 +956,7 @@ function buildPrompt(repoRoot, options, scope, promptTemplate) {
     'Review scope:',
     `- Repository root: ${repoRoot}`,
     scopeLine,
+    ...(options.taskHint ? [`- Planned task hint: ${options.taskHint}`] : []),
     '- Focus on correctness, regressions, and merge-blocking issues introduced by the diff.',
     '- Ignore style-only nits.',
     '',
@@ -1219,32 +1219,16 @@ function readGitFile(repoRoot, revision, relativePath) {
   throw new Error(`Git command failed: git show ${revision}:${relativePath}`);
 }
 
-function readGitIndexFile(repoRoot, relativePath) {
-  const result = spawnSync('git', ['show', `:${relativePath}`], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: GIT_OUTPUT_MAX_BUFFER_BYTES,
-  });
-
-  if (result.status === 0) {
-    return result.stdout ?? '';
-  }
-
-  if (result.status === 128) {
-    return null;
-  }
-
-  throw new Error(`Git command failed: git show :${relativePath}`);
-}
-
 function collectReviewScope(repoRoot, options, emptyFilePath) {
+  const pathspecArgs = buildReviewPathspecArgs(options);
+
   if (options.mode === 'head-range') {
     const headRef = options.headRef ?? 'HEAD';
     const mergeBase = runGit(repoRoot, ['merge-base', options.baseRef, headRef]).trim();
     return {
-      changedFiles: readGitLines(repoRoot, ['diff', '--name-only', '-z', mergeBase, headRef]),
-      lineRangeExemptFiles: readGitLines(repoRoot, ['diff', '--name-only', '--diff-filter=D', '-z', mergeBase, headRef]),
-      patch: runGit(repoRoot, ['diff', '--no-ext-diff', '--unified=3', mergeBase, headRef]),
+      changedFiles: readGitLines(repoRoot, ['diff', '--name-only', '-z', mergeBase, headRef, ...pathspecArgs]),
+      lineRangeExemptFiles: readGitLines(repoRoot, ['diff', '--name-only', '--diff-filter=D', '-z', mergeBase, headRef, ...pathspecArgs]),
+      patch: runGit(repoRoot, ['diff', '--no-ext-diff', '--unified=3', mergeBase, headRef, ...pathspecArgs]),
     };
   }
 
@@ -1269,6 +1253,12 @@ function collectReviewScope(repoRoot, options, emptyFilePath) {
   }
 
   return collectUncommittedScope(repoRoot, emptyFilePath);
+}
+
+function buildReviewPathspecArgs(options) {
+  return Array.isArray(options.changedFiles) && options.changedFiles.length > 0
+    ? ['--', ...options.changedFiles]
+    : [];
 }
 
 function readGitLines(repoRoot, args) {

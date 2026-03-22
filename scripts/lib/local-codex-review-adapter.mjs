@@ -148,6 +148,22 @@ function normalizeReviewResult(reviewResult) {
       };
     }
 
+    if (reviewResult.status === 'clean' && reviewResult.findings.length > 0) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        failure_message: 'Local review runner returned a clean status with inline findings.',
+      };
+    }
+
+    if (reviewResult.status === 'findings' && reviewResult.findings.length === 0) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        failure_message: 'Local review runner returned a findings status without inline findings.',
+      };
+    }
+
     return {
       status: reviewResult.status,
       findings: reviewResult.findings,

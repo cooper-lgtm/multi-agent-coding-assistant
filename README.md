@@ -173,7 +173,7 @@ Behavior:
 - automation can also call `node scripts/run-local-codex-review.mjs --head-range <base-ref> <head-ref> --output-format json` for a PR-scoped machine-readable review that excludes unrelated untracked worktree files
 - `npm run verify:local-review-gate` builds the repo, runs the local review regression suites, executes a PR-scoped machine-readable local review against the current branch head, and finishes with `git diff --check`; pass `-- --base-ref <ref> --head-ref <ref>` to override the review range
 - when `npm run review:local` is run inside this repository, the review prompt and schema are loaded from trusted mainline refs such as `origin/main` instead of the current branch's committed copies
-- same-repo `review:local` also re-executes the runner from a frozen baseline before review logic starts: trusted mainline refs first, then the committed/staged same-repo runner when this branch has not landed on main yet
+- same-repo `review:local` also re-executes the runner from a frozen trusted mainline baseline before review logic starts; if no trusted mainline runner is available locally, the review fails closed
 - same-repo `--base main` / `--base master` review can also bootstrap from the explicit local mainline ref when no trusted remote mainline ref exists
 - runs Codex in an isolated `CODEX_HOME` and strips desktop-thread `CODEX_*` variables so local automation does not inherit the interactive Codex Desktop session context
 
@@ -194,6 +194,7 @@ Important behavior:
 - the review gate is local and PR-scoped: it reviews the merge-base-to-head diff for the current task branch and does not silently pull in unrelated untracked worktree files
 - required GitHub checks still run before the local review gate
 - local review findings are passed back into goose as `prior_review` for the next attempt on the same task
+- when a task reports `changed_files` and a `task_hint`, the blocking local review narrows its diff/prompt to that task slice instead of reviewing unrelated tracked files on the branch
 - GitHub-hosted Codex review is now optional comparison/signal, not the blocking repair-loop source of truth
 - `--checks-timeout-ms` and `--review-timeout-ms` are available for explicit gate timeouts
 - both gates default to a 30 minute timeout when flags are omitted

@@ -174,6 +174,65 @@ test('local codex review supports machine-readable head-range findings without i
   }
 });
 
+test('local codex review filters machine-readable head-range scope to the requested changed files and includes the task hint', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-json-head-range-filtered-'));
+
+  try {
+    const repoRoot = path.join(tempRoot, 'repo');
+    await mkdir(path.join(repoRoot, 'prompts'), { recursive: true });
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), 'Review this diff.', 'utf8');
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\n', 'utf8');
+    await writeFile(path.join(repoRoot, 'unrelated.txt'), 'base unrelated\n', 'utf8');
+
+    runGit(repoRoot, ['init', '--initial-branch=main']);
+    runGit(repoRoot, ['config', 'user.name', 'Codex Test']);
+    runGit(repoRoot, ['config', 'user.email', 'codex@example.com']);
+    runGit(repoRoot, ['add', 'prompts/review-agent-codex-exec.md', 'tracked.txt', 'unrelated.txt']);
+    runGit(repoRoot, ['commit', '-m', 'base']);
+    runGit(repoRoot, ['checkout', '-b', 'codex/task-review']);
+
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\nbranch change\n', 'utf8');
+    await writeFile(path.join(repoRoot, 'unrelated.txt'), 'base unrelated\nextra change\n', 'utf8');
+    runGit(repoRoot, ['add', 'tracked.txt', 'unrelated.txt']);
+    runGit(repoRoot, ['commit', '-m', 'branch change']);
+
+    const { fakeBinPath, sourceCodexHome, capturePath, mode } = await setupFakeCodexEnvironment(tempRoot, 'clean');
+    const result = spawnLocalReview({
+      cwd: repoRoot,
+      fakeBinPath,
+      sourceCodexHome,
+      capturePath,
+      mode,
+      args: [
+        '--head-range',
+        'main',
+        'HEAD',
+        '--changed-file',
+        'tracked.txt',
+        '--task-hint',
+        'Task 1: tracked only',
+        '--output-format',
+        'json',
+      ],
+    });
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      status: 'clean',
+      findings: [],
+      failure_message: null,
+    });
+
+    const capture = JSON.parse(await readFile(capturePath, 'utf8'));
+    assert.match(capture.stdin, /Planned task hint: Task 1: tracked only/);
+    assert.match(capture.stdin, /tracked\.txt/);
+    assert.doesNotMatch(capture.stdin, /unrelated\.txt/);
+    assert.doesNotMatch(capture.stdin, /\+extra change/);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('local codex review supports machine-readable manual-review-required output', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-json-invalid-'));
 
@@ -2121,7 +2180,7 @@ test('npm review:local bootstraps same-repo runner code from a trusted mainline 
   }
 });
 
-test('local codex review same-repo bootstrap falls back to the committed runner when trusted mainline refs do not support machine-readable head-range review', async () => {
+test('local codex review fails closed when trusted mainline refs do not support machine-readable head-range review', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-same-repo-head-range-bootstrap-'));
   const repoRoot = path.join(tempRoot, 'repo');
 
@@ -2170,21 +2229,69 @@ test('local codex review same-repo bootstrap falls back to the committed runner 
       useTrustedRunnerBootstrap: true,
     });
 
-    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
     assert.deepEqual(JSON.parse(result.stdout), {
-      status: 'findings',
-      findings: [
-        {
-          path: 'tracked.txt',
-          body: 'Example body.',
-        },
-      ],
-      failure_message: null,
+      status: 'manual_review_required',
+      findings: [],
+      failure_message: 'Could not resolve trusted review runner scripts/run-local-codex-review.mjs from a trusted mainline ref. Fetch origin/main (or another trusted mainline ref) so same-repo bootstrap review can run from a frozen mainline baseline.',
+    });
+    await assert.rejects(() => stat(capturePath));
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('local codex review fails closed when no trusted mainline ref exists for machine-readable head-range review', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-no-trusted-head-range-bootstrap-'));
+  const repoRoot = path.join(tempRoot, 'repo');
+
+  try {
+    const promptTemplate = await readFile(path.join(projectRoot, 'prompts', 'review-agent-codex-exec.md'), 'utf8');
+    const outputSchema = await readFile(path.join(projectRoot, 'prompts', 'review-agent-output-schema.json'), 'utf8');
+    const currentRunnerSource = await readFile(scriptPath, 'utf8');
+
+    await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
+    await mkdir(path.join(repoRoot, 'prompts'), { recursive: true });
+    await writeFile(path.join(repoRoot, 'scripts', 'run-local-codex-review.mjs'), currentRunnerSource, 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), promptTemplate, 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-output-schema.json'), outputSchema, 'utf8');
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\n', 'utf8');
+
+    runGit(repoRoot, ['init', '--initial-branch=trunk']);
+    runGit(repoRoot, ['config', 'user.name', 'Codex Test']);
+    runGit(repoRoot, ['config', 'user.email', 'codex@example.com']);
+    runGit(repoRoot, ['add', 'scripts/run-local-codex-review.mjs', 'prompts/review-agent-codex-exec.md', 'prompts/review-agent-output-schema.json', 'tracked.txt']);
+    runGit(repoRoot, ['commit', '-m', 'local runner only']);
+    runGit(repoRoot, ['checkout', '-b', 'codex/task-review']);
+
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\nbranch change\n', 'utf8');
+    runGit(repoRoot, ['add', 'tracked.txt']);
+    runGit(repoRoot, ['commit', '-m', 'branch change']);
+
+    const { fakeBinPath, sourceCodexHome, capturePath, mode } = await setupFakeCodexEnvironment(tempRoot, 'findings');
+    const result = spawnLocalReview({
+      cwd: repoRoot,
+      fakeBinPath,
+      sourceCodexHome,
+      capturePath,
+      mode,
+      scriptOverridePath: path.join(repoRoot, 'scripts', 'run-local-codex-review.mjs'),
+      args: ['--head-range', 'trunk', 'HEAD', '--output-format', 'json'],
+      extraEnv: {
+        FAKE_CODEX_FINDING_PATH: path.join(repoRoot, 'tracked.txt'),
+        FAKE_CODEX_FINDING_START: '2',
+        FAKE_CODEX_FINDING_END: '2',
+      },
+      useTrustedRunnerBootstrap: true,
     });
 
-    const capture = JSON.parse(await readFile(capturePath, 'utf8'));
-    assert.match(capture.stdin, /Review changes against base ref: origin\/main and head ref: HEAD\./);
-    assert.equal(capture.outputSchemaContent.trim(), outputSchema.trim());
+    assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      status: 'manual_review_required',
+      findings: [],
+      failure_message: 'Could not resolve trusted review runner scripts/run-local-codex-review.mjs from a trusted mainline ref. Fetch origin/main (or another trusted mainline ref) so same-repo bootstrap review can run from a frozen mainline baseline.',
+    });
+    await assert.rejects(() => stat(capturePath));
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -2218,7 +2325,7 @@ test('local codex review emits machine-readable bootstrap failures when --output
     assert.deepEqual(JSON.parse(result.stdout), {
       status: 'manual_review_required',
       findings: [],
-      failure_message: 'Could not resolve trusted review runner scripts/run-local-codex-review.mjs. Fetch origin/main (or another trusted mainline ref), or stage the runner first, so same-repo bootstrap review can run from a frozen baseline.',
+      failure_message: 'Could not resolve trusted review runner scripts/run-local-codex-review.mjs from a trusted mainline ref. Fetch origin/main (or another trusted mainline ref) so same-repo bootstrap review can run from a frozen mainline baseline.',
     });
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
@@ -2453,6 +2560,70 @@ test('local codex review falls back to the local main branch assets for same-rep
     const capture = JSON.parse(await readFile(capturePath, 'utf8'));
     assert.ok(capture.stdin.startsWith('Trusted local main prompt.'));
     assert.equal(capture.outputSchemaContent.trim(), '{"trusted":"local-main-fallback"}');
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('local codex review bootstraps machine-readable head-range review from a local mainline ref when no remote mainline ref exists', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-same-repo-local-main-head-range-'));
+  const repoRoot = path.join(tempRoot, 'repo');
+
+  try {
+    const promptTemplate = await readFile(path.join(projectRoot, 'prompts', 'review-agent-codex-exec.md'), 'utf8');
+    const outputSchema = await readFile(path.join(projectRoot, 'prompts', 'review-agent-output-schema.json'), 'utf8');
+    const currentRunnerSource = await readFile(scriptPath, 'utf8');
+
+    await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
+    await mkdir(path.join(repoRoot, 'prompts'), { recursive: true });
+    await writeFile(path.join(repoRoot, 'scripts', 'run-local-codex-review.mjs'), currentRunnerSource, 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), promptTemplate, 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-output-schema.json'), outputSchema, 'utf8');
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\n', 'utf8');
+
+    runGit(repoRoot, ['init', '--initial-branch=main']);
+    runGit(repoRoot, ['config', 'user.name', 'Codex Test']);
+    runGit(repoRoot, ['config', 'user.email', 'codex@example.com']);
+    runGit(repoRoot, ['add', 'scripts/run-local-codex-review.mjs', 'prompts/review-agent-codex-exec.md', 'prompts/review-agent-output-schema.json', 'tracked.txt']);
+    runGit(repoRoot, ['commit', '-m', 'trusted local mainline']);
+    const baseCommit = runGit(repoRoot, ['rev-parse', 'HEAD']).trim();
+
+    runGit(repoRoot, ['checkout', '-b', 'codex/task-review']);
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\nbranch change\n', 'utf8');
+    runGit(repoRoot, ['add', 'tracked.txt']);
+    runGit(repoRoot, ['commit', '-m', 'branch change']);
+
+    const { fakeBinPath, sourceCodexHome, capturePath, mode } = await setupFakeCodexEnvironment(tempRoot, 'findings');
+    const result = spawnLocalReview({
+      cwd: repoRoot,
+      fakeBinPath,
+      sourceCodexHome,
+      capturePath,
+      mode,
+      scriptOverridePath: path.join(repoRoot, 'scripts', 'run-local-codex-review.mjs'),
+      args: ['--head-range', baseCommit, 'HEAD', '--output-format', 'json'],
+      extraEnv: {
+        FAKE_CODEX_FINDING_PATH: path.join(repoRoot, 'tracked.txt'),
+        FAKE_CODEX_FINDING_START: '2',
+        FAKE_CODEX_FINDING_END: '2',
+      },
+      useTrustedRunnerBootstrap: true,
+    });
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      status: 'findings',
+      findings: [
+        {
+          path: 'tracked.txt',
+          body: 'Example body.',
+        },
+      ],
+      failure_message: null,
+    });
+
+    const capture = JSON.parse(await readFile(capturePath, 'utf8'));
+    assert.match(capture.stdin, new RegExp(`Review changes against base ref: ${baseCommit} and head ref: HEAD\\.`));
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

@@ -14,7 +14,6 @@ const NO_MERGE_SYSTEM_PROMPT =
 const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
 const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
-const TRUSTED_LOCAL_MAINLINE_BASE_REFS = new Set(['main', 'master']);
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -285,6 +284,8 @@ function createShellDependencies({ cwd }) {
         repoPath,
         baseRef,
         headSha,
+        changedFiles,
+        taskHint,
         reviewTimeoutMs,
       });
     },
@@ -621,18 +622,28 @@ async function runCommand(command, args, options) {
   return stdout.trim();
 }
 
-function buildLocalReviewCommand({ baseRef, headSha }) {
+function buildLocalReviewCommand({ baseRef, headSha, changedFiles = [], taskHint = null }) {
   const runnerPath = process.env.PLAN_RUNNER_LOCAL_REVIEW_RUNNER_PATH?.trim() || DEFAULT_LOCAL_REVIEW_RUNNER_PATH;
+  const argv = [
+    runnerPath,
+    '--head-range',
+    baseRef,
+    headSha,
+  ];
+
+  for (const changedFile of changedFiles) {
+    argv.push('--changed-file', changedFile);
+  }
+
+  if (taskHint) {
+    argv.push('--task-hint', taskHint);
+  }
+
+  argv.push('--output-format', 'json');
+
   return {
     bin: 'node',
-    argv: [
-      runnerPath,
-      '--head-range',
-      baseRef,
-      headSha,
-      '--output-format',
-      'json',
-    ],
+    argv,
   };
 }
 
@@ -645,8 +656,8 @@ function buildLocalReviewEnv(reviewTimeoutMs) {
   return env;
 }
 
-async function runLocalReviewCli({ repoPath, baseRef, headSha, reviewTimeoutMs }) {
-  const command = buildLocalReviewCommand({ baseRef, headSha });
+async function runLocalReviewCli({ repoPath, baseRef, headSha, changedFiles, taskHint, reviewTimeoutMs }) {
+  const command = buildLocalReviewCommand({ baseRef, headSha, changedFiles, taskHint });
   let stdout = '';
   const outerTimeoutMs = (
     typeof reviewTimeoutMs === 'number' &&
@@ -717,30 +728,12 @@ async function resolveLocalReviewBaseRef({ prUrl, cwd }) {
     return baseRefOid;
   }
 
-  const candidateRefs = [
-    ...(baseRefName ? [
-      `refs/remotes/origin/${baseRefName}`,
-      `origin/${baseRefName}`,
-    ] : []),
-  ];
-
-  for (const candidateRef of new Set(candidateRefs)) {
-    if (await gitCommitRefExists(cwd, candidateRef)) {
-      return candidateRef;
-    }
+  if (baseRefName && baseRefOid) {
+    await fetchBaseRef(cwd, baseRefName);
   }
 
-  if (baseRefName && TRUSTED_LOCAL_MAINLINE_BASE_REFS.has(baseRefName)) {
-    const trustedLocalCandidateRefs = [
-      `refs/heads/${baseRefName}`,
-      baseRefName,
-    ];
-
-    for (const candidateRef of trustedLocalCandidateRefs) {
-      if (await gitCommitRefExists(cwd, candidateRef)) {
-        return candidateRef;
-      }
-    }
+  if (baseRefOid && await gitCommitObjectExists(cwd, baseRefOid)) {
+    return baseRefOid;
   }
 
   throw new Error(`Could not resolve a trusted local review base ref for ${prUrl}.`);
@@ -755,12 +748,14 @@ async function gitCommitObjectExists(cwd, revision) {
   }
 }
 
-async function gitCommitRefExists(cwd, revision) {
+async function fetchBaseRef(cwd, baseRefName) {
   try {
-    await runCommand('git', ['rev-parse', '--verify', '--quiet', `${revision}^{commit}`], { cwd });
-    return true;
+    await runCommand('git', ['fetch', '--no-tags', 'origin', baseRefName], {
+      cwd,
+      maxBuffer: LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES,
+    });
   } catch {
-    return false;
+    // Keep the final decision fail-closed; fetch is only a best-effort refresh.
   }
 }
 
@@ -776,7 +771,7 @@ async function runFakeLocalReview({
   const state = JSON.parse(await readFile(statePath, 'utf8'));
   const prNumber = parseGitHubPrUrl(prUrl).number;
   const baseRef = state.currentBaseRefOids?.[prNumber] ?? state.baseRefOids?.[prNumber]?.[0] ?? 'main';
-  const command = buildLocalReviewCommand({ baseRef, headSha });
+  const command = buildLocalReviewCommand({ baseRef, headSha, changedFiles, taskHint });
   state.commands.push({
     bin: command.bin,
     argv: command.argv,

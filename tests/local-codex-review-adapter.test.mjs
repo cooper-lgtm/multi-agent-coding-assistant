@@ -143,6 +143,45 @@ test('runLocalCodexReview fails closed when the runner reports clean without an 
   }
 });
 
+test('runLocalCodexReview fails closed when the runner reports clean with inline findings', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-adapter-inconsistent-clean-'));
+
+  try {
+    const repoRoot = path.join(tempRoot, 'repo');
+    const fakeRunnerPath = path.join(tempRoot, 'fake-local-review-runner.mjs');
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(
+      fakeRunnerPath,
+      [
+        '#!/usr/bin/env node',
+        'process.stdout.write(JSON.stringify({',
+        "  status: 'clean',",
+        "  findings: [{ path: 'src/example.ts', body: 'Unexpected finding.' }],",
+        '}));',
+      ].join('\n'),
+      'utf8',
+    );
+    await chmod(fakeRunnerPath, 0o755);
+
+    const result = await runLocalCodexReview({
+      cwd: repoRoot,
+      reviewOptions: {
+        mode: 'uncommitted',
+        target: null,
+      },
+      extraEnv: {
+        LOCAL_CODEX_REVIEW_RUNNER_PATH: fakeRunnerPath,
+      },
+    });
+
+    assert.equal(result.status, 'manual_review_required');
+    assert.deepEqual(result.findings, []);
+    assert.match(result.failure_message ?? '', /clean status with inline findings/i);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('runLocalCodexReview fails closed when the runner exceeds the adapter outer timeout', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-adapter-timeout-'));
 

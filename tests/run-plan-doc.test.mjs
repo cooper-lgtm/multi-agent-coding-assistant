@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -14,16 +14,31 @@ function localReviewCommand({
   headSha,
   baseRef = 'main',
   runnerPath = path.join(projectRoot, 'scripts', 'run-local-codex-review.mjs'),
+  changedFiles = [],
+  taskHint = null,
 }) {
-  return [
+  const command = [
     'node',
     runnerPath,
     '--head-range',
     baseRef,
     headSha,
+  ];
+
+  for (const changedFile of changedFiles) {
+    command.push('--changed-file', changedFile);
+  }
+
+  if (taskHint) {
+    command.push('--task-hint', taskHint);
+  }
+
+  command.push(
     '--output-format',
     'json',
-  ].join(' ');
+  );
+
+  return command.join(' ');
 }
 
 function runGit(cwd, args) {
@@ -160,12 +175,20 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after che
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/101 --json headRefOid --jq .headRefOid',
-        localReviewCommand({ headSha: 'sha-101' }),
+        localReviewCommand({
+          headSha: 'sha-101',
+          taskHint: 'Task 1: First task',
+          changedFiles: ['src/task-one.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/101 --merge --delete-branch',
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 2: Second task',
         'gh pr checks https://github.com/example/repo/pull/102 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/102 --json headRefOid --jq .headRefOid',
-        localReviewCommand({ headSha: 'sha-102' }),
+        localReviewCommand({
+          headSha: 'sha-102',
+          taskHint: 'Task 2: Second task',
+          changedFiles: ['src/task-two.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/102 --merge --delete-branch',
       ],
     );
@@ -320,6 +343,153 @@ test('run-plan-doc fails closed when only an untrusted local base branch matches
   }
 });
 
+test('run-plan-doc fails closed when only a stale remote-tracking base ref matches the PR base name', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-stale-remote-base-ref-'));
+  const repoRoot = path.join(tempRoot, 'repo');
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+  const localReviewRunnerPath = path.join(tempRoot, 'fake-local-review-runner.mjs');
+  const localReviewCapturePath = path.join(tempRoot, 'local-review-capture.json');
+
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\n', 'utf8');
+    runGit(repoRoot, ['init', '--initial-branch=main']);
+    runGit(repoRoot, ['config', 'user.name', 'Codex Test']);
+    runGit(repoRoot, ['config', 'user.email', 'codex@example.com']);
+    runGit(repoRoot, ['add', 'tracked.txt']);
+    runGit(repoRoot, ['commit', '-m', 'base']);
+    const baseCommit = runGit(repoRoot, ['rev-parse', 'HEAD']).trim();
+    runGit(repoRoot, ['update-ref', 'refs/remotes/origin/release/test', baseCommit]);
+
+    await writeFile(
+      localReviewRunnerPath,
+      [
+        '#!/usr/bin/env node',
+        "const fs = require('node:fs');",
+        "const capturePath = process.env.LOCAL_REVIEW_CAPTURE_PATH;",
+        'if (capturePath) {',
+        '  fs.writeFileSync(capturePath, JSON.stringify({ argv: process.argv.slice(2) }, null, 2));',
+        '}',
+        "process.stdout.write(JSON.stringify({ status: 'clean', findings: [] }));",
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Stale remote base ref task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Stale remote base ref task',
+              branch_name: 'codex/task-stale-remote-base-ref',
+              pr_url: 'https://github.com/example/repo/pull/405',
+              merge_status: 'opened_not_merged',
+              changed_files: ['tracked.txt'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '405': ['pass'],
+          },
+          headShas: {
+            '405': ['sha-405'],
+          },
+          baseRefNames: {
+            '405': ['release/test'],
+          },
+          baseRefOids: {
+            '405': ['missing-base-oid-405'],
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        repoRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-check-polls',
+        '5',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+          PLAN_RUNNER_FORCE_LOCAL_REVIEW_CLI: '1',
+          PLAN_RUNNER_LOCAL_REVIEW_RUNNER_PATH: localReviewRunnerPath,
+          LOCAL_REVIEW_CAPTURE_PATH: localReviewCapturePath,
+        },
+      },
+    );
+
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      status: 'manual_review_required',
+      tasks: [
+        {
+          task_hint: 'Task 1: Stale remote base ref task',
+          selected_task: 'Task 1: Stale remote base ref task',
+          status: 'manual_review_required',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-stale-remote-base-ref',
+          pr_url: 'https://github.com/example/repo/pull/405',
+          findings: [],
+          risk_notes: ['Could not resolve a trusted local review base ref for https://github.com/example/repo/pull/405.'],
+          pending_gate: 'codex_review',
+        },
+      ],
+    });
+
+    await assert.rejects(() => stat(localReviewCapturePath));
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.deepEqual(finalState.merged, []);
+    assert.deepEqual(
+      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      [
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Stale remote base ref task',
+        'gh pr checks https://github.com/example/repo/pull/405 --required --json bucket',
+        'gh pr view https://github.com/example/repo/pull/405 --json headRefOid --jq .headRefOid',
+        'gh pr view https://github.com/example/repo/pull/405 --json baseRefName --jq .baseRefName',
+        'gh pr view https://github.com/example/repo/pull/405 --json baseRefOid --jq .baseRefOid',
+      ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('run-plan-doc accepts oversized machine-readable local review output without hitting execFile maxBuffer', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-large-local-review-'));
   const repoRoot = path.join(tempRoot, 'repo');
@@ -336,6 +506,7 @@ test('run-plan-doc accepts oversized machine-readable local review output withou
     runGit(repoRoot, ['config', 'user.email', 'codex@example.com']);
     runGit(repoRoot, ['add', 'tracked.txt']);
     runGit(repoRoot, ['commit', '-m', 'base']);
+    const baseCommit = runGit(repoRoot, ['rev-parse', 'HEAD']).trim();
 
     await writeFile(
       planPath,
@@ -371,7 +542,7 @@ test('run-plan-doc accepts oversized machine-readable local review output withou
             '401': ['main'],
           },
           baseRefOids: {
-            '401': ['missing-base-oid-401'],
+            '401': [baseCommit],
           },
           headShas: {
             '401': ['sha-401'],
@@ -454,7 +625,17 @@ test('run-plan-doc accepts oversized machine-readable local review output withou
     const localReviewCapture = JSON.parse(await readFile(oversizedLocalReviewCapturePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['401']);
     assert.deepEqual(localReviewCapture, {
-      argv: ['--head-range', 'refs/heads/main', 'sha-401', '--output-format', 'json'],
+      argv: [
+        '--head-range',
+        baseCommit,
+        'sha-401',
+        '--changed-file',
+        'src/large-review.ts',
+        '--task-hint',
+        'Task 1: Large local review output task',
+        '--output-format',
+        'json',
+      ],
       timeoutMs: '1800000',
     });
     assert.deepEqual(
@@ -468,6 +649,163 @@ test('run-plan-doc accepts oversized machine-readable local review output withou
         'gh pr merge https://github.com/example/repo/pull/401 --merge --delete-branch',
       ],
     );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc fetches the PR base ref when the exact base oid is missing locally', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-fetch-base-ref-'));
+  const remoteRoot = path.join(tempRoot, 'remote.git');
+  const seedRoot = path.join(tempRoot, 'seed');
+  const repoRoot = path.join(tempRoot, 'repo');
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+  const localReviewRunnerPath = path.join(tempRoot, 'fake-local-review-runner.mjs');
+  const localReviewCapturePath = path.join(tempRoot, 'local-review-capture.json');
+
+  try {
+    runGit(tempRoot, ['init', '--bare', remoteRoot]);
+    runGit(tempRoot, ['clone', remoteRoot, seedRoot]);
+    runGit(seedRoot, ['config', 'user.name', 'Codex Test']);
+    runGit(seedRoot, ['config', 'user.email', 'codex@example.com']);
+    await writeFile(path.join(seedRoot, 'tracked.txt'), 'base\n', 'utf8');
+    runGit(seedRoot, ['add', 'tracked.txt']);
+    runGit(seedRoot, ['commit', '-m', 'base']);
+    runGit(seedRoot, ['push', 'origin', 'HEAD:main']);
+
+    runGit(tempRoot, ['clone', remoteRoot, repoRoot]);
+    runGit(repoRoot, ['config', 'user.name', 'Codex Test']);
+    runGit(repoRoot, ['config', 'user.email', 'codex@example.com']);
+
+    await writeFile(path.join(seedRoot, 'tracked.txt'), 'base\nremote update\n', 'utf8');
+    runGit(seedRoot, ['add', 'tracked.txt']);
+    runGit(seedRoot, ['commit', '-m', 'remote update']);
+    const updatedBaseCommit = runGit(seedRoot, ['rev-parse', 'HEAD']).trim();
+    runGit(seedRoot, ['push', 'origin', 'HEAD:main']);
+
+    await writeFile(
+      localReviewRunnerPath,
+      [
+        "import { writeFileSync } from 'node:fs';",
+        "const capturePath = process.env.LOCAL_REVIEW_CAPTURE_PATH;",
+        'if (capturePath) {',
+        '  writeFileSync(capturePath, JSON.stringify({ argv: process.argv.slice(2), timeoutMs: process.env.LOCAL_CODEX_REVIEW_TIMEOUT_MS ?? null }, null, 2));',
+        '}',
+        "process.stdout.write(JSON.stringify({ status: 'clean', findings: [] }));",
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Fetch exact base ref task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Fetch exact base ref task',
+              branch_name: 'codex/task-fetch-base-ref',
+              pr_url: 'https://github.com/example/repo/pull/406',
+              merge_status: 'opened_not_merged',
+              changed_files: ['tracked.txt'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '406': ['pass'],
+          },
+          baseRefNames: {
+            '406': ['main'],
+          },
+          baseRefOids: {
+            '406': [updatedBaseCommit],
+          },
+          headShas: {
+            '406': ['sha-406'],
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        repoRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-check-polls',
+        '5',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+          PLAN_RUNNER_FORCE_LOCAL_REVIEW_CLI: '1',
+          PLAN_RUNNER_LOCAL_REVIEW_RUNNER_PATH: localReviewRunnerPath,
+          LOCAL_REVIEW_CAPTURE_PATH: localReviewCapturePath,
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      status: 'completed',
+      tasks: [
+        {
+          task_hint: 'Task 1: Fetch exact base ref task',
+          selected_task: 'Task 1: Fetch exact base ref task',
+          status: 'merged',
+          attempts: 1,
+          repaired: false,
+          branch_name: 'codex/task-fetch-base-ref',
+          pr_url: 'https://github.com/example/repo/pull/406',
+        },
+      ],
+    });
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    const localReviewCapture = JSON.parse(await readFile(localReviewCapturePath, 'utf8'));
+    assert.deepEqual(finalState.merged, ['406']);
+    assert.deepEqual(localReviewCapture, {
+      argv: [
+        '--head-range',
+        updatedBaseCommit,
+        'sha-406',
+        '--changed-file',
+        'tracked.txt',
+        '--task-hint',
+        'Task 1: Fetch exact base ref task',
+        '--output-format',
+        'json',
+      ],
+      timeoutMs: '1800000',
+    });
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -831,11 +1169,19 @@ test('run-plan-doc reruns the same task after Codex inline findings and merges o
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
-        localReviewCommand({ headSha: 'sha-201-a' }),
+        localReviewCommand({
+          headSha: 'sha-201-a',
+          taskHint: 'Task 1: Repair task',
+          changedFiles: ['src/repair.ts'],
+        }),
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task --params prior_review=[{"path":"src/repair.ts","body":"Please cover the retry edge case."}]',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
-        localReviewCommand({ headSha: 'sha-201-b' }),
+        localReviewCommand({
+          headSha: 'sha-201-b',
+          taskHint: 'Task 1: Repair task',
+          changedFiles: ['src/repair.ts'],
+        }),
         'gh pr merge https://github.com/example/repo/pull/201 --merge --delete-branch',
       ],
     );
