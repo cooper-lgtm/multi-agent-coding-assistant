@@ -242,4 +242,3 @@ Verification should cover:
 - new plan and roadmap files are present
 - README/repo-context references point to the new roadmap
 - `git diff --check` passes
-

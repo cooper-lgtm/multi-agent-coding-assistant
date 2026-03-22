@@ -10,6 +10,16 @@
 
 ---
 
+## Slice Breakdown
+
+If implementing PR10 incrementally, use:
+- `docs/plans/2026-03-23-runtime-success-breakdown.md`
+
+The recommended first slice is:
+- `PR10a: Execution Guidance Contracts and DAG Propagation`
+
+---
+
 ### Task 1: Add execution-guidance schema support
 
 **Files:**
@@ -228,4 +238,3 @@ Run:
 `git add prompts/frontend-agent.md prompts/backend-agent.md tests/orchestrator-goose-runtime.test.mjs README.md`
 
 `git commit -m "docs: teach workers to use injected runtime context"`
-

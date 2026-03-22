@@ -10,9 +10,11 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
 4. `AGENTS.md`
 5. `docs/roadmap/2026-03-22-runtime-success-roadmap.md`
 6. `docs/plans/2026-03-22-runtime-success-harness-design.md`
-7. `docs/templates/task-template.md`
-8. `docs/reviews/recurring-issues.md`
-9. relevant `src/` modules and `tests/`
+7. `docs/plans/2026-03-22-pr10-rich-context-injection.md`
+8. `docs/plans/2026-03-23-runtime-success-breakdown.md`
+9. `docs/templates/task-template.md`
+10. `docs/reviews/recurring-issues.md`
+11. relevant `src/` modules and `tests/`
 
 ## Current Baseline (2026-03-22)
 - TypeScript orchestration kernel is active for planning, DAG execution, implementation dispatch, quality gates, retry/escalation, reporting, and file-backed persistence/resume.
@@ -41,13 +43,20 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
 - Runtime evidence now carries implementation execution context (commands, tests, risk notes, suggested status, delivery metadata, retry handoff) through dispatch, reporting, and persisted runtime state.
 
 ## Active Plan and Task Slices
-Primary plan: `docs/roadmap/2026-03-22-runtime-success-roadmap.md`
+Primary execution plan: `docs/plans/2026-03-23-runtime-success-breakdown.md`
+
+Roadmap reference: `docs/roadmap/2026-03-22-runtime-success-roadmap.md`
 
 Planned slices (status inferred from repository state):
-1. PR10 rich context injection — **planned**
-2. PR11 self-verification guardrails — **planned**
-3. PR12 retry diagnosis and loop detection — **planned**
-4. PR13 trace analysis feedback loop — **planned**
+1. PR10a execution-guidance contracts and DAG propagation — **next**
+2. PR10b runtime context builder and local discovery — **planned**
+3. PR10c worker payload threading and prompt uptake — **planned**
+4. PR11a runtime middleware seam — **planned**
+5. PR11b pre-completion checklist and continuation — **planned**
+6. PR12a retry diagnosis contracts — **planned**
+7. PR12b loop detection and retry guidance propagation — **planned**
+8. PR13a structured runtime-event schema — **planned**
+9. PR13b trace analyzer and script — **planned**
 
 ## Module Map
 - `src/schemas/`: shared planning/runtime/model contracts
@@ -88,7 +97,7 @@ node --test tests/cli-smoke.test.mjs
 ```
 
 ## PR / Workflow Rules (from active plan + AGENTS.md)
-- one roadmap slice per branch
+- one execution slice per branch
 - one slice-sized PR at a time
 - Codex review is workflow-triggered automation for each PR
 - merge only after required local validation passes
@@ -96,6 +105,6 @@ node --test tests/cli-smoke.test.mjs
 
 ## Artifact Metadata
 - artifact_type: `repo-context`
-- version: `1.7.0`
+- version: `1.7.1`
 - status: `refreshed`
-- refreshed_on: `2026-03-22`
+- refreshed_on: `2026-03-23`

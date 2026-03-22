@@ -28,6 +28,9 @@ PR1 through PR9 established the current foundation:
 That phase produced a coherent kernel.
 The next phase is about turning that kernel into a stronger day-to-day work agent.
 
+Detailed slice-sized execution breakdown:
+- `docs/plans/2026-03-23-runtime-success-breakdown.md`
+
 ## Next Planned PR Sequence
 
 ### PR10 - Rich Context Injection
@@ -108,4 +111,3 @@ The phase should move the repository toward:
 - PR13 should land after PR10-PR12 so the analyzer has better structured data to inspect.
 
 This sequence intentionally extends the current architecture rather than replacing it.
-
