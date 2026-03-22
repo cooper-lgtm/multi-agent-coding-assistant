@@ -168,6 +168,7 @@ Behavior:
 - applies a 30 minute watchdog by default so a stalled `codex exec` fails closed; override with `LOCAL_CODEX_REVIEW_TIMEOUT_MS` as a positive millisecond value
 - `npm run review:local` reviews the current uncommitted worktree delta, including untracked files
 - `npm run review:local -- --base origin/main` reviews the current tracked worktree state against the merge-base, plus current untracked worktree files, so local pre-push review covers both committed branch changes and the latest tracked/untracked edits before `git add`
+- automation can also call `node scripts/run-local-codex-review.mjs --head-range <base-ref> <head-ref> --output-format json` for a PR-scoped machine-readable review that excludes unrelated untracked worktree files
 - when `npm run review:local` is run inside this repository, the review prompt and schema are loaded from trusted mainline refs such as `origin/main` instead of the current branch's committed copies
 - same-repo `review:local` also re-executes the runner from a frozen baseline before review logic starts: trusted mainline refs first, then the committed/staged same-repo runner when this branch has not landed on main yet
 - same-repo `--base main` / `--base master` review can also bootstrap from the explicit local mainline ref when no trusted remote mainline ref exists
