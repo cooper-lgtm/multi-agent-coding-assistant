@@ -33,7 +33,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run adapter, planning, and runtime tests
+      - name: Run adapter, planning, runtime, and repository contract tests
         uses: ./.github/actions/run-npm-check
         with:
           node-version: "20"
@@ -41,3 +41,4 @@ jobs:
             npm run test:adapter
             npm run test:planning
             npm run test:runtime
+            npm run test:repo

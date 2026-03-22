@@ -24,6 +24,7 @@ test('repository ships a dedicated CI Lint workflow backed by super-linter', () 
   const workflow = readRepoFile('.github/workflows/ci-lint.yml');
 
   assert.match(workflow, /^name:\s+CI Lint$/m);
+  assert.match(workflow, /npm run lint/);
   assert.match(workflow, /uses:\s+actions\/checkout@v[0-9]+/);
   assert.match(workflow, /fetch-depth:\s+0/);
   assert.match(workflow, /uses:\s+super-linter\/super-linter@v8/);
@@ -31,7 +32,6 @@ test('repository ships a dedicated CI Lint workflow backed by super-linter', () 
   assert.match(workflow, /VALIDATE_TYPESCRIPT_ES:\s+true/);
   assert.match(workflow, /VALIDATE_JAVASCRIPT_ES:\s+true/);
   assert.match(workflow, /VALIDATE_MARKDOWN:\s+true/);
-  assert.match(workflow, /VALIDATE_YAML:\s+true/);
   assert.match(workflow, /VALIDATE_GITHUB_ACTIONS:\s+true/);
 });
 

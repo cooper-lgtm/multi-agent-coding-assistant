@@ -160,7 +160,7 @@ Lint notes:
 - `npm run lint:js` covers TypeScript, JavaScript, and `.mjs` scripts/tests through ESLint
 - `npm run lint:md` covers Markdown docs and prompt assets
 - `npm run lint:yml` covers GitHub Actions and repository YAML config through ESLint
-- pull requests also run a dedicated `CI Lint` workflow backed by `super-linter`
+- pull requests also run a dedicated `CI Lint` workflow that executes `npm run lint` and then runs `super-linter` for the repo-aligned TypeScript, JavaScript, Markdown, and GitHub Actions surfaces
 - future `test-agent` lint execution should call the local lint commands above rather than invoking the GitHub Action container directly
 
 Local strict review gate:

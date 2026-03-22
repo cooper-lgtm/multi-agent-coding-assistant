@@ -9,8 +9,23 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: lint
+  local-lint:
+    name: local-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run repository lint
+        uses: ./.github/actions/run-npm-check
+        with:
+          node-version: "20"
+          command: |
+            npm run lint
+
+  super-linter:
+    name: super-linter
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -34,4 +49,3 @@ jobs:
           VALIDATE_JAVASCRIPT_ES: true
           VALIDATE_MARKDOWN: true
           VALIDATE_TYPESCRIPT_ES: true
-          VALIDATE_YAML: true
