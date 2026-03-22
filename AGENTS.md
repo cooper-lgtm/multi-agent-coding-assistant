@@ -119,12 +119,17 @@ Run the narrowest useful checks first.
 Typical commands:
 
 ```bash
+npm run lint
 npm run typecheck
 npm run test:adapter
 npm run test:planning
 npm run test:runtime
 npm run build
 ```
+
+For repository linting, the local lint command is the source of truth:
+- use `npm run lint` for the full local lint gate
+- future `test-agent` lint execution should call the local lint command surface rather than invoking the GitHub Action container directly
 
 For doc-only changes, validate at minimum:
 

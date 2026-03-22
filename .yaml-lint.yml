@@ -1,0 +1,11 @@
+extends: default
+
+ignore: |
+  node_modules/
+  dist/
+  state/
+
+rules:
+  document-start: disable
+  line-length: disable
+  truthy: disable
