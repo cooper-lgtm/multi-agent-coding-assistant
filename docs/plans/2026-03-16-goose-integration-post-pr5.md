@@ -470,13 +470,19 @@ If all verification passes, goose may use the standard GitHub flow for that bran
 
 Do not merge if any required verification step fails.
 
-## Async Review Rule
+## Async Review Rule (Pre-PR21 Baseline)
 
 - This rule applies to every PR created from this plan, including each task-sized PR from Task 1 through Task 8.
 - After a PR is ready, Codex review should be triggered automatically by workflow without a manual PR comment.
 - Goose does not need to wait for the review to finish before merging if the local required checks already passed.
 - Any review findings can be handled later in a separate follow-up PR.
 - Treat the automatic review as mandatory signaling, not as a blocking gate for the initial merge.
+
+Once the local Codex review integration planned in `docs/plans/2026-03-19-codex-exec-review-gate.md` lands on a branch, this async rule is superseded for that branch:
+- local Codex review becomes the blocking review gate before merge
+- findings rerun the same task with normalized review feedback
+- timeout/auth/process/schema failures stop as `manual_review_required`
+- GitHub-hosted review becomes comparison/signaling rather than the repair-loop source of truth
 
 ## Notes
 

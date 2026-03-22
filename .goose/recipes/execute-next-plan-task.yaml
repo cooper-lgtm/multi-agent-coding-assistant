@@ -20,10 +20,10 @@ instructions: |
   2. refresh your understanding of the affected source files and tests
   3. create a branch for that task-sized slice from {{ base_branch }}
   4. complete only that task's scope
-  5. run the task's required validation commands
-  6. create a PR
-  7. if local required verification passed, merge without waiting for the automatic Codex review workflow to finish
-  8. refresh the repository context artifacts after merge
+  5. refresh the repository context artifacts on the task branch when this workflow requires checked-in context updates
+  6. run the task's required validation commands
+  7. create a PR
+  8. if local required verification passed, merge without waiting for the automatic Codex review workflow to finish
 
   Rules:
   - Do not start a second major task in the same run
@@ -31,6 +31,7 @@ instructions: |
   - Do not collapse `needs_fix`, `blocked`, and `failed`
   - Do not invent completion if verification failed
   - Codex review is triggered automatically by workflow; do not add a manual PR comment
+  - If refreshing repository context artifacts changes checked-in files, include those updates in the same PR before merge
   - Use `task_hint` only if it is non-empty; otherwise choose the next unfinished task from the plan
   - For blocked or failed runs before branch or PR creation, omit `branch_name` and `pr_url`, and set `merge_status` to `not_opened`
   - If task scope is ambiguous, stop and return blocked
@@ -46,7 +47,7 @@ prompt: |
 
   Before editing, confirm the selected task and affected modules from the plan.
   If `prior_review` is non-empty, treat it as machine-readable feedback from the previous Codex review on this task and address it before continuing.
-  Finish after one task-sized PR has been validated, opened, and merged, then refresh the context artifacts. Codex review runs automatically via workflow, so no manual PR comment is needed.
+  Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, opened, and merged. Codex review runs automatically via workflow, so no manual PR comment is needed.
 parameters:
   - key: repo_path
     input_type: string

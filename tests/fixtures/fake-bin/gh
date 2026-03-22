@@ -17,16 +17,53 @@ const { subcommand, target, paginate, slurp } = normalizeApiArguments(rawSubcomm
 
 if (command === 'pr' && subcommand === 'checks') {
   const prNumber = parsePullRequestNumber(target);
-  const nextStatus = shiftQueue(state.checks[prNumber], 'pending');
+  const jsonIndex = argv.indexOf('--json');
+  const requestedFields = (jsonIndex >= 0 ? argv[jsonIndex + 1] : 'bucket')
+    .split(',')
+    .map((field) => field.trim())
+    .filter(Boolean);
+  const isBucketOnlyRequest = requestedFields.length === 1 && requestedFields[0] === 'bucket';
+  state.currentChecksByPr = state.currentChecksByPr ?? {};
+  const detailedOverrideQueue = state.checkDetails?.[prNumber];
+  const rawDetailedOverrideQueue = state.rawCheckDetails?.[prNumber];
+  if (!isBucketOnlyRequest && Array.isArray(rawDetailedOverrideQueue) && rawDetailedOverrideQueue.length > 0) {
+    const rawDetailedChecks = shiftQueue(rawDetailedOverrideQueue, {});
+    writeState(statePath, state);
+    process.stdout.write(JSON.stringify(rawDetailedChecks));
+    process.exit(0);
+  }
+  const nextStatus = !isBucketOnlyRequest && Array.isArray(detailedOverrideQueue) && detailedOverrideQueue.length > 0
+    ? shiftQueue(detailedOverrideQueue, state.currentChecksByPr[prNumber] ?? 'pending')
+    : (isBucketOnlyRequest || !state.currentChecksByPr[prNumber]
+    ? shiftQueue(state.checks[prNumber], 'pending')
+    : state.currentChecksByPr[prNumber]);
+  state.currentChecksByPr[prNumber] = normalizeCheckEntries(nextStatus);
   writeState(statePath, state);
-  process.stdout.write(JSON.stringify([{ bucket: nextStatus }]));
+  process.stdout.write(JSON.stringify(formatCheckBuckets(state.currentChecksByPr[prNumber], requestedFields)));
   process.exit(0);
 }
 
 if (command === 'pr' && subcommand === 'view') {
   const prNumber = parsePullRequestNumber(target);
-  const nextHeadSha = shiftQueue(state.headShas[prNumber], '');
+  const jsonIndex = argv.indexOf('--json');
+  const jsonField = jsonIndex >= 0 ? argv[jsonIndex + 1] : null;
+
+  if (jsonField === 'mergeable') {
+    const nextMergeable = shiftQueue(state.mergeables?.[prNumber], 'UNKNOWN');
+    writeState(statePath, state);
+    process.stdout.write(nextMergeable);
+    process.exit(0);
+  }
+
+  if (jsonField === 'mergeStateStatus') {
+    const nextMergeStateStatus = shiftQueue(state.mergeStateStatuses?.[prNumber], 'UNKNOWN');
+    writeState(statePath, state);
+    process.stdout.write(nextMergeStateStatus);
+    process.exit(0);
+  }
+
   state.currentHeadShas = state.currentHeadShas ?? {};
+  const nextHeadSha = shiftQueue(state.headShas?.[prNumber], state.currentHeadShas[prNumber] ?? '');
   state.currentHeadShas[prNumber] = nextHeadSha;
   writeState(statePath, state);
   process.stdout.write(nextHeadSha);
@@ -84,6 +121,33 @@ if (command === 'api') {
     process.stdout.write(comments.map((page) => JSON.stringify(page)).join(''));
     process.exit(0);
   }
+
+  const checkRunsMatch = apiTarget.match(/^repos\/([^/]+)\/([^/]+)\/commits\/([^/]+)\/check-runs$/);
+  if (checkRunsMatch) {
+    const headSha = checkRunsMatch[3];
+    const checkRunPages = Array.isArray(state.checkRunPages?.[headSha]) && state.checkRunPages[headSha].length > 0
+      ? state.checkRunPages[headSha]
+      : [
+        {
+          total_count: Array.isArray(state.checkRuns?.[headSha]) ? state.checkRuns[headSha].length : 0,
+          check_runs: Array.isArray(state.checkRuns?.[headSha]) ? state.checkRuns[headSha] : [],
+        },
+      ];
+    writeState(statePath, state);
+
+    if (slurp) {
+      process.stdout.write(JSON.stringify(checkRunPages));
+      process.exit(0);
+    }
+
+    if (paginate) {
+      process.stdout.write(checkRunPages.map((page) => JSON.stringify(page)).join(''));
+      process.exit(0);
+    }
+
+    process.stdout.write(JSON.stringify(checkRunPages[0] ?? { total_count: 0, check_runs: [] }));
+    process.exit(0);
+  }
 }
 
 writeState(statePath, state);
@@ -105,6 +169,52 @@ function shiftQueue(queue, fallback) {
   }
 
   return queue.shift();
+}
+
+function formatCheckBuckets(entries, requestedFields = ['bucket']) {
+  return entries.map((entry) => {
+    const projectedEntry = {};
+    for (const field of requestedFields) {
+      projectedEntry[field] = entry[field] ?? null;
+    }
+    return projectedEntry;
+  });
+}
+
+function normalizeCheckEntries(nextStatus) {
+  if (Array.isArray(nextStatus)) {
+    return nextStatus.map((entry) => normalizeCheckEntry(entry));
+  }
+
+  return [normalizeCheckEntry(nextStatus)];
+}
+
+function normalizeCheckEntry(entry) {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    return {
+      bucket: entry.bucket ?? 'pending',
+      completedAt: entry.completedAt ?? null,
+      description: entry.description ?? null,
+      event: entry.event ?? null,
+      link: entry.link ?? null,
+      name: entry.name ?? null,
+      startedAt: entry.startedAt ?? null,
+      state: entry.state ?? null,
+      workflow: entry.workflow ?? null,
+    };
+  }
+
+  return {
+    bucket: entry,
+    completedAt: null,
+    description: null,
+    event: null,
+    link: null,
+    name: null,
+    startedAt: null,
+    state: null,
+    workflow: null,
+  };
 }
 
 function normalizeApiArguments(subcommand, target, argv) {
@@ -139,6 +249,15 @@ function normalizeApiArguments(subcommand, target, argv) {
 }
 
 function formatCommentPages(commentState, reviewId, options) {
+  if (commentState && typeof commentState === 'object' && !Array.isArray(commentState)) {
+    if (Array.isArray(commentState.polls)) {
+      const nextPoll = shiftQueue(commentState.polls, []);
+      return formatCommentPages(nextPoll, reviewId, options);
+    }
+
+    return [[]];
+  }
+
   if (!Array.isArray(commentState)) {
     return [[]];
   }

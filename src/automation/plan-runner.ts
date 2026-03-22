@@ -1,6 +1,6 @@
 export type PlanTaskExecutionStatus = 'completed' | 'blocked' | 'failed';
 export type PlanTaskMergeStatus = 'merged' | 'opened_not_merged' | 'not_opened';
-export type RequiredCheckStatus = 'pending' | 'pass' | 'fail' | 'timed_out';
+export type RequiredCheckStatus = 'pending' | 'pass' | 'fail' | 'cancelled' | 'timed_out';
 export type CodexReviewStatus = 'pending' | 'clean' | 'findings' | 'timed_out';
 export type PlanRunnerPendingGate = 'required_checks' | 'codex_review';
 
@@ -11,6 +11,9 @@ export interface CodexReviewFinding {
 
 export interface CodexReviewState {
   status: CodexReviewStatus;
+  // `pending` plus a `review_id` means the same zero-finding review was already
+  // observed once and this gate is waiting for one confirmation fetch before it
+  // can be treated as clean.
   review_id?: string;
   findings: CodexReviewFinding[];
 }
@@ -85,7 +88,16 @@ export async function runPlanTaskSequence(
 ): Promise<RunPlanTaskSequenceResult> {
   const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const maxCheckPolls = resolveMaxPolls(input.maxCheckPolls, input.checksTimeoutMs ?? DEFAULT_TIMEOUT_MS, pollIntervalMs);
-  const maxReviewPolls = resolveMaxPolls(input.maxReviewPolls, input.reviewTimeoutMs ?? DEFAULT_TIMEOUT_MS, pollIntervalMs);
+  const reviewTimeoutMs = (
+    typeof input.reviewTimeoutMs === 'number' &&
+    Number.isFinite(input.reviewTimeoutMs) &&
+    input.reviewTimeoutMs > 0
+  )
+    ? input.reviewTimeoutMs
+    : DEFAULT_TIMEOUT_MS;
+  const maxReviewPolls = resolveMaxPolls(input.maxReviewPolls, reviewTimeoutMs, pollIntervalMs);
+  const singlePollConfirmationDelayMs = Math.min(pollIntervalMs, reviewTimeoutMs);
+  const singlePollLateReviewDebounceMs = Math.max(0, Math.min(pollIntervalMs, reviewTimeoutMs - singlePollConfirmationDelayMs));
   const maxTaskAttempts = input.maxTaskAttempts ?? DEFAULT_MAX_TASK_ATTEMPTS;
 
   const tasks: RunPlanTaskSequenceTaskResult[] = [];
@@ -185,6 +197,9 @@ export async function runPlanTaskSequence(
         headSha,
         maxReviewPolls,
         pollIntervalMs,
+        reviewTimeoutMs,
+        singlePollConfirmationDelayMs,
+        singlePollLateReviewDebounceMs,
         deps,
       );
 
@@ -271,7 +286,11 @@ async function waitForRequiredChecks(
 ): Promise<RequiredCheckStatus> {
   for (let poll = 1; poll <= maxPolls; poll += 1) {
     const status = await deps.getRequiredCheckStatus({ prUrl });
-    if (status !== 'pending') {
+    if (status === 'cancelled') {
+      if (poll === maxPolls) {
+        return 'fail';
+      }
+    } else if (status !== 'pending') {
       return status;
     }
 
@@ -288,12 +307,294 @@ async function waitForCodexReview(
   headSha: string,
   maxPolls: number,
   pollIntervalMs: number,
+  reviewTimeoutMs: number,
+  singlePollConfirmationDelayMs: number,
+  singlePollLateReviewDebounceMs: number,
   deps: Pick<PlanTaskSequenceDependencies, 'getCodexReviewState' | 'sleep'>,
 ): Promise<CodexReviewState> {
+  const startedAtMs = Date.now();
+  let priorZeroFindingObservation: CodexReviewState | null = null;
+  const timedOutReviewState: CodexReviewState = {
+    status: 'timed_out',
+    findings: [],
+  };
+  const timeoutExpiredAfterFetch = () => Date.now() - startedAtMs > reviewTimeoutMs;
+  const timeoutIfNoFindings = (state: CodexReviewState): CodexReviewState => {
+    return state.status === 'findings' ? state : timedOutReviewState;
+  };
+  const confirmLateReviewState = async (confirmedState: CodexReviewState): Promise<CodexReviewState> => {
+    if (confirmedState.status === 'findings') {
+      return confirmedState;
+    }
+
+    if (singlePollLateReviewDebounceMs <= 0) {
+      return timedOutReviewState;
+    }
+
+    const elapsedMs = Date.now() - startedAtMs;
+    const remainingTimeoutMs = Math.max(0, reviewTimeoutMs - elapsedMs);
+    const cappedDebounceMs = Math.min(singlePollLateReviewDebounceMs, remainingTimeoutMs);
+    if (cappedDebounceMs <= 0) {
+      return timedOutReviewState;
+    }
+
+    await deps.sleep(cappedDebounceMs);
+    const finalizedState = await deps.getCodexReviewState({ prUrl, headSha });
+    if (timeoutExpiredAfterFetch()) {
+      return timeoutIfNoFindings(finalizedState);
+    }
+
+    const finalizedReviewMatchesConfirmation = Boolean(finalizedState.review_id)
+      && Boolean(confirmedState.review_id)
+      && finalizedState.review_id === confirmedState.review_id;
+    const finalizedPendingReviewIsConfirmed = finalizedState.status === 'pending' && finalizedReviewMatchesConfirmation;
+    if (finalizedState.status === 'findings') {
+      return finalizedState;
+    }
+
+    if (finalizedPendingReviewIsConfirmed) {
+      return {
+        ...finalizedState,
+        status: 'clean',
+      };
+    }
+
+    const cleanFinalizedLateReviewMatchesConfirmation = Boolean(confirmedState.review_id)
+      && finalizedState.status === 'clean'
+      && !finalizedState.review_id;
+
+    if (cleanFinalizedLateReviewMatchesConfirmation) {
+      return {
+        ...finalizedState,
+        review_id: confirmedState.review_id,
+        status: 'clean',
+      };
+    }
+
+    const cleanFinalizedLateReviewGainsStableId = !confirmedState.review_id
+      && finalizedState.status === 'clean'
+      && Boolean(finalizedState.review_id);
+
+    if (cleanFinalizedLateReviewGainsStableId) {
+      return finalizedState;
+    }
+
+    const repeatedAnonymousCleanLateReview = !confirmedState.review_id
+      && confirmedState.status === 'clean'
+      && finalizedState.status === 'clean'
+      && !finalizedState.review_id;
+
+    if (repeatedAnonymousCleanLateReview) {
+      return finalizedState;
+    }
+
+    if (finalizedState.status !== 'pending' && finalizedReviewMatchesConfirmation) {
+      return finalizedState;
+    }
+
+    return timedOutReviewState;
+  };
+  const captureZeroFindingObservation = (state: CodexReviewState): CodexReviewState | null => {
+    if (state.status === 'clean') {
+      return state;
+    }
+
+    if (state.status === 'pending' && Boolean(state.review_id)) {
+      return state;
+    }
+
+    return null;
+  };
+  const confirmMultiPollCleanObservation = (
+    initialState: CodexReviewState,
+    currentState: CodexReviewState,
+  ): CodexReviewState | null => {
+    if (initialState.status === 'findings' || currentState.status === 'findings') {
+      return currentState.status === 'findings' ? currentState : null;
+    }
+
+    const currentReviewMatchesInitialReview = Boolean(initialState.review_id)
+      && currentState.review_id === initialState.review_id;
+
+    if (currentReviewMatchesInitialReview) {
+      return {
+        ...currentState,
+        status: 'clean',
+      };
+    }
+
+    const cleanCurrentStateOmittedStableId = Boolean(initialState.review_id)
+      && currentState.status === 'clean'
+      && !currentState.review_id;
+
+    if (cleanCurrentStateOmittedStableId) {
+      return {
+        ...currentState,
+        review_id: initialState.review_id,
+        status: 'clean',
+      };
+    }
+
+    const cleanCurrentStateGainsStableId = !initialState.review_id
+      && currentState.status === 'clean'
+      && Boolean(currentState.review_id);
+
+    if (cleanCurrentStateGainsStableId) {
+      return currentState;
+    }
+
+    const repeatedAnonymousCleanReview = !initialState.review_id
+      && initialState.status === 'clean'
+      && currentState.status === 'clean'
+      && !currentState.review_id;
+
+    if (repeatedAnonymousCleanReview) {
+      return currentState;
+    }
+
+    return null;
+  };
+
   for (let poll = 1; poll <= maxPolls; poll += 1) {
     const state = await deps.getCodexReviewState({ prUrl, headSha });
-    if (state.status !== 'pending') {
+    if (timeoutExpiredAfterFetch()) {
+      return timeoutIfNoFindings(state);
+    }
+
+    if (state.status === 'findings') {
       return state;
+    }
+
+    if (maxPolls !== 1) {
+      const confirmedState = priorZeroFindingObservation
+        ? confirmMultiPollCleanObservation(priorZeroFindingObservation, state)
+        : null;
+      if (confirmedState !== null) {
+        return confirmedState;
+      }
+
+      priorZeroFindingObservation = captureZeroFindingObservation(state);
+    }
+
+    if (state.status !== 'pending') {
+      if (maxPolls !== 1) {
+        if (poll < maxPolls) {
+          await deps.sleep(pollIntervalMs);
+        }
+        continue;
+      }
+
+      const elapsedMs = Date.now() - startedAtMs;
+      const remainingConfirmationMs = Math.max(0, reviewTimeoutMs - elapsedMs);
+      const cappedConfirmationDelayMs = Math.min(singlePollConfirmationDelayMs, remainingConfirmationMs);
+
+      if (cappedConfirmationDelayMs === 0) {
+        return timedOutReviewState;
+      }
+
+      await deps.sleep(cappedConfirmationDelayMs);
+
+      const confirmedState = await deps.getCodexReviewState({ prUrl, headSha });
+      if (timeoutExpiredAfterFetch()) {
+        return timeoutIfNoFindings(confirmedState);
+      }
+
+      const cleanConfirmationMatchesExistingReview = Boolean(state.review_id)
+        && confirmedState.status === 'clean'
+        && !confirmedState.review_id;
+
+      if (cleanConfirmationMatchesExistingReview) {
+        return {
+          ...confirmedState,
+          review_id: state.review_id,
+          status: 'clean',
+        };
+      }
+
+      const pendingConfirmationMatchesExistingReview = Boolean(state.review_id)
+        && confirmedState.status === 'pending'
+        && confirmedState.review_id === state.review_id;
+
+      if (pendingConfirmationMatchesExistingReview) {
+        return {
+          ...confirmedState,
+          status: 'clean',
+        };
+      }
+
+      const replacementReviewAppearedDuringConfirmation = confirmedState.status !== 'pending'
+        ? (!state.review_id || !confirmedState.review_id || confirmedState.review_id !== state.review_id)
+        : Boolean(confirmedState.review_id) && confirmedState.review_id !== state.review_id;
+
+      if (replacementReviewAppearedDuringConfirmation) {
+        return await confirmLateReviewState(confirmedState);
+      }
+
+      if (confirmedState.status === 'pending') {
+        return timedOutReviewState;
+      }
+
+      return confirmedState;
+    }
+
+    // Only the single-poll configuration gets an extra debounce wait.
+    // Multi-poll runs must keep using their later scheduled poll so delayed
+    // inline comments cannot race the merge.
+    if (maxPolls === 1) {
+      const elapsedMs = Date.now() - startedAtMs;
+      const remainingConfirmationMs = Math.max(0, reviewTimeoutMs - elapsedMs);
+      const cappedConfirmationDelayMs = Math.min(singlePollConfirmationDelayMs, remainingConfirmationMs);
+
+      if (cappedConfirmationDelayMs === 0) {
+        return {
+          status: 'timed_out',
+          findings: [],
+        };
+      }
+
+      await deps.sleep(cappedConfirmationDelayMs);
+
+      const confirmedState = await deps.getCodexReviewState({ prUrl, headSha });
+      if (timeoutExpiredAfterFetch()) {
+        return timeoutIfNoFindings(confirmedState);
+      }
+
+      const confirmedExistingPendingReview = Boolean(state.review_id)
+        && confirmedState.status === 'pending'
+        && confirmedState.review_id === state.review_id;
+
+      if (confirmedExistingPendingReview) {
+        return {
+          ...confirmedState,
+          status: 'clean',
+        };
+      }
+
+      const cleanConfirmationMatchesExistingPendingReview = Boolean(state.review_id)
+        && confirmedState.status === 'clean'
+        && !confirmedState.review_id;
+
+      if (cleanConfirmationMatchesExistingPendingReview) {
+        return {
+          ...confirmedState,
+          review_id: state.review_id,
+          status: 'clean',
+        };
+      }
+
+      const lateReviewAppearedDuringConfirmation = confirmedState.status !== 'pending'
+        ? (!state.review_id || !confirmedState.review_id || confirmedState.review_id !== state.review_id)
+        : Boolean(confirmedState.review_id) && confirmedState.review_id !== state.review_id;
+
+      // When the first poll already returned `pending` with a `review_id`, the
+      // confirmation fetch below is already the second observation of that
+      // zero-finding review. Only reviews that first appear during confirmation
+      // need an extra debounce fetch before they can pass.
+      if (lateReviewAppearedDuringConfirmation) {
+        return await confirmLateReviewState(confirmedState);
+      } else if (confirmedState.status !== 'pending') {
+        return confirmedState;
+      }
     }
 
     if (poll < maxPolls) {
@@ -301,10 +602,7 @@ async function waitForCodexReview(
     }
   }
 
-  return {
-    status: 'timed_out',
-    findings: [],
-  };
+  return timedOutReviewState;
 }
 
 function resolveMaxPolls(
