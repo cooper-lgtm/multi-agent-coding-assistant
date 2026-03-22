@@ -183,16 +183,21 @@ It is aimed at the workflow where one plan document should execute as a sequence
 - one task-sized branch
 - one PR
 - required checks
-- Codex review on the current head SHA
-- merge only after the current review is clean
+- one blocking local `codex exec` review on the current head SHA
+- merge only after the local review is clean
 
 Important behavior:
+- the review gate is local and PR-scoped: it reviews the merge-base-to-head diff for the current task branch and does not silently pull in unrelated untracked worktree files
+- required GitHub checks still run before the local review gate
+- local review findings are passed back into goose as `prior_review` for the next attempt on the same task
+- GitHub-hosted Codex review is now optional comparison/signal, not the blocking repair-loop source of truth
 - `--checks-timeout-ms` and `--review-timeout-ms` are available for explicit gate timeouts
 - both gates default to a 30 minute timeout when flags are omitted
-- timeout does not report `failed`; it returns `manual_review_required` so a human can inspect the PR and decide how to proceed
+- local review timeout or execution failure does not report `failed`; it returns `manual_review_required` so a human can inspect the PR and decide how to proceed
 
 The first implementation focuses on control-flow correctness and testability.
 Its regression surface lives in:
+- `tests/local-codex-review-adapter.test.mjs`
 - `tests/plan-runner.test.mjs`
 - `tests/run-plan-doc.test.mjs`
 - `tests/fixtures/fake-bin/`
