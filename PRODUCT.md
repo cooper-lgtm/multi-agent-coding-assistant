@@ -44,6 +44,16 @@ They care about:
 - stable terminology
 - predictable scope boundaries
 
+## 2.3 Product-facing operating modes
+
+The repository is moving toward three explicit operating modes:
+
+- `all-plan`: planning only, ending with a stored `planning result`
+- `task-run`: execution from an existing `planning result`
+- `end-to-end`: planning plus execution in one controlled flow
+
+These modes are product surfaces over the same kernel, not separate architectures.
+
 ---
 
 ## 3. Current Priorities
@@ -65,6 +75,11 @@ They care about:
 
 ### P3: future executor readiness
 - the MVP stays easy to replace with real planner/worker adapters later
+
+### P4: explicit mode boundaries
+- planning-only workflows should be understandable and storable as artifacts
+- execution-from-plan workflows should not require a fresh planning conversation
+- end-to-end workflows should preserve the planning artifact instead of treating planning as transient
 
 Current work should not trade P0/P1 for speculative breadth.
 
@@ -106,6 +121,10 @@ This means:
 - a new contributor can find the right layer quickly
 - architecture assumptions live in docs and tests, not only in chat memory
 
+### Product surfaces
+- contributors can tell whether a change belongs to `all-plan`, `task-run`, or `end-to-end`
+- future entry points can map to those modes without redefining the architecture
+
 ---
 
 ## 6. Product Rules
@@ -125,6 +144,9 @@ Logical labels are useful, but runtime integrations must still preserve exact mo
 ### 6.5 docs are part of the product surface
 If the repo cannot explain how it works, it is not stable enough for agent collaboration.
 
+### 6.6 mode boundaries are part of correctness
+If planning-only, execution-only, and composed workflows are not distinguishable, operators will make incorrect assumptions about artifacts, approvals, and recovery.
+
 ---
 
 ## 7. Current Product Risks
@@ -133,5 +155,6 @@ If the repo cannot explain how it works, it is not stable enough for agent colla
 2. quality-gate semantics becoming muddled with implementation ownership
 3. model alias handling drifting from exact-model routing metadata
 4. orchestration behavior evolving faster than repo-local docs and plans
+5. product entry surfaces staying implicit even as the kernel grows more capable
 
 These risks mean current work should emphasize convergence, validation, and documentation before expansion.

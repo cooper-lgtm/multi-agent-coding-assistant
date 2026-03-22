@@ -42,6 +42,17 @@ Key points:
 - Quality gates run after implementation and can route work back as `needs_fix`.
 - Retry and escalation decisions preserve per-task evidence and model context.
 
+## 2.1 Product operating modes
+
+The current architecture should now be read through three product-facing operating modes:
+
+- `all-plan`: request to validated `planning result`
+- `task-run`: validated `planning result` to runtime execution and reporting
+- `end-to-end`: `all-plan` followed by `task-run`
+
+These modes reuse the same layers below.
+They do not introduce three separate orchestrators.
+
 ---
 
 ## 3. Layer Boundaries
@@ -83,6 +94,8 @@ Debate mode fans out to:
 
 The final output is a normalized `PlanningResult`.
 
+This phase is the core of `all-plan`.
+
 ## 4.2 Planning result to DAG
 
 Validated planning results are converted into runtime nodes with:
@@ -95,6 +108,8 @@ Validated planning results are converted into runtime nodes with:
 
 Planning tasks remain implementation-only.
 `test-agent` and `review-agent` are not DAG owners.
+
+This DAG handoff is the contract between `all-plan` and `task-run`.
 
 ## 4.3 Runtime execution loop
 
@@ -109,6 +124,8 @@ Planning tasks remain implementation-only.
 8. produce a final summary
 
 This is a dynamic DAG loop, not a one-shot batch dispatch.
+
+This phase is the core of `task-run`.
 
 ---
 
@@ -153,6 +170,14 @@ They can return approval, repair pressure, or failure, but they do not become ta
 5. `needs_fix`, `blocked`, and `failed` have distinct meanings.
 6. Retry handoff must preserve changed files, blocker metadata, and prior evidence.
 7. Logical model routing and exact-model metadata should stay aligned when available.
+
+## 6.1 Mode-boundary invariants
+
+1. `all-plan` must stop with a stable planning artifact.
+2. `task-run` must be able to start from a stored `planning result`.
+3. `end-to-end` must compose planning and execution without bypassing their contracts.
+4. planner-side coordination belongs to planning, not the runtime DAG.
+5. runtime quality gates belong to execution, not planning ownership.
 
 ---
 
@@ -215,6 +240,7 @@ For architecture-affecting changes, review:
 
 The next useful steps are adjacent to the current MVP:
 - schema hardening for planning results
+- productizing `all-plan`, `task-run`, and `end-to-end` entry surfaces
 - replacing mock worker execution with a real execution bridge
 - richer persistence and checkpoint resume
 - better reporting surfaces
