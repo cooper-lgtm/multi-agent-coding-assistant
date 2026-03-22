@@ -309,6 +309,73 @@ test('runPlanTaskSequence returns manual_review_required when required checks do
   ]);
 });
 
+test('runPlanTaskSequence includes the final timeout-derived required-check poll before timing out', async () => {
+  const events = [];
+  const checkStates = ['pending', 'pending', 'pass'];
+
+  const result = await runPlanTaskSequence(
+    {
+      repoPath: '/tmp/repo',
+      planPath: '/tmp/plan.md',
+      baseBranch: 'main',
+      taskHints: ['Task 1: Example'],
+      pollIntervalMs: 1,
+      checksTimeoutMs: 2,
+    },
+    {
+      executeTaskSlice: async ({ taskHint, attempt }) => {
+        events.push(['executeTaskSlice', taskHint, attempt]);
+        return buildTaskSliceResult(taskHint);
+      },
+      getRequiredCheckStatus: async ({ prUrl }) => {
+        const status = checkStates.shift() ?? 'pass';
+        events.push(['getRequiredCheckStatus', prUrl, status]);
+        return status;
+      },
+      getPullRequestHeadSha: async ({ prUrl }) => {
+        events.push(['getPullRequestHeadSha', prUrl, 'sha-current']);
+        return 'sha-current';
+      },
+      runCodexReview: async ({ prUrl, headSha }) => {
+        events.push(['runCodexReview', prUrl, headSha, 'clean']);
+        return { status: 'clean', findings: [] };
+      },
+      mergePullRequest: async ({ prUrl }) => {
+        events.push(['mergePullRequest', prUrl]);
+      },
+      sleep: async (ms) => {
+        events.push(['sleep', ms]);
+      },
+    },
+  );
+
+  assert.deepEqual(result, {
+    status: 'completed',
+    tasks: [
+      {
+        task_hint: 'Task 1: Example',
+        selected_task: 'Task 1: Example',
+        status: 'merged',
+        attempts: 1,
+        repaired: false,
+        branch_name: 'codex/task-1',
+        pr_url: 'https://github.com/example/repo/pull/1',
+      },
+    ],
+  });
+  assert.deepEqual(events, [
+    ['executeTaskSlice', 'Task 1: Example', 1],
+    ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pending'],
+    ['sleep', 1],
+    ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pending'],
+    ['sleep', 1],
+    ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pass'],
+    ['getPullRequestHeadSha', 'https://github.com/example/repo/pull/1', 'sha-current'],
+    ['runCodexReview', 'https://github.com/example/repo/pull/1', 'sha-current', 'clean'],
+    ['mergePullRequest', 'https://github.com/example/repo/pull/1'],
+  ]);
+});
+
 test('runPlanTaskSequence treats a cancelled required check on the final poll as a failure', async () => {
   const events = [];
 

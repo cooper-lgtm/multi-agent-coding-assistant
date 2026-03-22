@@ -4,13 +4,14 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { runPlanTaskSequence } from '../dist/index.js';
-import { runLocalCodexReview } from './lib/local-codex-review-adapter.mjs';
 
 const execFileAsync = promisify(execFile);
 const NO_MERGE_SYSTEM_PROMPT =
   'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging.';
+const localReviewRunnerPath = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -269,20 +270,16 @@ function createShellDependencies({ cwd }) {
           baseBranch,
           changedFiles,
           taskHint,
+          reviewTimeoutMs,
         });
       }
 
-      const reviewResult = await runLocalCodexReview({
-        cwd: repoPath,
-        reviewOptions: {
-          mode: 'head-range',
-          baseRef: baseBranch,
-          headRef: headSha,
-        },
-        structuredReviewTimeoutMs: reviewTimeoutMs,
+      return runLocalReviewCli({
+        repoPath,
+        baseBranch,
+        headSha,
+        reviewTimeoutMs,
       });
-
-      return normalizeLocalReviewResult(reviewResult);
     },
     getCodexReviewState: async ({ prUrl, headSha }) => {
       throw new Error(`GitHub review polling is no longer supported for ${prUrl} at ${headSha}.`);
@@ -609,9 +606,69 @@ async function runCommand(command, args, options) {
   const { stdout } = await execFileAsync(command, args, {
     cwd: options.cwd,
     encoding: 'utf8',
+    env: options.env ?? process.env,
   });
 
   return stdout.trim();
+}
+
+function buildLocalReviewCommand({ baseBranch, headSha }) {
+  return {
+    bin: 'node',
+    argv: [
+      localReviewRunnerPath,
+      '--head-range',
+      baseBranch,
+      headSha,
+      '--output-format',
+      'json',
+    ],
+  };
+}
+
+function buildLocalReviewEnv(reviewTimeoutMs) {
+  const env = { ...process.env };
+  if (typeof reviewTimeoutMs === 'number' && Number.isFinite(reviewTimeoutMs) && reviewTimeoutMs > 0) {
+    env.LOCAL_CODEX_REVIEW_TIMEOUT_MS = String(reviewTimeoutMs);
+  }
+
+  return env;
+}
+
+async function runLocalReviewCli({ repoPath, baseBranch, headSha, reviewTimeoutMs }) {
+  const command = buildLocalReviewCommand({ baseBranch, headSha });
+  let stdout = '';
+
+  try {
+    stdout = await runCommand(process.execPath, command.argv, {
+      cwd: repoPath,
+      env: buildLocalReviewEnv(reviewTimeoutMs),
+    });
+  } catch (error) {
+    if (typeof error?.code !== 'number' || ![1, 2].includes(error.code)) {
+      throw error;
+    }
+
+    stdout = String(error.stdout ?? '').trim();
+  }
+
+  if (!stdout) {
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      risk_notes: ['Local review runner did not return output.'],
+    };
+  }
+
+  try {
+    return normalizeLocalReviewResult(JSON.parse(stdout));
+  } catch (error) {
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      risk_notes: [`Local review runner returned invalid JSON: ${String(error.message ?? error)}`],
+    };
+  }
 }
 
 async function runFakeLocalReview({
@@ -622,22 +679,13 @@ async function runFakeLocalReview({
   baseBranch,
   changedFiles,
   taskHint,
+  reviewTimeoutMs,
 }) {
   const state = JSON.parse(await readFile(statePath, 'utf8'));
+  const command = buildLocalReviewCommand({ baseBranch, headSha });
   state.commands.push({
-    bin: 'local-review',
-    argv: [
-      '--repo-path',
-      repoPath,
-      '--base-branch',
-      baseBranch,
-      '--head-sha',
-      headSha,
-      '--task-hint',
-      taskHint,
-      '--changed-files-json',
-      JSON.stringify(changedFiles),
-    ],
+    bin: command.bin,
+    argv: command.argv,
   });
 
   const prNumber = parseGitHubPrUrl(prUrl).number;

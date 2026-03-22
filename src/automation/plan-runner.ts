@@ -321,7 +321,7 @@ function resolveMaxPolls(
     Number.isFinite(pollIntervalMs) &&
     pollIntervalMs > 0
   ) {
-    return Math.max(1, Math.ceil(timeoutMs / pollIntervalMs));
+    return Math.max(1, Math.floor(timeoutMs / pollIntervalMs) + 1);
   }
 
   return DEFAULT_MAX_POLLS;
