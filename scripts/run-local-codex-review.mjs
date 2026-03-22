@@ -102,14 +102,14 @@ function readBootstrapRunnerSource(repoRoot, options) {
 
   if (options.mode === 'base' && isTrustedBootstrapBaseRef(options.target, trustedBootstrapRefs)) {
     const trustedTargetRunner = readGitFile(repoRoot, options.target, RUNNER_SCRIPT_RELATIVE_PATH);
-    if (trustedTargetRunner !== null) {
+    if (trustedTargetRunner !== null && runnerSourceSupportsRequestedOptions(trustedTargetRunner, options)) {
       return trustedTargetRunner;
     }
   }
 
   for (const trustedRef of trustedBootstrapRefs) {
     const trustedRunner = readGitFile(scriptRepoRoot, trustedRef, RUNNER_SCRIPT_RELATIVE_PATH);
-    if (trustedRunner !== null) {
+    if (trustedRunner !== null && runnerSourceSupportsRequestedOptions(trustedRunner, options)) {
       return trustedRunner;
     }
   }
@@ -117,19 +117,59 @@ function readBootstrapRunnerSource(repoRoot, options) {
   const committedFallbackRevision = resolveCommittedRunnerBootstrapRevision(repoRoot, options);
   if (committedFallbackRevision !== null) {
     const committedRunner = readGitFile(repoRoot, committedFallbackRevision, RUNNER_SCRIPT_RELATIVE_PATH);
-    if (committedRunner !== null) {
+    if (committedRunner !== null && runnerSourceSupportsRequestedOptions(committedRunner, options)) {
       return committedRunner;
     }
   }
 
   const indexedRunner = readGitIndexFile(repoRoot, RUNNER_SCRIPT_RELATIVE_PATH);
-  if (indexedRunner !== null) {
+  if (indexedRunner !== null && runnerSourceSupportsRequestedOptions(indexedRunner, options)) {
     return indexedRunner;
   }
 
   throw new Error(
     `Could not resolve trusted review runner ${RUNNER_SCRIPT_RELATIVE_PATH}. Fetch origin/main (or another trusted mainline ref), or stage the runner first, so same-repo bootstrap review can run from a frozen baseline.`,
   );
+}
+
+function runnerSourceSupportsRequestedOptions(source, options) {
+  const parseArgsSource = extractFunctionSource(source, /^function parseArgs\(argv\) \{/m);
+
+  if (options.mode === 'head-range' && !parseArgsSource.includes("if (arg === '--head-range')")) {
+    return false;
+  }
+
+  if (options.outputFormat === 'json' && !parseArgsSource.includes("if (arg === '--output-format')")) {
+    return false;
+  }
+
+  return true;
+}
+
+function extractFunctionSource(source, signaturePattern) {
+  const signatureMatch = source.match(signaturePattern);
+  const startIndex = signatureMatch?.index ?? -1;
+  if (startIndex === -1) {
+    return '';
+  }
+
+  let braceDepth = 0;
+  let endIndex = -1;
+
+  for (let index = startIndex; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '{') {
+      braceDepth += 1;
+    } else if (character === '}') {
+      braceDepth -= 1;
+      if (braceDepth === 0) {
+        endIndex = index + 1;
+        break;
+      }
+    }
+  }
+
+  return endIndex === -1 ? '' : source.slice(startIndex, endIndex);
 }
 
 function resolveCommittedRunnerBootstrapRevision(repoRoot, options) {
@@ -151,6 +191,7 @@ export async function runLocalCodexReview({
   sourceCodexHome,
   structuredReviewTimeoutMs,
 } = {}) {
+  const options = reviewOptions ?? { mode: 'uncommitted', target: null, outputFormat: 'text' };
   let runTempRoot;
   let isolatedCodexHome;
   let projectRoot;
@@ -158,7 +199,6 @@ export async function runLocalCodexReview({
   try {
     const invocationEnv = { ...process.env, ...extraEnv };
     projectRoot = resolveRepositoryRoot(cwd);
-    const resolvedReviewOptions = reviewOptions ?? { mode: 'uncommitted', target: null };
     const resolvedSourceCodexHome = sourceCodexHome
       ?? invocationEnv.LOCAL_CODEX_REVIEW_SOURCE_HOME
       ?? resolveDefaultCodexHome(invocationEnv);
@@ -176,12 +216,12 @@ export async function runLocalCodexReview({
     await copyAuthJsonIfPresent(resolvedSourceCodexHome, isolatedCodexHome);
     await writeFile(emptyFilePath, '', 'utf8');
 
-    const scope = collectReviewScope(projectRoot, resolvedReviewOptions, emptyFilePath);
+    const scope = collectReviewScope(projectRoot, options, emptyFilePath);
     const postImageHunkLineRanges = collectPostImageHunkLineRanges(projectRoot, scope.patch);
     const deletedLineRanges = collectDeletedLineRanges(projectRoot, scope.patch);
     const renamedFilePathAliases = collectRenamedFilePathAliases(projectRoot, scope.patch);
-    const reviewAssets = await loadTrustedReviewAssets(projectRoot, resolvedReviewOptions);
-    const prompt = buildPrompt(projectRoot, resolvedReviewOptions, scope, reviewAssets.promptTemplate);
+    const reviewAssets = await loadTrustedReviewAssets(projectRoot, options);
+    const prompt = buildPrompt(projectRoot, options, scope, reviewAssets.promptTemplate);
     const outputSchema = tightenStructuredReviewSchema(reviewAssets.outputSchema);
     await writeFile(promptPath, prompt, 'utf8');
     await writeFile(schemaPath, outputSchema, 'utf8');
@@ -204,8 +244,8 @@ export async function runLocalCodexReview({
       deletedLineRanges,
       renamedFilePathAliases,
     });
-    const normalizedRepoRoot = normalizeComparablePath(projectRoot, projectRoot);
 
+    const normalizedRepoRoot = normalizeComparablePath(projectRoot, projectRoot);
     return {
       status: review.findings.length > 0 ? 'findings' : 'clean',
       findings: review.findings.map((finding) => ({
@@ -254,28 +294,14 @@ async function main() {
     reviewOptions: options,
   });
 
-  if (result.status === 'findings') {
-    printFindings(result.review, {
-      repoRoot: result.repoRoot,
-      deletedLineRanges: result.deletedLineRanges,
-      renamedFilePathAliases: result.renamedFilePathAliases,
-    });
-    return 1;
-  }
-
-  if (result.status === 'clean') {
-    process.stdout.write('Structured review is clean.\n');
-    return 0;
-  }
-
-  process.stdout.write(`${result.failure_message}\n`);
-  return 2;
+  return emitCliResult(result, { outputFormat: options.outputFormat });
 }
 
 function parseArgs(argv) {
   const options = {
     mode: 'uncommitted',
     target: null,
+    outputFormat: 'text',
   };
   let selectedScopeFlag = null;
 
@@ -312,6 +338,23 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--head-range') {
+      const baseRef = argv[index + 1];
+      const headRef = argv[index + 2];
+      if (!baseRef || baseRef.startsWith('--') || !headRef || headRef.startsWith('--')) {
+        throw new Error('--head-range requires <base-ref> and <head-ref>.');
+      }
+      if (selectedScopeFlag !== null) {
+        throw new Error('Choose only one of --base, --commit, or --uncommitted.');
+      }
+      options.mode = 'head-range';
+      options.baseRef = baseRef;
+      options.headRef = headRef;
+      selectedScopeFlag = '--head-range';
+      index += 2;
+      continue;
+    }
+
     if (arg === '--uncommitted') {
       if (selectedScopeFlag !== null) {
         throw new Error('Choose only one of --base, --commit, or --uncommitted.');
@@ -319,6 +362,19 @@ function parseArgs(argv) {
       options.mode = 'uncommitted';
       options.target = null;
       selectedScopeFlag = '--uncommitted';
+      continue;
+    }
+
+    if (arg === '--output-format') {
+      const outputFormat = argv[index + 1];
+      if (!outputFormat || outputFormat.startsWith('--')) {
+        throw new Error('--output-format requires a value.');
+      }
+      if (outputFormat !== 'text' && outputFormat !== 'json') {
+        throw new Error('--output-format must be either text or json.');
+      }
+      options.outputFormat = outputFormat;
+      index += 1;
       continue;
     }
 
@@ -330,6 +386,53 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+function resolveRequestedOutputFormat(argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== '--output-format') {
+      continue;
+    }
+
+    const requestedFormat = argv[index + 1];
+    if (requestedFormat === 'json') {
+      return 'json';
+    }
+
+    if (requestedFormat === 'text') {
+      return 'text';
+    }
+  }
+
+  return 'text';
+}
+
+function emitCliResult(result, { outputFormat = 'text' } = {}) {
+  if (outputFormat === 'json') {
+    process.stdout.write(`${JSON.stringify({
+      status: result.status,
+      findings: result.findings,
+      failure_message: result.failure_message,
+    }, null, 2)}\n`);
+    return result.status === 'clean' ? 0 : result.status === 'findings' ? 1 : 2;
+  }
+
+  if (result.status === 'findings') {
+    printFindings(result.review, {
+      repoRoot: result.repoRoot,
+      deletedLineRanges: result.deletedLineRanges,
+      renamedFilePathAliases: result.renamedFilePathAliases,
+    });
+    return 1;
+  }
+
+  if (result.status === 'clean') {
+    process.stdout.write('Structured review is clean.\n');
+    return 0;
+  }
+
+  process.stdout.write(`${result.failure_message}\n`);
+  return 2;
 }
 
 function resolveDefaultCodexHome(env = process.env) {
@@ -1255,8 +1358,8 @@ function resolveTrackedWorktreeBaseRef(repoRoot) {
   return result.status === 0 ? 'HEAD' : EMPTY_TREE_HASH;
 }
 
-async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputSchemaPath, prompt, timeoutMs, env = process.env }) {
-  const childEnv = await buildChildEnv(isolatedCodexHome, env);
+async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputSchemaPath, prompt, timeoutMs }) {
+  const childEnv = await buildChildEnv(isolatedCodexHome);
 
   return await new Promise((resolve, reject) => {
     let settled = false;
@@ -1385,8 +1488,8 @@ async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputS
   });
 }
 
-async function buildChildEnv(isolatedCodexHome, env = process.env) {
-  const childEnv = { ...env, CODEX_HOME: isolatedCodexHome };
+async function buildChildEnv(isolatedCodexHome) {
+  const childEnv = { ...process.env, CODEX_HOME: isolatedCodexHome };
   const allowedCodexEnvKeys = await collectAllowedCodexEnvKeys(isolatedCodexHome);
 
   for (const key of Object.keys(childEnv)) {
@@ -2098,6 +2201,8 @@ function printFindings(review, scope = {}) {
   }
 }
 
+const requestedCliOutputFormat = resolveRequestedOutputFormat(process.argv.slice(2));
+
 if (
   process.argv[1]
   && normalizeComparablePath(process.argv[1]) === normalizeComparablePath(fileURLToPath(import.meta.url))
@@ -2106,7 +2211,17 @@ if (
     const trustedRunnerExitCode = await maybeRunTrustedSameRepoRunner(process.argv.slice(2));
     process.exitCode = trustedRunnerExitCode ?? await main();
   } catch (error) {
-    process.stdout.write(`${String(error.message ?? error)}\n`);
-    process.exitCode = 2;
+    process.exitCode = emitCliResult(
+      {
+        status: 'manual_review_required',
+        findings: [],
+        review: null,
+        repoRoot: null,
+        deletedLineRanges: new Map(),
+        renamedFilePathAliases: new Map(),
+        failure_message: String(error.message ?? error),
+      },
+      { outputFormat: requestedCliOutputFormat },
+    );
   }
 }
