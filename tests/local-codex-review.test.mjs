@@ -192,6 +192,7 @@ test('local codex review supports machine-readable manual-review-required output
     assert.equal(output.status, 'manual_review_required');
     assert.deepEqual(output.findings, []);
     assert.match(output.failure_message, /Structured review payload/);
+    assert.match(output.failure_message, /Payload preview: not-json/);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -787,6 +788,7 @@ test('local codex review exits 2 when the structured review payload is invalid',
 
     assert.equal(result.status, 2, result.stderr);
     assert.match(result.stdout, /Structured review payload was not valid JSON\./);
+    assert.match(result.stdout, /Payload preview: not-json/);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

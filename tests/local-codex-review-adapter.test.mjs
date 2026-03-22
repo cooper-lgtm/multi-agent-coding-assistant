@@ -107,6 +107,124 @@ test('runLocalCodexReview returns manual_review_required when the structured pay
   }
 });
 
+test('runLocalCodexReview fails closed when the runner reports clean without an array findings payload', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-adapter-invalid-clean-'));
+
+  try {
+    const repoRoot = path.join(tempRoot, 'repo');
+    const fakeRunnerPath = path.join(tempRoot, 'fake-local-review-runner.mjs');
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(
+      fakeRunnerPath,
+      [
+        '#!/usr/bin/env node',
+        "process.stdout.write(JSON.stringify({ status: 'clean' }));",
+      ].join('\n'),
+      'utf8',
+    );
+    await chmod(fakeRunnerPath, 0o755);
+
+    const result = await runLocalCodexReview({
+      cwd: repoRoot,
+      reviewOptions: {
+        mode: 'uncommitted',
+        target: null,
+      },
+      extraEnv: {
+        LOCAL_CODEX_REVIEW_RUNNER_PATH: fakeRunnerPath,
+      },
+    });
+
+    assert.equal(result.status, 'manual_review_required');
+    assert.deepEqual(result.findings, []);
+    assert.match(result.failure_message ?? '', /findings payload/i);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('runLocalCodexReview fails closed when the runner exceeds the adapter outer timeout', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-adapter-timeout-'));
+
+  try {
+    const repoRoot = path.join(tempRoot, 'repo');
+    const fakeRunnerPath = path.join(tempRoot, 'slow-local-review-runner.mjs');
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(
+      fakeRunnerPath,
+      [
+        '#!/usr/bin/env node',
+        "const delayMs = Number.parseInt(process.env.FAKE_LOCAL_REVIEW_DELAY_MS ?? '1500', 10);",
+        'setTimeout(() => {',
+        "  process.stdout.write(JSON.stringify({ status: 'clean', findings: [] }));",
+        '}, delayMs);',
+      ].join('\n'),
+      'utf8',
+    );
+    await chmod(fakeRunnerPath, 0o755);
+
+    const result = await runLocalCodexReview({
+      cwd: repoRoot,
+      reviewOptions: {
+        mode: 'uncommitted',
+        target: null,
+      },
+      structuredReviewTimeoutMs: 25,
+      extraEnv: {
+        LOCAL_CODEX_REVIEW_RUNNER_PATH: fakeRunnerPath,
+        FAKE_LOCAL_REVIEW_DELAY_MS: '1500',
+      },
+    });
+
+    assert.equal(result.status, 'manual_review_required');
+    assert.deepEqual(result.findings, []);
+    assert.match(result.failure_message ?? '', /outer timeout/i);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('runLocalCodexReview applies the adapter outer timeout when only LOCAL_CODEX_REVIEW_TIMEOUT_MS is provided', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-adapter-env-timeout-'));
+
+  try {
+    const repoRoot = path.join(tempRoot, 'repo');
+    const fakeRunnerPath = path.join(tempRoot, 'slow-local-review-runner-env.mjs');
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(
+      fakeRunnerPath,
+      [
+        '#!/usr/bin/env node',
+        "const delayMs = Number.parseInt(process.env.FAKE_LOCAL_REVIEW_DELAY_MS ?? '1500', 10);",
+        'setTimeout(() => {',
+        "  process.stdout.write(JSON.stringify({ status: 'clean', findings: [] }));",
+        '}, delayMs);',
+      ].join('\n'),
+      'utf8',
+    );
+    await chmod(fakeRunnerPath, 0o755);
+
+    const result = await runLocalCodexReview({
+      cwd: repoRoot,
+      reviewOptions: {
+        mode: 'uncommitted',
+        target: null,
+      },
+      extraEnv: {
+        LOCAL_CODEX_REVIEW_RUNNER_PATH: fakeRunnerPath,
+        LOCAL_CODEX_REVIEW_TIMEOUT_MS: '25',
+        FAKE_LOCAL_REVIEW_DELAY_MS: '1500',
+      },
+    });
+
+    assert.equal(result.status, 'manual_review_required');
+    assert.deepEqual(result.findings, []);
+    assert.match(result.failure_message ?? '', /outer timeout/i);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 async function setupFakeCodexEnvironment(tempRoot, mode) {
   const fakeBinPath = path.join(tempRoot, 'fake-bin');
   const sourceCodexHome = path.join(tempRoot, 'source-codex-home');

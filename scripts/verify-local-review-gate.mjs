@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const localReviewRunnerPath = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
 const TEST_FILES = [
+  'tests/local-codex-review-adapter.test.mjs',
   'tests/local-codex-review.test.mjs',
   'tests/run-plan-doc.test.mjs',
   'tests/plan-runner.test.mjs',

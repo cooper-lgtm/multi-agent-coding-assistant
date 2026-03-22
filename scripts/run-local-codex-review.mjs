@@ -236,14 +236,19 @@ export async function runLocalCodexReview({
       env: invocationEnv,
     });
 
-    const review = parseStructuredReview(result.lastMessage, {
-      repoRoot: projectRoot,
-      changedFiles: scope.changedFiles.map((filePath) => path.resolve(projectRoot, filePath)),
-      lineRangeExemptFiles: scope.lineRangeExemptFiles.map((filePath) => path.resolve(projectRoot, filePath)),
-      postImageHunkLineRanges,
-      deletedLineRanges,
-      renamedFilePathAliases,
-    });
+    let review;
+    try {
+      review = parseStructuredReview(result.lastMessage, {
+        repoRoot: projectRoot,
+        changedFiles: scope.changedFiles.map((filePath) => path.resolve(projectRoot, filePath)),
+        lineRangeExemptFiles: scope.lineRangeExemptFiles.map((filePath) => path.resolve(projectRoot, filePath)),
+        postImageHunkLineRanges,
+        deletedLineRanges,
+        renamedFilePathAliases,
+      });
+    } catch (error) {
+      throw new Error(appendStructuredReviewPayloadPreview(String(error.message ?? error), result.lastMessage));
+    }
 
     const normalizedRepoRoot = normalizeComparablePath(projectRoot, projectRoot);
     return {
@@ -1719,6 +1724,30 @@ function parseStructuredReviewPayload(lastMessage) {
 
     throw error;
   }
+}
+
+function appendStructuredReviewPayloadPreview(message, payload) {
+  const preview = formatStructuredReviewPayloadPreview(payload);
+  if (!preview) {
+    return message;
+  }
+
+  return `${message} Payload preview: ${preview}`;
+}
+
+function formatStructuredReviewPayloadPreview(payload) {
+  if (typeof payload !== 'string') {
+    return '';
+  }
+
+  const condensed = payload.replace(/\s+/g, ' ').trim();
+  if (!condensed) {
+    return '';
+  }
+
+  return condensed.length > 240
+    ? `${condensed.slice(0, 237)}...`
+    : condensed;
 }
 
 function isPathWithinRoot(rootPath, candidatePath) {

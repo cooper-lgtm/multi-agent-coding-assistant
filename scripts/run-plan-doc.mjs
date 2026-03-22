@@ -14,6 +14,7 @@ const NO_MERGE_SYSTEM_PROMPT =
 const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
 const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
+const TRUSTED_LOCAL_MAINLINE_BASE_REFS = new Set(['main', 'master']);
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -720,8 +721,6 @@ async function resolveLocalReviewBaseRef({ prUrl, cwd }) {
     ...(baseRefName ? [
       `refs/remotes/origin/${baseRefName}`,
       `origin/${baseRefName}`,
-      `refs/heads/${baseRefName}`,
-      baseRefName,
     ] : []),
   ];
 
@@ -731,11 +730,20 @@ async function resolveLocalReviewBaseRef({ prUrl, cwd }) {
     }
   }
 
-  if (baseRefOid) {
-    return baseRefOid;
+  if (baseRefName && TRUSTED_LOCAL_MAINLINE_BASE_REFS.has(baseRefName)) {
+    const trustedLocalCandidateRefs = [
+      `refs/heads/${baseRefName}`,
+      baseRefName,
+    ];
+
+    for (const candidateRef of trustedLocalCandidateRefs) {
+      if (await gitCommitRefExists(cwd, candidateRef)) {
+        return candidateRef;
+      }
+    }
   }
 
-  throw new Error(`Could not resolve a local review base ref for ${prUrl}.`);
+  throw new Error(`Could not resolve a trusted local review base ref for ${prUrl}.`);
 }
 
 async function gitCommitObjectExists(cwd, revision) {
@@ -855,6 +863,22 @@ function normalizeLocalReviewResult(reviewResult) {
         status: 'manual_review_required',
         findings: [],
         risk_notes: ['Local review returned a non-array findings payload.'],
+      };
+    }
+
+    if (reviewResult.status === 'clean' && reviewResult.findings.length > 0) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        risk_notes: ['Local review returned a clean status with inline findings.'],
+      };
+    }
+
+    if (reviewResult.status === 'findings' && reviewResult.findings.length === 0) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        risk_notes: ['Local review returned a findings status without inline findings.'],
       };
     }
 
