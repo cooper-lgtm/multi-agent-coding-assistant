@@ -234,7 +234,7 @@ export class MainOrchestrator {
     task.error = dispatchResult.blocker_message ?? dispatchResult.summary;
     const failureCause: RetryCause =
       dispatchResult.status === 'blocked' ? 'implementation_blocked' : 'implementation_failed';
-    const decision = this.deps.retryManager.decide(task, failureCause);
+    const decision = this.decideRetry(task, runtime, failureCause);
     this.applyRetryDecision(task, decision, runtime);
     await this.persist(runtime);
   }
@@ -243,7 +243,9 @@ export class MainOrchestrator {
     const middlewareDecision = await this.runtimeMiddleware.beforeQualityGates(task, runtime);
 
     if (middlewareDecision) {
-      if (task.retry_count >= task.max_retries) {
+      const continuationCount = this.countRuntimeMiddlewareContinuations(runtime, task.task_id);
+
+      if (task.retry_count + continuationCount >= task.max_retries) {
         const message = `Runtime middleware requested more continuations than ${task.task_id} allows.`;
         task.status = 'failed';
         task.error = message;
@@ -259,14 +261,12 @@ export class MainOrchestrator {
         return;
       }
 
-      const nextRetryCount = task.retry_count + 1;
-      task.retry_count = nextRetryCount;
       task.blocker_category = 'quality';
       task.blocker_message = middlewareDecision.message;
       task.error = middlewareDecision.message;
       task.prior_attempt = createWorkerRetryHandoff(
         task,
-        nextRetryCount,
+        task.retry_count + continuationCount + 1,
         'needs_fix',
         middlewareDecision.message,
       );
@@ -334,7 +334,7 @@ export class MainOrchestrator {
     task.error = gateResult.blocker_message ?? gateResult.summary;
     const failureCause: RetryCause =
       gateResult.status === 'needs_fix' ? 'quality_needs_fix' : 'quality_failed';
-    const decision = this.deps.retryManager.decide(task, failureCause);
+    const decision = this.decideRetry(task, runtime, failureCause);
     this.applyRetryDecision(task, decision, runtime);
     await this.persist(runtime);
   }
@@ -445,6 +445,38 @@ export class MainOrchestrator {
     return Object.values(runtime.tasks).filter((task) => task.status === 'implementation_done');
   }
 
+  private countRuntimeMiddlewareContinuations(runtime: RuntimeState, taskId: string): number {
+    return runtime.events.filter((event) =>
+      event.task_id === taskId && event.type === 'runtime_middleware_requested_continuation',
+    ).length;
+  }
+
+  private decideRetry(task: ExecutionNode, runtime: RuntimeState, cause: RetryCause): RetryDecision {
+    if (cause === 'implementation_blocked') {
+      return this.deps.retryManager.decide(task, cause);
+    }
+
+    const continuationCount = this.countRuntimeMiddlewareContinuations(runtime, task.task_id);
+    const consumedExtraAttempts = task.retry_count + continuationCount;
+
+    if (consumedExtraAttempts >= task.max_retries) {
+      const nextStatus = this.toTerminalStatus(cause);
+
+      return {
+        taskId: task.task_id,
+        cause,
+        action: 'keep_terminal_status',
+        next_status: nextStatus,
+        next_model: task.model,
+        next_model_metadata: task.model_metadata,
+        retry_count: task.retry_count,
+        reason: `Retry budget exhausted for ${task.task_id}; keeping ${nextStatus}.`,
+      };
+    }
+
+    return this.deps.retryManager.decide(task, cause);
+  }
+
   private async syncControlFromStore(runtime: RuntimeState): Promise<void> {
     const manifest = await this.deps.runStore.loadManifest(runtime.run_id);
 
@@ -552,6 +584,18 @@ export class MainOrchestrator {
 
   private isRunFinished(status: RunLifecycleStatus): boolean {
     return ['completed', 'needs_fix', 'blocked', 'failed', 'cancelled'].includes(status);
+  }
+
+  private toTerminalStatus(cause: RetryCause): RuntimeTaskStatus {
+    switch (cause) {
+      case 'implementation_blocked':
+        return 'blocked';
+      case 'quality_needs_fix':
+        return 'needs_fix';
+      case 'quality_failed':
+      case 'implementation_failed':
+        return 'failed';
+    }
   }
 
   private async persist(runtime: RuntimeState, options: { syncControl?: boolean } = {}): Promise<void> {

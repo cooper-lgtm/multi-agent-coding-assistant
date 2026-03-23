@@ -165,8 +165,8 @@ test('middleware can request task continuation before quality gates and redispat
   assert.equal(result.summary.final_status, 'completed');
   assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract']);
   assert.deepEqual(qualityGateCalls, ['task-api-contract']);
-  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
-  assert.equal(dispatchSnapshots[1].retry_count, 1);
+  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 0);
+  assert.equal(dispatchSnapshots[1].retry_count, 0);
   assert.equal(dispatchSnapshots[1].prior_attempt?.status, 'needs_fix');
   assert.equal(
     dispatchSnapshots[1].prior_attempt?.summary,
@@ -258,7 +258,7 @@ test('middleware continuations fail closed when they exceed the task retry budge
 
   assert.equal(result.summary.final_status, 'failed');
   assert.equal(result.runtime.tasks['task-api-contract'].status, 'failed');
-  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
+  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 0);
   assert.equal(
     result.runtime.tasks['task-api-contract'].blocker_message,
     'Runtime middleware requested more continuations than task-api-contract allows.',
@@ -340,10 +340,10 @@ test('middleware continuation consumes retry budget before a later implementatio
 
   assert.equal(result.summary.final_status, 'failed');
   assert.equal(result.runtime.tasks['task-api-contract'].status, 'failed');
-  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
+  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 0);
   assert.equal(result.runtime.tasks['task-api-contract'].error, 'Attempt 2 still failed after the continuation.');
   assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract']);
-  assert.equal(dispatchSnapshots[1].retry_count, 1);
+  assert.equal(dispatchSnapshots[1].retry_count, 0);
   assert.deepEqual(qualityGateCalls, []);
   assert.ok(result.summary.events.every((event) => !/retry scheduled/i.test(event)));
 });
@@ -425,5 +425,82 @@ test('middleware continuations share the same per-task budget as earlier retries
   assert.match(
     result.summary.events.join('\n'),
     /continuation budget/i,
+  );
+});
+
+test('a continuation does not skip the first same-model retry after a later failure', async () => {
+  const fixture = buildSingleTaskPlanningFixture();
+  const dispatchCalls = [];
+  const dispatchSnapshots = [];
+  let shouldContinue = true;
+
+  const implementationDispatcher = new RecordingImplementationDispatcher(
+    new MockImplementationDispatcher({
+      taskDecisions: {
+        'task-api-contract': [
+          {
+            status: 'implementation_done',
+            summary: 'Attempt 1 needs more verification work.',
+          },
+          {
+            status: 'failed',
+            summary: 'Attempt 2 failed after the continuation.',
+          },
+          {
+            status: 'implementation_done',
+            summary: 'Attempt 3 recovered on the first real retry.',
+          },
+        ],
+      },
+    }),
+    dispatchCalls,
+    dispatchSnapshots,
+  );
+
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher,
+    qualityGateRunner: new MockQualityGateRunner(),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+    runtimeMiddleware: [
+      {
+        name: 'single-continuation-before-failure',
+        beforeQualityGates() {
+          if (!shouldContinue) {
+            return undefined;
+          }
+
+          shouldContinue = false;
+          return {
+            action: 'continue_task',
+            message: 'Complete the missing verification before handoff.',
+          };
+        },
+      },
+    ],
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+    budget_policy: {
+      maxRetriesPerTask: 2,
+    },
+  });
+
+  assert.equal(result.summary.final_status, 'completed');
+  assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract', 'task-api-contract']);
+  assert.equal(dispatchSnapshots[1].prior_attempt?.status, 'needs_fix');
+  assert.equal(dispatchSnapshots[2].retry_count, 1);
+  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
+  assert.equal(result.runtime.tasks['task-api-contract'].model, 'codex');
+  assert.match(
+    result.summary.events.join('\n'),
+    /retry scheduled for task-api-contract: retry 1 will reuse codex/i,
   );
 });

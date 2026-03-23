@@ -289,7 +289,7 @@ test('goose redispatch receives middleware continuation context on the next impl
   assert.equal(receivedAttempts.length, 2);
   assert.equal(receivedAttempts[0].retry_count, 0);
   assert.equal(receivedAttempts[0].prior_attempt, null);
-  assert.equal(receivedAttempts[1].retry_count, 1);
+  assert.equal(receivedAttempts[1].retry_count, 0);
   assert.equal(receivedAttempts[1].prior_attempt?.status, 'needs_fix');
   assert.equal(
     receivedAttempts[1].prior_attempt?.summary,
