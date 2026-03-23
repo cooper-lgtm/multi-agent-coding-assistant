@@ -1,5 +1,30 @@
 import type { PlanningResult } from '../schemas/planning.js';
 
+function validateExecutionGuidance(taskId: string, guidance: PlanningResult['tasks'][number]['execution_guidance']): void {
+  if (!guidance) return;
+
+  const requiredFields: Array<keyof NonNullable<typeof guidance>> = [
+    'must_read_files',
+    'verification_commands',
+    'environment_checks',
+    'definition_of_done',
+    'reconsider_signals',
+  ];
+
+  for (const field of requiredFields) {
+    const values = guidance[field];
+    if (!Array.isArray(values) || values.length === 0) {
+      throw new Error(`Task ${taskId} must include execution_guidance.${field}`);
+    }
+
+    for (const value of values) {
+      if (typeof value !== 'string' || !value.trim()) {
+        throw new Error(`Task ${taskId} must include non-empty execution_guidance.${field} entries`);
+      }
+    }
+  }
+}
+
 export function validatePlanningResult(planningResult: PlanningResult): void {
   if (!planningResult.schema_version) throw new Error('Missing schema_version');
   if (!planningResult.planning_mode) throw new Error('Missing planning_mode');
@@ -37,6 +62,7 @@ export function validatePlanningResult(planningResult: PlanningResult): void {
     if (!task.acceptance_criteria?.length) {
       throw new Error(`Task ${task.id} must include acceptance_criteria`);
     }
+    validateExecutionGuidance(task.id, task.execution_guidance);
     if (task.depends_on.includes(task.id)) {
       throw new Error(`Task ${task.id} cannot depend on itself`);
     }

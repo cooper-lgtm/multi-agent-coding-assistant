@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DefaultPlanningNormalizer,
   PlanningController,
   buildDirectPlanningFixtureRequest,
   buildDebatePlanningFixtureRequest,
+  buildExecutionGuidancePlanningDraft,
   buildExecutionDag,
   validatePlanningResult,
 } from '../dist/index.js';
@@ -97,4 +99,41 @@ test('planning normalization rejects duplicate task ids before validation can co
     }),
     /Duplicate task id detected during planning normalization: task-plan-contract/,
   );
+});
+
+test('planning normalization preserves execution guidance through validation and DAG conversion', () => {
+  const normalizer = new DefaultPlanningNormalizer();
+
+  const planningResult = normalizer.normalize({
+    request: buildDirectPlanningFixtureRequest(),
+    resolved_mode: 'direct',
+    draft: buildExecutionGuidancePlanningDraft(),
+    planner_routes: [
+      {
+        role: 'planning-agent',
+        selected_model: 'codex',
+        attempted_models: ['codex'],
+      },
+    ],
+  });
+
+  validatePlanningResult(planningResult);
+
+  assert.deepEqual(planningResult.tasks[0].execution_guidance, {
+    must_read_files: ['README.md', 'src/schemas/planning.ts'],
+    verification_commands: ['npm run build', 'node --test tests/planning-pipeline.test.mjs'],
+    environment_checks: ['node -v', 'git status --short'],
+    definition_of_done: [
+      'Execution guidance is preserved on the normalized planning task.',
+      'Execution guidance is present on the runtime task after DAG conversion.',
+    ],
+    reconsider_signals: [
+      'Execution guidance is missing from the runtime task.',
+      'Required verification commands are dropped during normalization.',
+    ],
+  });
+
+  const dag = buildExecutionDag(planningResult);
+  assert.deepEqual(dag.graph.nodes['task-plan-contract'].execution_guidance, planningResult.tasks[0].execution_guidance);
+  assert.deepEqual(dag.runtime.tasks['task-plan-contract'].execution_guidance, planningResult.tasks[0].execution_guidance);
 });

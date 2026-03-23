@@ -2,6 +2,7 @@ import type { ModelResolution } from './models.js';
 import type {
   AssignedAgent,
   ExecutionControlMode,
+  ExecutionGuidance,
   PlanningMode,
   PlanningResult,
   QualityGate,
@@ -38,6 +39,7 @@ export interface ExecutionNode {
   depends_on: string[];
   acceptance_criteria: string[];
   quality_gate: QualityGate;
+  execution_guidance?: ExecutionGuidance;
   status: RuntimeTaskStatus;
   test_status: QualityStatus;
   review_status: ReviewStatus;

@@ -58,6 +58,9 @@ export function buildExecutionDag(
       depends_on: [...task.depends_on],
       acceptance_criteria: [...task.acceptance_criteria],
       quality_gate: task.quality_gate,
+      execution_guidance: task.execution_guidance
+        ? structuredClone(task.execution_guidance)
+        : undefined,
       status: 'pending',
       test_status: 'pending',
       review_status: 'pending',
