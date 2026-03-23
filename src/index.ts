@@ -18,6 +18,8 @@ export * from './planning/planning-pipeline.js';
 export * from './planning/planning-controller.js';
 export * from './orchestrator/planning-validator.js';
 export * from './orchestrator/dag-builder.js';
+export * from './orchestrator/local-context-discovery.js';
+export * from './orchestrator/runtime-context-builder.js';
 export * from './orchestrator/implementation-dispatcher.js';
 export * from './orchestrator/approval-manager.js';
 export * from './orchestrator/policy-engine.js';

@@ -16,8 +16,9 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
 10. `docs/reviews/recurring-issues.md`
 11. relevant `src/` modules and `tests/`
 
-## Current Baseline (2026-03-22)
+## Current Baseline (2026-03-23)
 - TypeScript orchestration kernel is active for planning, DAG execution, implementation dispatch, quality gates, retry/escalation, reporting, and file-backed persistence/resume.
+- Planning/runtime tasks now preserve compact `execution_guidance` fields through normalization, validation, and DAG/runtime task creation.
 - Planning/runtime invariants remain enforced in root docs and tests:
   - `main-orchestrator` is sole global controller
   - planning outputs implementation tasks only
@@ -48,9 +49,9 @@ Primary execution plan: `docs/plans/2026-03-23-runtime-success-breakdown.md`
 Roadmap reference: `docs/roadmap/2026-03-22-runtime-success-roadmap.md`
 
 Planned slices (status inferred from repository state):
-1. PR10a execution-guidance contracts and DAG propagation — **next**
-2. PR10b runtime context builder and local discovery — **planned**
-3. PR10c worker payload threading and prompt uptake — **planned**
+1. PR10a execution-guidance contracts and DAG propagation — **complete**
+2. PR10b runtime context builder and local discovery — **complete**
+3. PR10c worker payload threading and prompt uptake — **next**
 4. PR11a runtime middleware seam — **planned**
 5. PR11b pre-completion checklist and continuation — **planned**
 6. PR12a retry diagnosis contracts — **planned**
@@ -105,6 +106,6 @@ node --test tests/cli-smoke.test.mjs
 
 ## Artifact Metadata
 - artifact_type: `repo-context`
-- version: `1.7.1`
+- version: `1.8.0`
 - status: `refreshed`
 - refreshed_on: `2026-03-23`
