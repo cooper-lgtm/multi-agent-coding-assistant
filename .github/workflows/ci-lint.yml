@@ -42,10 +42,9 @@ jobs:
       - name: Super-linter
         uses: super-linter/super-linter@v8.5.0
         env:
+          # Keep repo-local npm/ESLint validation in local-lint.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LINTER_RULES_PATH: .
           VALIDATE_ALL_CODEBASE: false
           VALIDATE_GITHUB_ACTIONS: true
-          VALIDATE_JAVASCRIPT_ES: true
           VALIDATE_MARKDOWN: true
-          VALIDATE_TYPESCRIPT_ES: true

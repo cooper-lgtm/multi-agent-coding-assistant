@@ -20,10 +20,11 @@ test('package.json exposes repository-local lint commands', () => {
   assert.equal(typeof packageJson.scripts?.['lint:yml'], 'string');
 });
 
-test('repository ships a dedicated CI Lint workflow backed by super-linter', () => {
+test('repository ships a dedicated CI Lint workflow with repo-local lint as source of truth', () => {
   const workflow = readRepoFile('.github/workflows/ci-lint.yml');
   const validateAssignments = [...workflow.matchAll(/^\s+(VALIDATE_[A-Z0-9_]+):\s+(true|false)$/gm)]
     .filter(([, key]) => key !== 'VALIDATE_ALL_CODEBASE');
+  const validateKeys = validateAssignments.map(([, key]) => key).sort();
   const validateValues = new Set(validateAssignments.map(([, , value]) => value));
 
   assert.match(workflow, /^name:\s+CI Lint$/m);
@@ -33,10 +34,11 @@ test('repository ships a dedicated CI Lint workflow backed by super-linter', () 
   assert.match(workflow, /LINTER_RULES_PATH:\s+\./);
   assert.match(workflow, /uses:\s+super-linter\/super-linter@v8/);
   assert.match(workflow, /VALIDATE_ALL_CODEBASE:\s+false/);
-  assert.match(workflow, /VALIDATE_TYPESCRIPT_ES:\s+true/);
-  assert.match(workflow, /VALIDATE_JAVASCRIPT_ES:\s+true/);
   assert.match(workflow, /VALIDATE_MARKDOWN:\s+true/);
   assert.match(workflow, /VALIDATE_GITHUB_ACTIONS:\s+true/);
+  assert.doesNotMatch(workflow, /VALIDATE_TYPESCRIPT_ES:\s+true/);
+  assert.doesNotMatch(workflow, /VALIDATE_JAVASCRIPT_ES:\s+true/);
+  assert.deepEqual(validateKeys, ['VALIDATE_GITHUB_ACTIONS', 'VALIDATE_MARKDOWN']);
   assert.deepEqual([...validateValues], ['true']);
 });
 
