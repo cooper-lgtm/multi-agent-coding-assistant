@@ -65,6 +65,27 @@ function buildTask(agent) {
 
 test('buildGooseRecipeExecution maps frontend-agent to frontend recipe', () => {
   const task = buildTask('frontend-agent');
+  const runtimeContext = {
+    repo_context_summary: [
+      'Planning/runtime tasks now preserve compact execution_guidance fields through normalization, validation, and DAG/runtime task creation.',
+    ],
+    environment_snapshot: {
+      package_manager: 'npm',
+      package_manifest_path: 'package.json',
+      lockfile_path: 'package-lock.json',
+      build_command: 'npm run build',
+      test_commands: ['npm run test:runtime'],
+    },
+    task_context_files: ['docs/context/repo-context.md', 'README.md', 'prompts/frontend-agent.md'],
+    verification_plan: {
+      commands: ['npm run build', 'npm run test:runtime'],
+      environment_checks: ['git status --short'],
+      definition_of_done: ['Frontend worker follows injected runtime context before editing.'],
+      reconsider_signals: ['Frontend goose recipe lost verification guidance.'],
+      retry_handoff: null,
+    },
+    time_budget_hint: 'Attempt 1 of 3; 2 retries remain after this pass.',
+  };
 
   const spec = buildGooseRecipeExecution({
     role: 'frontend-agent',
@@ -72,6 +93,7 @@ test('buildGooseRecipeExecution maps frontend-agent to frontend recipe', () => {
     runtimeRunId: 'run-frontend',
     repoPath: '/tmp/repo',
     retryContext: null,
+    runtimeContext,
   });
 
   assert.equal(spec.recipe_path, '.goose/recipes/frontend-implementation.yaml');
@@ -80,10 +102,41 @@ test('buildGooseRecipeExecution maps frontend-agent to frontend recipe', () => {
   assert.equal(spec.inputs.task.task_id, task.task_id);
   assert.deepEqual(spec.inputs.task.acceptance_criteria, task.acceptance_criteria);
   assert.equal(spec.inputs.retry_context, null);
+  assert.deepEqual(spec.inputs.runtime_context, runtimeContext);
+  assert.ok(spec.inputs.runtime_context.task_context_files.every((item) => !isMachineSpecificPath(item)));
 });
 
 test('buildGooseRecipeExecution maps backend-agent to backend recipe and passes retry context', () => {
   const task = buildTask('backend-agent');
+  const runtimeContext = {
+    repo_context_summary: [
+      'Goose integration baseline includes structured worker-result contracts and external quality gates.',
+    ],
+    environment_snapshot: {
+      package_manager: 'npm',
+      package_manifest_path: 'package.json',
+      lockfile_path: 'package-lock.json',
+      build_command: 'npm run build',
+      test_commands: ['npm run test:adapter', 'npm run test:runtime'],
+    },
+    task_context_files: ['docs/context/repo-context.md', 'README.md', 'src/adapters/goose-recipe-builder.ts'],
+    verification_plan: {
+      commands: ['npm run build', 'npm run test:runtime'],
+      environment_checks: ['git status --short'],
+      definition_of_done: ['Backend worker uses injected verification commands before returning.'],
+      reconsider_signals: ['Backend goose recipe dropped reconsideration guidance.'],
+      retry_handoff: {
+        attempt: 2,
+        status: 'needs_fix',
+        summary: 'Address review feedback on validation flow.',
+        blocker_category: null,
+        blocker_message: null,
+        commands_run: ['npm run build'],
+        review_feedback: ['Please tighten null-handling around retry state.'],
+      },
+    },
+    time_budget_hint: 'Attempt 3 of 3; 0 retries remain after this pass.',
+  };
 
   const spec = buildGooseRecipeExecution({
     role: 'backend-agent',
@@ -106,6 +159,7 @@ test('buildGooseRecipeExecution maps backend-agent to backend recipe and passes 
       suggested_status: 'implementation_done',
       delivery_metadata: null,
     },
+    runtimeContext,
   });
 
   assert.equal(spec.recipe_path, '.goose/recipes/backend-implementation.yaml');
@@ -114,6 +168,18 @@ test('buildGooseRecipeExecution maps backend-agent to backend recipe and passes 
     'Please tighten null-handling around retry state.',
   ]);
   assert.deepEqual(spec.inputs.task.acceptance_criteria, task.acceptance_criteria);
+  assert.deepEqual(spec.inputs.runtime_context?.verification_plan.commands, [
+    'npm run build',
+    'npm run test:runtime',
+  ]);
+  assert.deepEqual(spec.inputs.runtime_context?.verification_plan.reconsider_signals, [
+    'Backend goose recipe dropped reconsideration guidance.',
+  ]);
+  assert.deepEqual(spec.inputs.runtime_context?.task_context_files, [
+    'docs/context/repo-context.md',
+    'README.md',
+    'src/adapters/goose-recipe-builder.ts',
+  ]);
 });
 
 test('committed repo context keeps repo_path portable across clones', () => {
@@ -172,5 +238,18 @@ test('implementation recipes use goose-compatible instruction blocks', () => {
     const recipe = fs.readFileSync(recipePath, 'utf8');
 
     assert.match(recipe, /^instructions:\s*\|/m);
+  }
+});
+
+test('implementation recipes declare and reference runtime_context so goose-backed runs can see injected guidance', () => {
+  for (const recipePath of [
+    '.goose/recipes/frontend-implementation.yaml',
+    '.goose/recipes/backend-implementation.yaml',
+  ]) {
+    const recipe = fs.readFileSync(recipePath, 'utf8');
+
+    assert.match(recipe, /- key: runtime_context\b/);
+    assert.match(recipe, /Runtime context JSON:\s*\n\s*\{\{ runtime_context \}\}/);
+    assert.match(recipe, /start with the injected runtime context/i);
   }
 });

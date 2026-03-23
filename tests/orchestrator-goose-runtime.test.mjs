@@ -12,10 +12,25 @@ import {
   GooseBackedImplementationDispatcher,
 } from '../dist/index.js';
 
-function createGooseDispatcher(taskDecisions = {}) {
+function addExecutionGuidance(fixture) {
+  for (const task of fixture.tasks) {
+    task.execution_guidance = {
+      must_read_files: ['README.md', `prompts/${task.assigned_agent}.md`],
+      verification_commands: ['npm run build', 'npm run test:runtime'],
+      environment_checks: ['git status --short'],
+      definition_of_done: [`${task.id} uses injected runtime context before handoff.`],
+      reconsider_signals: [`${task.id} lost injected verification guidance.`],
+    };
+  }
+
+  return fixture;
+}
+
+function createGooseDispatcher(taskDecisions = {}, capturedRequests = []) {
   return new GooseBackedImplementationDispatcher({
-    repoPath: '/tmp/example-repo',
+    repoPath: process.cwd(),
     executeRole: async (request) => {
+      capturedRequests.push(request);
       const taskId = request.payload.task.task_id;
       const sequence = taskDecisions[taskId] ?? [];
       const attempt = request.payload.runtime.retry_count ?? 0;
@@ -58,7 +73,7 @@ function createGooseDispatcher(taskDecisions = {}) {
 
 function createGooseAdapterErrorDispatcher({ message, retryable, code = 'execution_failed' }) {
   return new GooseBackedImplementationDispatcher({
-    repoPath: '/tmp/example-repo',
+    repoPath: process.cwd(),
     executeRole: async (request) => ({
       envelope_version: 'openclaw.role-exec.v1',
       ok: false,
@@ -75,11 +90,12 @@ function createGooseAdapterErrorDispatcher({ message, retryable, code = 'executi
 }
 
 test('orchestrator routes implementation through goose while keeping quality gates external', async () => {
-  const fixture = buildDemoPlanningFixture();
+  const fixture = addExecutionGuidance(buildDemoPlanningFixture());
+  const capturedRequests = [];
   const qualityGateRunner = new MockQualityGateRunner();
   const orchestrator = new MainOrchestrator({
     createPlan: async () => fixture,
-    implementationDispatcher: createGooseDispatcher(),
+    implementationDispatcher: createGooseDispatcher({}, capturedRequests),
     qualityGateRunner,
     retryManager: new RetryEscalationManager(),
     reportingManager: new ReportingManager(),
@@ -103,6 +119,30 @@ test('orchestrator routes implementation through goose while keeping quality gat
     assert.match(task.test_evidence.join('\n'), /test-agent/i);
     assert.match(task.review_feedback.join('\n'), /review-agent/i);
   }
+
+  const firstRequest = capturedRequests.find((request) => request.payload.task.task_id === 'task-api-contract');
+
+  assert.ok(firstRequest);
+  assert.ok(firstRequest.payload.runtime_context);
+  assert.ok(firstRequest.payload.runtime_context.repo_context_summary.length > 0);
+  assert.deepEqual(firstRequest.payload.runtime_context.task_context_files, [
+    'docs/context/repo-context.md',
+    'README.md',
+    'prompts/backend-agent.md',
+  ]);
+  assert.deepEqual(firstRequest.payload.runtime_context.verification_plan.commands, [
+    'npm run build',
+    'npm run test:runtime',
+  ]);
+  assert.deepEqual(firstRequest.payload.runtime_context.verification_plan.environment_checks, [
+    'git status --short',
+  ]);
+  assert.deepEqual(firstRequest.payload.runtime_context.verification_plan.definition_of_done, [
+    'task-api-contract uses injected runtime context before handoff.',
+  ]);
+  assert.deepEqual(firstRequest.payload.runtime_context.verification_plan.reconsider_signals, [
+    'task-api-contract lost injected verification guidance.',
+  ]);
 });
 
 test('orchestrator retries goose implementation after needs_fix feedback and persists evidence', async () => {

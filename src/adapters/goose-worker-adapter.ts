@@ -84,6 +84,7 @@ export class GooseWorkerAdapter implements OpenClawWorkerRoleAdapter {
       runtimeRunId: request.payload.runtime.run_id,
       repoPath: request.payload.repo_path,
       retryContext: request.payload.prior_attempt,
+      runtimeContext: request.payload.runtime_context,
     });
 
     const gooseResult = await this.runGoose({ ...spec, cwd: this.cwd });

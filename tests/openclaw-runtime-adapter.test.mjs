@@ -44,13 +44,22 @@ test('worker role envelopes standardize task payloads plus success and error res
     availableModels: ['openai-codex/gpt-5.4'],
   });
   const task = runtime.tasks['task-api-contract'];
+  const repoPath = process.cwd();
+
+  task.execution_guidance = {
+    must_read_files: ['README.md', 'src/adapters/goose-recipe-builder.ts'],
+    verification_commands: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+    environment_checks: ['git status --short'],
+    definition_of_done: ['Worker payload includes compact runtime context for implementation.'],
+    reconsider_signals: ['Verification plan is missing from the worker payload.'],
+  };
 
   assert.equal(task.model_metadata?.exact_model_id, 'openai-codex/gpt-5.4');
 
   const envelope = createOpenClawWorkerRoleRequest({
     task,
     runtime,
-    repoPath: '/tmp/example-repo',
+    repoPath,
     prompt: {
       prompt_id: 'backend-agent',
       prompt_path: 'prompts/backend-agent.md',
@@ -63,7 +72,7 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.equal(envelope.model.exact_model_id, 'openai-codex/gpt-5.4');
   assert.equal(envelope.payload.task.task_id, 'task-api-contract');
   assert.equal(envelope.payload.runtime.run_id, 'run-openclaw-adapter-test');
-  assert.equal(envelope.payload.repo_path, '/tmp/example-repo');
+  assert.equal(envelope.payload.repo_path, repoPath);
   assert.deepEqual(envelope.payload.changed_files, []);
   assert.equal(envelope.payload.blocker_category, null);
   assert.equal(envelope.payload.blocker_message, null);
@@ -76,6 +85,31 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.equal(envelope.payload.suggested_status, null);
   assert.equal(envelope.payload.delivery_metadata, null);
   assert.equal(envelope.payload.prior_attempt, null);
+  assert.ok(envelope.payload.runtime_context);
+  assert.ok(envelope.payload.runtime_context.repo_context_summary.length > 0);
+  assert.equal(envelope.payload.runtime_context.environment_snapshot.package_manager, 'npm');
+  assert.equal(envelope.payload.runtime_context.environment_snapshot.package_manifest_path, 'package.json');
+  assert.equal(envelope.payload.runtime_context.environment_snapshot.lockfile_path, 'package-lock.json');
+  assert.deepEqual(envelope.payload.runtime_context.task_context_files, [
+    'docs/context/repo-context.md',
+    'README.md',
+    'src/adapters/goose-recipe-builder.ts',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.commands, [
+    'npm run build',
+    'node --test tests/openclaw-runtime-adapter.test.mjs',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.environment_checks, [
+    'git status --short',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.definition_of_done, [
+    'Worker payload includes compact runtime context for implementation.',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.reconsider_signals, [
+    'Verification plan is missing from the worker payload.',
+  ]);
+  assert.equal(envelope.payload.runtime_context.verification_plan.retry_handoff, null);
+  assert.match(envelope.payload.runtime_context.time_budget_hint, /Attempt 1 of 3/u);
 
   const success = createOpenClawRoleSuccess({
     request: envelope,
@@ -139,7 +173,15 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     availableModels: ['openai-codex/gpt-5.4', 'anthropic/claude-opus-4-6'],
   });
   const task = runtime.tasks['task-api-contract'];
+  const repoPath = process.cwd();
 
+  task.execution_guidance = {
+    must_read_files: ['README.md', 'ARCHITECTURE.md'],
+    verification_commands: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+    environment_checks: ['git status --short'],
+    definition_of_done: ['Quality gate worker can inspect compact retry handoff context.'],
+    reconsider_signals: ['Review feedback is not visible to the next attempt.'],
+  };
   task.changed_files = ['src/api/contract.ts'];
   task.blocker_category = 'quality';
   task.blocker_message = 'Previous review requested changes before approval.';
@@ -181,7 +223,7 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     runtime,
     role: 'test-agent',
     model: 'codex',
-    repoPath: '/tmp/example-repo',
+    repoPath,
     prompt: {
       prompt_id: 'test-agent',
       prompt_path: 'prompts/test-agent.md',
@@ -215,4 +257,28 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   assert.equal(envelope.payload.delivery_metadata?.branch_name, 'feat/goose-worker-contracts');
   assert.equal(envelope.payload.prior_attempt?.attempt, 1);
   assert.equal(envelope.payload.prior_attempt?.status, 'needs_fix');
+  assert.ok(envelope.payload.runtime_context);
+  assert.deepEqual(envelope.payload.runtime_context.task_context_files, [
+    'docs/context/repo-context.md',
+    'README.md',
+    'ARCHITECTURE.md',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.commands, [
+    'npm run build',
+    'node --test tests/openclaw-runtime-adapter.test.mjs',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.reconsider_signals, [
+    'Review feedback is not visible to the next attempt.',
+    'Prior attempt 1 ended as needs_fix: Review requested changes after the first quality-gate pass.',
+    'Previous blocker: Previous review requested changes before approval.',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.retry_handoff, {
+    attempt: 1,
+    status: 'needs_fix',
+    summary: 'Review requested changes after the first quality-gate pass.',
+    blocker_category: 'quality',
+    blocker_message: 'Previous review requested changes before approval.',
+    commands_run: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+    review_feedback: ['Review flagged missing edge-case coverage.'],
+  });
 });
