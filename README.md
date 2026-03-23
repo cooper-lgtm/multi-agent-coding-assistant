@@ -38,6 +38,7 @@ This MVP now includes both:
 - a goose-backed implementation dispatch path that keeps `frontend-agent` / `backend-agent` work at the worker seam while preserving external quality gates
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
 - a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
+- compact runtime context injection that threads repo summaries, environment snapshots, task-context files, verification plans, and reconsideration signals into worker payloads and goose recipe inputs
 - approval controls that can pause after planning until a human explicitly approves execution
 - a policy engine that keeps max parallelism, retry budgets, role-specific fallback chains, and high-risk manual-review guardrails in the orchestrator layer
 - durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
@@ -109,7 +110,7 @@ This MVP now includes both:
 - `goose-worker-adapter`: shells out to goose implementation recipes and normalizes structured worker output
 - `goose-process-runner`: serializes recipe params into non-interactive goose CLI invocations
 - `openclaw-model-resolver`: maps logical labels and exact ids to provider-aware model metadata
-- `openclaw-runtime-adapter`: standardizes planning and worker request/result/error envelopes for OpenClaw-facing execution
+- `openclaw-runtime-adapter`: standardizes planning and worker request/result/error envelopes for OpenClaw-facing execution, including compact runtime-context threading for workers
 - `model-router`: keeps role-based fallback ordering while attaching exact-model metadata when available
 
 ## Demo
@@ -131,10 +132,12 @@ Example artifacts included in this MVP:
 - `tests/file-backed-run-store.test.mjs`: compiled-output checks for manifest/runtime/event-log persistence and inspection helpers
 - `tests/openclaw-model-resolution.test.mjs`: compiled-output checks for alias resolution and exact-model metadata
 - `tests/openclaw-runtime-adapter.test.mjs`: compiled-output checks for planning/worker envelope shaping
+- `tests/goose-recipe-builder.test.mjs`: compiled-output checks for compact runtime-context propagation into goose recipe inputs
 - `tests/orchestrator-persistence.test.mjs`: compiled-output checks for checkpoint resume plus cooperative pause/cancel behavior
 - `tests/planning-mode-resolution.test.mjs`: compiled-output checks for `auto`/`direct`/`debate` resolution
 - `tests/planning-pipeline.test.mjs`: compiled-output checks for direct planning, debate synthesis, and DAG conversion
 - `tests/orchestrator-runtime.test.mjs`: compiled-output runtime checks for success, retry escalation, and dependency blocking
+- `tests/orchestrator-goose-runtime.test.mjs`: compiled-output runtime checks for goose-backed implementation dispatch plus runtime-context propagation
 
 Useful commands:
 
