@@ -49,6 +49,51 @@ test('local execution discovery returns conservative empty values when repo hint
   assert.deepEqual(discovery.test_commands, []);
 });
 
+test('local execution discovery preserves script commands when package.json exists without a lockfile', () => {
+  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-context-scripts-'));
+
+  fs.writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({
+    name: 'no-lockfile-repo',
+    scripts: {
+      build: 'tsc -p tsconfig.json',
+      test: 'node --test',
+      'test:runtime': 'node --test tests/runtime-context-builder.test.mjs',
+    },
+  }, null, 2));
+
+  const discovery = discoverLocalExecutionHints(repoPath);
+
+  assert.equal(discovery.package_manager, 'unknown');
+  assert.equal(discovery.lockfile_path, null);
+  assert.equal(discovery.build_command, 'npm run build');
+  assert.deepEqual(discovery.test_commands, [
+    'npm run test',
+    'npm run test:runtime',
+  ]);
+});
+
+test('local execution discovery prefers manifest packageManager over lockfile probe order', () => {
+  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-context-manager-'));
+
+  fs.writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({
+    name: 'mixed-lockfiles-repo',
+    packageManager: 'pnpm@9.0.0',
+    scripts: {
+      build: 'tsc -p tsconfig.json',
+      test: 'node --test',
+    },
+  }, null, 2));
+  fs.writeFileSync(path.join(repoPath, 'package-lock.json'), '{}');
+  fs.writeFileSync(path.join(repoPath, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0');
+
+  const discovery = discoverLocalExecutionHints(repoPath);
+
+  assert.equal(discovery.package_manager, 'pnpm');
+  assert.equal(discovery.lockfile_path, 'pnpm-lock.yaml');
+  assert.equal(discovery.build_command, 'pnpm run build');
+  assert.deepEqual(discovery.test_commands, ['pnpm run test']);
+});
+
 test('runtime context builder assembles compact worker-facing context from repo state and retry handoff', () => {
   const repoPath = process.cwd();
   const task = buildExecutionGuidanceTask();

@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { WorkerEnvironmentSnapshot, WorkerPackageManager } from '../workers/contracts.js';
 
 interface PackageJsonShape {
+  packageManager?: unknown;
   scripts?: Record<string, unknown>;
 }
 
@@ -19,9 +20,11 @@ const LOCKFILE_PACKAGE_MANAGERS: Array<{
 ];
 
 export function discoverLocalExecutionHints(repoPath: string): WorkerEnvironmentSnapshot {
-  const lockfile = detectLockfile(repoPath);
   const packageManifestPath = path.join(repoPath, 'package.json');
+  const lockfiles = detectLockfiles(repoPath);
   if (!fs.existsSync(packageManifestPath)) {
+    const lockfile = lockfiles[0] ?? null;
+
     return {
       package_manager: lockfile?.packageManager ?? 'unknown',
       package_manifest_path: null,
@@ -33,12 +36,16 @@ export function discoverLocalExecutionHints(repoPath: string): WorkerEnvironment
 
   const packageJson = readPackageJson(packageManifestPath);
   const scripts = packageJson?.scripts ?? {};
-  const packageManager = lockfile?.packageManager ?? 'unknown';
+  const manifestPackageManager = parseManifestPackageManager(packageJson?.packageManager);
+  const packageManager = manifestPackageManager ?? lockfiles[0]?.packageManager ?? 'unknown';
+  const selectedLockfile = manifestPackageManager
+    ? findLockfileForManager(lockfiles, manifestPackageManager)
+    : (lockfiles[0] ?? null);
 
   return {
     package_manager: packageManager,
     package_manifest_path: 'package.json',
-    lockfile_path: lockfile?.filename ?? null,
+    lockfile_path: selectedLockfile?.filename ?? null,
     build_command: toScriptCommand(packageManager, 'build', scripts),
     test_commands: Object.keys(scripts)
       .filter((scriptName) => scriptName === 'test' || scriptName.startsWith('test:'))
@@ -47,14 +54,8 @@ export function discoverLocalExecutionHints(repoPath: string): WorkerEnvironment
   };
 }
 
-function detectLockfile(repoPath: string): { filename: string; packageManager: WorkerPackageManager } | null {
-  for (const candidate of LOCKFILE_PACKAGE_MANAGERS) {
-    if (fs.existsSync(path.join(repoPath, candidate.filename))) {
-      return candidate;
-    }
-  }
-
-  return null;
+function detectLockfiles(repoPath: string): Array<{ filename: string; packageManager: WorkerPackageManager }> {
+  return LOCKFILE_PACKAGE_MANAGERS.filter((candidate) => fs.existsSync(path.join(repoPath, candidate.filename)));
 }
 
 function readPackageJson(packageManifestPath: string): PackageJsonShape | null {
@@ -64,6 +65,26 @@ function readPackageJson(packageManifestPath: string): PackageJsonShape | null {
   } catch {
     return null;
   }
+}
+
+function parseManifestPackageManager(value: unknown): WorkerPackageManager | null {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+
+  const manager = value.split('@', 1)[0];
+  if (manager === 'npm' || manager === 'pnpm' || manager === 'yarn' || manager === 'bun') {
+    return manager;
+  }
+
+  return null;
+}
+
+function findLockfileForManager(
+  lockfiles: Array<{ filename: string; packageManager: WorkerPackageManager }>,
+  packageManager: WorkerPackageManager,
+): { filename: string; packageManager: WorkerPackageManager } | null {
+  return lockfiles.find((lockfile) => lockfile.packageManager === packageManager) ?? null;
 }
 
 function toScriptCommand(
@@ -86,6 +107,6 @@ function toScriptCommand(
     case 'bun':
       return `bun run ${scriptName}`;
     case 'unknown':
-      return null;
+      return `npm run ${scriptName}`;
   }
 }
