@@ -1,5 +1,6 @@
 import type { PlanningNormalizationInput, PlanningNormalizer } from './contracts.js';
 import type {
+  ExecutionGuidance,
   PlanningResult,
   PlanningTask,
   PlannerRouteTrace,
@@ -13,6 +14,15 @@ function compactStrings(values: string[] | undefined): string[] | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function compactRequiredStrings(taskId: string, fieldName: string, values: string[]): string[] {
+  const normalized = compactStrings(values);
+  if (!normalized) {
+    throw new Error(`Task ${taskId} must include at least one execution_guidance.${fieldName} entry`);
+  }
+
+  return normalized;
+}
+
 function normalizeQualityGate(taskId: string, qualityGate: QualityGate): QualityGate {
   const gateReason = qualityGate.gate_reason.trim();
   if (!gateReason) {
@@ -23,6 +33,41 @@ function normalizeQualityGate(taskId: string, qualityGate: QualityGate): Quality
     test_required: Boolean(qualityGate.test_required),
     review_required: Boolean(qualityGate.review_required),
     gate_reason: gateReason,
+  };
+}
+
+function normalizeExecutionGuidance(
+  taskId: string,
+  executionGuidance: ExecutionGuidance | undefined,
+): ExecutionGuidance | undefined {
+  if (!executionGuidance) return undefined;
+
+  return {
+    must_read_files: compactRequiredStrings(
+      taskId,
+      'must_read_files',
+      executionGuidance.must_read_files,
+    ),
+    verification_commands: compactRequiredStrings(
+      taskId,
+      'verification_commands',
+      executionGuidance.verification_commands,
+    ),
+    environment_checks: compactRequiredStrings(
+      taskId,
+      'environment_checks',
+      executionGuidance.environment_checks,
+    ),
+    definition_of_done: compactRequiredStrings(
+      taskId,
+      'definition_of_done',
+      executionGuidance.definition_of_done,
+    ),
+    reconsider_signals: compactRequiredStrings(
+      taskId,
+      'reconsider_signals',
+      executionGuidance.reconsider_signals,
+    ),
   };
 }
 
@@ -46,6 +91,7 @@ function normalizeTask(task: PlanningTask): PlanningTask {
       ...new Set(task.acceptance_criteria.map((criterion) => criterion.trim()).filter(Boolean)),
     ],
     quality_gate: normalizeQualityGate(id, task.quality_gate),
+    execution_guidance: normalizeExecutionGuidance(id, task.execution_guidance),
     parallel_group: task.parallel_group?.trim() || undefined,
   };
 }

@@ -54,6 +54,14 @@ export interface QualityGate {
   gate_reason: string;
 }
 
+export interface ExecutionGuidance {
+  must_read_files: string[];
+  verification_commands: string[];
+  environment_checks: string[];
+  definition_of_done: string[];
+  reconsider_signals: string[];
+}
+
 export interface PlanningTask {
   id: string;
   title: string;
@@ -65,6 +73,7 @@ export interface PlanningTask {
   depends_on: string[];
   acceptance_criteria: string[];
   quality_gate: QualityGate;
+  execution_guidance?: ExecutionGuidance;
   parallel_group?: string;
 }
 

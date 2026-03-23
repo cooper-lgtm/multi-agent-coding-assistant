@@ -1,4 +1,52 @@
-import type { PlanningRequest, PlanningResult } from '../schemas/planning.js';
+import type { PlanningDraft } from '../planning/contracts.js';
+import type { ExecutionGuidance, PlanningRequest, PlanningResult } from '../schemas/planning.js';
+
+function buildExecutionGuidanceFixture(overrides: Partial<ExecutionGuidance> = {}): ExecutionGuidance {
+  return {
+    must_read_files: [' README.md ', 'src/schemas/planning.ts', 'README.md'],
+    verification_commands: [' npm run build ', 'node --test tests/planning-pipeline.test.mjs'],
+    environment_checks: [' node -v ', 'git status --short'],
+    definition_of_done: [
+      ' Execution guidance is preserved on the normalized planning task. ',
+      ' Execution guidance is present on the runtime task after DAG conversion. ',
+    ],
+    reconsider_signals: [
+      ' Execution guidance is missing from the runtime task. ',
+      ' Required verification commands are dropped during normalization. ',
+    ],
+    ...overrides,
+  };
+}
+
+export function buildExecutionGuidancePlanningDraft(): PlanningDraft {
+  return {
+    epic: 'Deliver execution guidance with the planning contract.',
+    recommended_plan: 'Lock the contract first, then verify guidance survives runtime conversion.',
+    tasks: [
+      {
+        id: ' task-plan-contract ',
+        title: ' Lock planning contract ',
+        description: ' Define the backend planning contract that downstream UI work depends on. ',
+        assigned_agent: 'backend-agent',
+        complexity: 'medium',
+        risk: 'medium',
+        depends_on: [],
+        acceptance_criteria: [
+          ' The planning contract shape is explicit and stable for downstream consumers. ',
+          ' Execution guidance survives normalization and runtime propagation. ',
+        ],
+        quality_gate: {
+          test_required: true,
+          review_required: true,
+          gate_reason: ' Contract changes must pass tests and review before downstream work starts. ',
+        },
+        execution_guidance: buildExecutionGuidanceFixture(),
+      },
+    ],
+    notes_for_orchestrator: [' Keep execution guidance compact and task-scoped. '],
+    risks: [' Dropping execution guidance would weaken runtime task setup. '],
+  };
+}
 
 export function buildDemoPlanningFixture(): PlanningResult {
   return {
