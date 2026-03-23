@@ -243,10 +243,7 @@ export class MainOrchestrator {
     const middlewareDecision = await this.runtimeMiddleware.beforeQualityGates(task, runtime);
 
     if (middlewareDecision) {
-      const continuationCount = this.countRuntimeMiddlewareContinuations(runtime, task.task_id);
-      const extraAttemptCount = task.retry_count + continuationCount;
-
-      if (extraAttemptCount >= task.max_retries) {
+      if (task.retry_count >= task.max_retries) {
         const message = `Runtime middleware requested more continuations than ${task.task_id} allows.`;
         task.status = 'failed';
         task.error = message;
@@ -262,8 +259,20 @@ export class MainOrchestrator {
         return;
       }
 
-      task.status = 'pending';
+      const nextRetryCount = task.retry_count + 1;
+      task.retry_count = nextRetryCount;
+      task.blocker_category = 'quality';
+      task.blocker_message = middlewareDecision.message;
       task.error = middlewareDecision.message;
+      task.prior_attempt = createWorkerRetryHandoff(
+        task,
+        nextRetryCount,
+        'needs_fix',
+        middlewareDecision.message,
+      );
+      task.status = 'pending';
+      task.test_status = 'pending';
+      task.review_status = 'pending';
       this.deps.reportingManager.record(
         runtime,
         'runtime_middleware_requested_continuation',
@@ -434,12 +443,6 @@ export class MainOrchestrator {
 
   private findImplementationCheckpointTasks(runtime: RuntimeState): ExecutionNode[] {
     return Object.values(runtime.tasks).filter((task) => task.status === 'implementation_done');
-  }
-
-  private countRuntimeMiddlewareContinuations(runtime: RuntimeState, taskId: string): number {
-    return runtime.events.filter((event) =>
-      event.task_id === taskId && event.type === 'runtime_middleware_requested_continuation',
-    ).length;
   }
 
   private async syncControlFromStore(runtime: RuntimeState): Promise<void> {

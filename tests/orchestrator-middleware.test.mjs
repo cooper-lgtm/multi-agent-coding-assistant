@@ -21,13 +21,20 @@ function buildSingleTaskPlanningFixture() {
 }
 
 class RecordingImplementationDispatcher {
-  constructor(inner, calls) {
+  constructor(inner, calls, snapshots = null) {
     this.inner = inner;
     this.calls = calls;
+    this.snapshots = snapshots;
   }
 
   async dispatch(task, runtime) {
     this.calls.push(task.task_id);
+    this.snapshots?.push({
+      task_id: task.task_id,
+      retry_count: task.retry_count,
+      prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
+      error: task.error,
+    });
     return this.inner.dispatch(task, runtime);
   }
 }
@@ -87,9 +94,10 @@ test('orchestrator runs registered runtime middleware hooks in phase order', asy
   ]);
 });
 
-test('middleware can request task continuation before quality gates without consuming retry flow', async () => {
+test('middleware can request task continuation before quality gates and redispatch with continuation context', async () => {
   const fixture = buildSingleTaskPlanningFixture();
   const dispatchCalls = [];
+  const dispatchSnapshots = [];
   const qualityGateCalls = [];
   const phases = [];
   let shouldContinue = true;
@@ -110,6 +118,7 @@ test('middleware can request task continuation before quality gates without cons
       },
     }),
     dispatchCalls,
+    dispatchSnapshots,
   );
   const qualityGateRunner = new RecordingQualityGateRunner(new MockQualityGateRunner(), qualityGateCalls);
 
@@ -156,8 +165,17 @@ test('middleware can request task continuation before quality gates without cons
   assert.equal(result.summary.final_status, 'completed');
   assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract']);
   assert.deepEqual(qualityGateCalls, ['task-api-contract']);
-  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 0);
-  assert.equal(result.runtime.tasks['task-api-contract'].prior_attempt, null);
+  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
+  assert.equal(dispatchSnapshots[1].retry_count, 1);
+  assert.equal(dispatchSnapshots[1].prior_attempt?.status, 'needs_fix');
+  assert.equal(
+    dispatchSnapshots[1].prior_attempt?.summary,
+    'Run the expected local verification loop before external quality gates.',
+  );
+  assert.equal(
+    result.runtime.tasks['task-api-contract'].prior_attempt?.summary,
+    'Run the expected local verification loop before external quality gates.',
+  );
   assert.equal(result.runtime.tasks['task-api-contract'].status, 'completed');
   assert.match(
     result.summary.events.join('\n'),
@@ -240,7 +258,7 @@ test('middleware continuations fail closed when they exceed the task retry budge
 
   assert.equal(result.summary.final_status, 'failed');
   assert.equal(result.runtime.tasks['task-api-contract'].status, 'failed');
-  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 0);
+  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
   assert.equal(
     result.runtime.tasks['task-api-contract'].blocker_message,
     'Runtime middleware requested more continuations than task-api-contract allows.',
@@ -251,6 +269,83 @@ test('middleware continuations fail closed when they exceed the task retry budge
     result.summary.events.join('\n'),
     /continuation budget/i,
   );
+});
+
+test('middleware continuation consumes retry budget before a later implementation failure', async () => {
+  const fixture = buildSingleTaskPlanningFixture();
+  const dispatchCalls = [];
+  const dispatchSnapshots = [];
+  const qualityGateCalls = [];
+  let shouldContinue = true;
+
+  const implementationDispatcher = new RecordingImplementationDispatcher(
+    new MockImplementationDispatcher({
+      taskDecisions: {
+        'task-api-contract': [
+          {
+            status: 'implementation_done',
+            summary: 'Attempt 1 stopped before the expected verification loop.',
+          },
+          {
+            status: 'failed',
+            summary: 'Attempt 2 still failed after the continuation.',
+          },
+          {
+            status: 'implementation_done',
+            summary: 'Attempt 3 should never be dispatched.',
+          },
+        ],
+      },
+    }),
+    dispatchCalls,
+    dispatchSnapshots,
+  );
+  const qualityGateRunner = new RecordingQualityGateRunner(new MockQualityGateRunner(), qualityGateCalls);
+
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher,
+    qualityGateRunner,
+    retryManager: new RetryEscalationManager(),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+    runtimeMiddleware: [
+      {
+        name: 'single-continuation',
+        beforeQualityGates() {
+          if (!shouldContinue) {
+            return undefined;
+          }
+
+          shouldContinue = false;
+          return {
+            action: 'continue_task',
+            message: 'Finish the verification loop before asking for review.',
+          };
+        },
+      },
+    ],
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+    budget_policy: {
+      maxRetriesPerTask: 1,
+    },
+  });
+
+  assert.equal(result.summary.final_status, 'failed');
+  assert.equal(result.runtime.tasks['task-api-contract'].status, 'failed');
+  assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
+  assert.equal(result.runtime.tasks['task-api-contract'].error, 'Attempt 2 still failed after the continuation.');
+  assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract']);
+  assert.equal(dispatchSnapshots[1].retry_count, 1);
+  assert.deepEqual(qualityGateCalls, []);
+  assert.ok(result.summary.events.every((event) => !/retry scheduled/i.test(event)));
 });
 
 test('middleware continuations share the same per-task budget as earlier retries', async () => {
