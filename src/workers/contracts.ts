@@ -243,6 +243,16 @@ export function createWorkerRetryHandoff(
   };
 }
 
+export function getWorkerAttemptNumber(source: {
+  retry_count?: number;
+  prior_attempt?: WorkerRetryHandoff | null;
+}): number {
+  const retryBasedAttempt = (source.retry_count ?? 0) + 1;
+  const priorAttemptBased = (source.prior_attempt?.attempt ?? 0) + 1;
+
+  return Math.max(retryBasedAttempt, priorAttemptBased);
+}
+
 function deriveQualityGateRoles(task: Pick<ExecutionNode, 'quality_gate'>): Array<'test-agent' | 'review-agent'> {
   const roles: Array<'test-agent' | 'review-agent'> = [];
 

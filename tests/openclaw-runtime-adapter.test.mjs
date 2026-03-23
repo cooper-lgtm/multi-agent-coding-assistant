@@ -281,4 +281,6 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     commands_run: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
     review_feedback: ['Review flagged missing edge-case coverage.'],
   });
+  assert.equal(envelope.payload.runtime.retry_count, 1);
+  assert.equal(envelope.metadata.attempt, 2);
 });

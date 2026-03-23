@@ -3,11 +3,12 @@ import path from 'node:path';
 
 import type { ExecutionGuidance } from '../schemas/planning.js';
 import type { ExecutionNode } from '../schemas/runtime.js';
-import type {
-  WorkerEnvironmentSnapshot,
-  WorkerRetryContextSummary,
-  WorkerRetryHandoff,
-  WorkerRuntimeContext,
+import {
+  getWorkerAttemptNumber,
+  type WorkerEnvironmentSnapshot,
+  type WorkerRetryContextSummary,
+  type WorkerRetryHandoff,
+  type WorkerRuntimeContext,
 } from '../workers/contracts.js';
 import { discoverLocalExecutionHints } from './local-context-discovery.js';
 
@@ -47,7 +48,7 @@ export function buildRuntimeContextPackage(input: RuntimeContextBuilderInput): W
       reconsider_signals: buildReconsiderSignals(guidance.reconsider_signals, priorAttempt),
       retry_handoff: summarizeRetryHandoff(priorAttempt),
     },
-    time_budget_hint: buildTimeBudgetHint(input.task.retry_count, input.task.max_retries),
+    time_budget_hint: buildTimeBudgetHint(getWorkerAttemptNumber(input.task), input.task.max_retries),
   };
 }
 
@@ -151,10 +152,9 @@ function summarizeRetryHandoff(priorAttempt: WorkerRetryHandoff | null): WorkerR
   };
 }
 
-function buildTimeBudgetHint(retryCount: number, maxRetries: number): string {
-  const currentAttempt = retryCount + 1;
+function buildTimeBudgetHint(currentAttempt: number, maxRetries: number): string {
   const totalAttempts = maxRetries + 1;
-  const retriesRemaining = Math.max(maxRetries - retryCount, 0);
+  const retriesRemaining = Math.max(totalAttempts - currentAttempt, 0);
   const retrySuffix = retriesRemaining === 1 ? 'retry remains' : 'retries remain';
 
   return `Attempt ${currentAttempt} of ${totalAttempts}; ${retriesRemaining} ${retrySuffix} after this pass.`;

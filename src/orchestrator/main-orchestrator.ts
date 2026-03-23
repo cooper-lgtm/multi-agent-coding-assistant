@@ -16,6 +16,7 @@ import {
 import {
   applyWorkerExecutionContext,
   createWorkerRetryHandoff,
+  getWorkerAttemptNumber,
 } from '../workers/contracts.js';
 
 export interface OrchestratorDependencies {
@@ -266,7 +267,7 @@ export class MainOrchestrator {
       task.error = middlewareDecision.message;
       task.prior_attempt = createWorkerRetryHandoff(
         task,
-        task.retry_count + continuationCount + 1,
+        getWorkerAttemptNumber(task),
         'needs_fix',
         middlewareDecision.message,
       );
@@ -342,13 +343,14 @@ export class MainOrchestrator {
   private applyRetryDecision(task: ExecutionNode, decision: RetryDecision, runtime: RuntimeState): void {
     const attemptStatus =
       task.status === 'needs_fix' ? 'needs_fix' : task.status === 'blocked' ? 'blocked' : 'failed';
+    const completedAttempt = getWorkerAttemptNumber(task);
 
     task.retry_count = decision.retry_count;
 
     if (decision.action === 'retry_same_model' || decision.action === 'retry_with_upgraded_model') {
       task.prior_attempt = createWorkerRetryHandoff(
         task,
-        task.retry_count,
+        completedAttempt,
         attemptStatus,
         task.result ?? task.error ?? `Attempt ${task.retry_count} finished without a summary.`,
       );

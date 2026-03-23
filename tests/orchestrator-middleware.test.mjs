@@ -168,6 +168,7 @@ test('middleware can request task continuation before quality gates and redispat
   assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 0);
   assert.equal(dispatchSnapshots[1].retry_count, 0);
   assert.equal(dispatchSnapshots[1].prior_attempt?.status, 'needs_fix');
+  assert.equal(dispatchSnapshots[1].prior_attempt?.attempt, 1);
   assert.equal(
     dispatchSnapshots[1].prior_attempt?.summary,
     'Run the expected local verification loop before external quality gates.',
@@ -497,6 +498,8 @@ test('a continuation does not skip the first same-model retry after a later fail
   assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract', 'task-api-contract']);
   assert.equal(dispatchSnapshots[1].prior_attempt?.status, 'needs_fix');
   assert.equal(dispatchSnapshots[2].retry_count, 1);
+  assert.equal(dispatchSnapshots[2].prior_attempt?.attempt, 2);
+  assert.equal(result.runtime.tasks['task-api-contract'].prior_attempt?.attempt, 2);
   assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
   assert.equal(result.runtime.tasks['task-api-contract'].model, 'codex');
   assert.match(
