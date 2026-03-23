@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DefaultDebateSynthesizer,
   DefaultPlanningNormalizer,
   PlanningController,
   buildDirectPlanningFixtureRequest,
@@ -136,4 +137,107 @@ test('planning normalization preserves execution guidance through validation and
   const dag = buildExecutionDag(planningResult);
   assert.deepEqual(dag.graph.nodes['task-plan-contract'].execution_guidance, planningResult.tasks[0].execution_guidance);
   assert.deepEqual(dag.runtime.tasks['task-plan-contract'].execution_guidance, planningResult.tasks[0].execution_guidance);
+});
+
+test('debate synthesis preserves execution guidance introduced by later analyses', async () => {
+  const synthesizer = new DefaultDebateSynthesizer();
+  const normalizer = new DefaultPlanningNormalizer();
+  const request = buildDebatePlanningFixtureRequest();
+
+  const analyses = [
+    {
+      role: 'architecture-planner',
+      planner_route: {
+        role: 'architecture-planner',
+        selected_model: 'claude',
+        attempted_models: ['claude'],
+      },
+      epic: request.request,
+      summary: 'Freeze the contract first.',
+      recommended_plan: 'Start from architecture sequencing.',
+      tasks: [
+        {
+          id: 'task-plan-contract',
+          title: 'Lock planning contract',
+          description: 'Define the backend planning contract.',
+          assigned_agent: 'backend-agent',
+          complexity: 'medium',
+          risk: 'medium',
+          depends_on: [],
+          acceptance_criteria: ['The contract is defined before downstream work starts.'],
+          quality_gate: {
+            test_required: true,
+            review_required: true,
+            gate_reason: 'Contract changes must pass tests and review.',
+          },
+        },
+      ],
+    },
+    {
+      role: 'engineering-planner',
+      planner_route: {
+        role: 'engineering-planner',
+        selected_model: 'codex',
+        attempted_models: ['codex'],
+      },
+      epic: request.request,
+      summary: 'Attach concrete execution guidance to the same contract task.',
+      recommended_plan: 'Add execution guidance for the implementation worker.',
+      tasks: [
+        {
+          id: 'task-plan-contract',
+          title: 'Lock planning contract',
+          description: 'Define the backend planning contract.',
+          assigned_agent: 'backend-agent',
+          complexity: 'medium',
+          risk: 'medium',
+          depends_on: [],
+          acceptance_criteria: ['The task includes compact execution guidance for runtime use.'],
+          quality_gate: {
+            test_required: true,
+            review_required: true,
+            gate_reason: 'Contract changes must pass tests and review.',
+          },
+          execution_guidance: {
+            must_read_files: ['README.md', 'src/schemas/planning.ts'],
+            verification_commands: ['npm run build'],
+            environment_checks: ['node -v'],
+            definition_of_done: ['Execution guidance survives debate synthesis.'],
+            reconsider_signals: ['Execution guidance is missing after synthesis.'],
+          },
+        },
+      ],
+    },
+  ];
+
+  const draft = await synthesizer.synthesize({
+    request,
+    resolved_mode: 'debate',
+    available_models: ['codex', 'claude', 'gemini'],
+    analyses,
+  });
+
+  const planningResult = normalizer.normalize({
+    request,
+    resolved_mode: 'debate',
+    draft,
+    planner_routes: analyses.map((analysis) => analysis.planner_route),
+    debate: analyses,
+  });
+
+  validatePlanningResult(planningResult);
+
+  assert.deepEqual(planningResult.tasks[0].execution_guidance, {
+    must_read_files: ['README.md', 'src/schemas/planning.ts'],
+    verification_commands: ['npm run build'],
+    environment_checks: ['node -v'],
+    definition_of_done: ['Execution guidance survives debate synthesis.'],
+    reconsider_signals: ['Execution guidance is missing after synthesis.'],
+  });
+
+  const dag = buildExecutionDag(planningResult);
+  assert.deepEqual(
+    dag.runtime.tasks['task-plan-contract'].execution_guidance,
+    planningResult.tasks[0].execution_guidance,
+  );
 });

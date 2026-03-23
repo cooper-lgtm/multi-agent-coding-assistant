@@ -1,4 +1,10 @@
-import type { Complexity, PlanningTask, QualityGate, RiskLevel } from '../schemas/planning.js';
+import type {
+  Complexity,
+  ExecutionGuidance,
+  PlanningTask,
+  QualityGate,
+  RiskLevel,
+} from '../schemas/planning.js';
 import type { DebateAnalysis, DebateSynthesizer, PlanningDraft, DebateSynthesisInput } from './contracts.js';
 
 const COMPLEXITY_RANK: Record<Complexity, number> = {
@@ -33,6 +39,42 @@ function mergeQualityGate(left: QualityGate, right: QualityGate): QualityGate {
   };
 }
 
+function cloneExecutionGuidance(
+  executionGuidance: ExecutionGuidance | undefined,
+): ExecutionGuidance | undefined {
+  if (!executionGuidance) return undefined;
+
+  return {
+    must_read_files: [...executionGuidance.must_read_files],
+    verification_commands: [...executionGuidance.verification_commands],
+    environment_checks: [...executionGuidance.environment_checks],
+    definition_of_done: [...executionGuidance.definition_of_done],
+    reconsider_signals: [...executionGuidance.reconsider_signals],
+  };
+}
+
+function mergeExecutionGuidance(
+  left: ExecutionGuidance | undefined,
+  right: ExecutionGuidance | undefined,
+): ExecutionGuidance | undefined {
+  if (!left) return cloneExecutionGuidance(right);
+  if (!right) return cloneExecutionGuidance(left);
+
+  return {
+    must_read_files: uniqueStrings([...left.must_read_files, ...right.must_read_files]),
+    verification_commands: uniqueStrings([
+      ...left.verification_commands,
+      ...right.verification_commands,
+    ]),
+    environment_checks: uniqueStrings([...left.environment_checks, ...right.environment_checks]),
+    definition_of_done: uniqueStrings([...left.definition_of_done, ...right.definition_of_done]),
+    reconsider_signals: uniqueStrings([
+      ...left.reconsider_signals,
+      ...right.reconsider_signals,
+    ]),
+  };
+}
+
 function cloneTask(task: PlanningTask): PlanningTask {
   return {
     ...task,
@@ -41,6 +83,7 @@ function cloneTask(task: PlanningTask): PlanningTask {
     quality_gate: {
       ...task.quality_gate,
     },
+    execution_guidance: cloneExecutionGuidance(task.execution_guidance),
   };
 }
 
@@ -67,6 +110,10 @@ function mergeTask(existing: PlanningTask, incoming: PlanningTask): PlanningTask
       ...incoming.acceptance_criteria,
     ]),
     quality_gate: mergeQualityGate(existing.quality_gate, incoming.quality_gate),
+    execution_guidance: mergeExecutionGuidance(
+      existing.execution_guidance,
+      incoming.execution_guidance,
+    ),
     parallel_group: existing.parallel_group ?? incoming.parallel_group,
   };
 }
