@@ -240,3 +240,16 @@ test('implementation recipes use goose-compatible instruction blocks', () => {
     assert.match(recipe, /^instructions:\s*\|/m);
   }
 });
+
+test('implementation recipes declare and reference runtime_context so goose-backed runs can see injected guidance', () => {
+  for (const recipePath of [
+    '.goose/recipes/frontend-implementation.yaml',
+    '.goose/recipes/backend-implementation.yaml',
+  ]) {
+    const recipe = fs.readFileSync(recipePath, 'utf8');
+
+    assert.match(recipe, /- key: runtime_context\b/);
+    assert.match(recipe, /Runtime context JSON:\s*\n\s*\{\{ runtime_context \}\}/);
+    assert.match(recipe, /start with the injected runtime context/i);
+  }
+});
