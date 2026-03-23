@@ -12,7 +12,7 @@ import {
   createOpenClawRoleSuccess,
 } from '../dist/index.js';
 
-test('planning role request envelope standardizes planning payloads and model metadata', () => {
+test('planning role request envelope standardizes planning payloads and model metadata', { concurrency: false }, () => {
   const resolver = new OpenClawModelResolver();
   const planningRequest = buildDirectPlanningFixtureRequest();
 
@@ -37,7 +37,10 @@ test('planning role request envelope standardizes planning payloads and model me
   assert.equal(envelope.prompt.prompt_path, 'prompts/planning-agent.system.md');
 });
 
-test('worker role envelopes standardize task payloads plus success and error responses', () => {
+test(
+  'worker role envelopes standardize task payloads plus success and error responses',
+  { concurrency: false },
+  () => {
   const fixture = buildDemoPlanningFixture();
   const { runtime } = buildExecutionDag(fixture, {
     runId: 'run-openclaw-adapter-test',
@@ -164,9 +167,10 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.equal(error.ok, false);
   assert.equal(error.error.code, 'adapter_unavailable');
   assert.equal(error.error.retryable, true);
-});
+  },
+);
 
-test('worker role envelopes preserve retry handoff context for quality gate roles', () => {
+test('worker role envelopes preserve retry handoff context for quality gate roles', { concurrency: false }, () => {
   const fixture = buildDemoPlanningFixture();
   const { runtime } = buildExecutionDag(fixture, {
     runId: 'run-openclaw-quality-gate-test',

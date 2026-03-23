@@ -89,7 +89,10 @@ function createGooseAdapterErrorDispatcher({ message, retryable, code = 'executi
   });
 }
 
-test('orchestrator routes implementation through goose while keeping quality gates external', async () => {
+test(
+  'orchestrator routes implementation through goose while keeping quality gates external',
+  { concurrency: false },
+  async () => {
   const fixture = addExecutionGuidance(buildDemoPlanningFixture());
   const capturedRequests = [];
   const qualityGateRunner = new MockQualityGateRunner();
@@ -143,9 +146,13 @@ test('orchestrator routes implementation through goose while keeping quality gat
   assert.deepEqual(firstRequest.payload.runtime_context.verification_plan.reconsider_signals, [
     'task-api-contract lost injected verification guidance.',
   ]);
-});
+  },
+);
 
-test('orchestrator retries goose implementation after needs_fix feedback and persists evidence', async () => {
+test(
+  'orchestrator retries goose implementation after needs_fix feedback and persists evidence',
+  { concurrency: false },
+  async () => {
   const fixture = buildDemoPlanningFixture();
   const runStore = new InMemoryRunStore();
 
@@ -207,9 +214,13 @@ test('orchestrator retries goose implementation after needs_fix feedback and per
   const persisted = await runStore.load(result.runtime.run_id);
   assert.ok(persisted);
   assert.deepEqual(persisted.tasks['task-api-contract'].commands_run, task.commands_run);
-});
+  },
+);
 
-test('goose redispatch receives middleware continuation context on the next implementation attempt', async () => {
+test(
+  'goose redispatch receives middleware continuation context on the next implementation attempt',
+  { concurrency: false },
+  async () => {
   const fixture = buildDemoPlanningFixture();
   fixture.tasks = [structuredClone(fixture.tasks[0])];
   const receivedAttempts = [];
@@ -296,9 +307,13 @@ test('goose redispatch receives middleware continuation context on the next impl
     receivedAttempts[1].prior_attempt?.summary,
     'Run the missing local verification before external gates.',
   );
-});
+  },
+);
 
-test('orchestrator treats non-retryable goose adapter errors as terminal blocked work', async () => {
+test(
+  'orchestrator treats non-retryable goose adapter errors as terminal blocked work',
+  { concurrency: false },
+  async () => {
   const fixture = buildDemoPlanningFixture();
   const orchestrator = new MainOrchestrator({
     createPlan: async () => fixture,
@@ -327,9 +342,10 @@ test('orchestrator treats non-retryable goose adapter errors as terminal blocked
   assert.equal(task.blocker_category, 'environment');
   assert.match(task.blocker_message ?? '', /unavailable/i);
   assert.ok(result.summary.events.every((event) => !/retry scheduled/i.test(event)));
-});
+  },
+);
 
-test('retry escalation tolerates legacy tasks without fallback_models', () => {
+test('retry escalation tolerates legacy tasks without fallback_models', { concurrency: false }, () => {
   const { runtime } = buildExecutionDag(buildDemoPlanningFixture(), { runId: 'legacy-fallback-models' });
   const task = runtime.tasks['task-api-contract'];
   const retryManager = new RetryEscalationManager({ availableModels: ['codex', 'claude'] });
