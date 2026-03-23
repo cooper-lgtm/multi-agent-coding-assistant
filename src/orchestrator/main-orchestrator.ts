@@ -9,6 +9,11 @@ import type { RunStore } from '../storage/run-store.js';
 import { ApprovalManager } from './approval-manager.js';
 import { PolicyEngine } from './policy-engine.js';
 import {
+  createRuntimeMiddlewareRunner,
+  type RuntimeMiddleware,
+  type RuntimeMiddlewareRunner,
+} from './runtime-middleware.js';
+import {
   applyWorkerExecutionContext,
   createWorkerRetryHandoff,
 } from '../workers/contracts.js';
@@ -22,15 +27,18 @@ export interface OrchestratorDependencies {
   runStore: RunStore;
   approvalManager?: ApprovalManager;
   policyEngine?: PolicyEngine;
+  runtimeMiddleware?: RuntimeMiddleware[];
 }
 
 export class MainOrchestrator {
   private readonly approvalManager: ApprovalManager;
   private readonly policyEngine: PolicyEngine;
+  private readonly runtimeMiddleware: RuntimeMiddlewareRunner;
 
   constructor(private readonly deps: OrchestratorDependencies) {
     this.approvalManager = deps.approvalManager ?? new ApprovalManager();
     this.policyEngine = deps.policyEngine ?? new PolicyEngine();
+    this.runtimeMiddleware = createRuntimeMiddlewareRunner(deps.runtimeMiddleware ?? []);
   }
 
   async run(request: PlanningRequest): Promise<OrchestrationRunResult> {
@@ -191,6 +199,7 @@ export class MainOrchestrator {
   }
 
   private async executeTask(task: ExecutionNode, runtime: RuntimeState): Promise<void> {
+    await this.runtimeMiddleware.beforeDispatch(task, runtime);
     task.status = 'routed';
     this.deps.reportingManager.record(
       runtime,
@@ -206,6 +215,7 @@ export class MainOrchestrator {
     const dispatchResult = await this.deps.implementationDispatcher.dispatch(task, runtime);
     task.result = dispatchResult.summary;
     applyWorkerExecutionContext(task, dispatchResult);
+    await this.runtimeMiddleware.afterImplementationAttempt(task, runtime, dispatchResult);
 
     if (dispatchResult.status === 'implementation_done') {
       task.error = null;
@@ -230,6 +240,40 @@ export class MainOrchestrator {
   }
 
   private async runQualityGates(task: ExecutionNode, runtime: RuntimeState): Promise<void> {
+    const middlewareDecision = await this.runtimeMiddleware.beforeQualityGates(task, runtime);
+
+    if (middlewareDecision) {
+      const continuationCount = this.countRuntimeMiddlewareContinuations(runtime, task.task_id);
+      const extraAttemptCount = task.retry_count + continuationCount;
+
+      if (extraAttemptCount >= task.max_retries) {
+        const message = `Runtime middleware requested more continuations than ${task.task_id} allows.`;
+        task.status = 'failed';
+        task.error = message;
+        task.blocker_category = 'quality';
+        task.blocker_message = message;
+        this.deps.reportingManager.record(
+          runtime,
+          'runtime_middleware_continuation_exhausted',
+          `Runtime middleware ${middlewareDecision.middlewareName} exhausted the continuation budget for ${task.task_id}.`,
+          task.task_id,
+        );
+        await this.persist(runtime);
+        return;
+      }
+
+      task.status = 'pending';
+      task.error = middlewareDecision.message;
+      this.deps.reportingManager.record(
+        runtime,
+        'runtime_middleware_requested_continuation',
+        `Runtime middleware ${middlewareDecision.middlewareName} requested task continuation for ${task.task_id}: ${middlewareDecision.message}`,
+        task.task_id,
+      );
+      await this.persist(runtime);
+      return;
+    }
+
     task.status = 'testing';
     task.test_status = 'pending';
     task.review_status = 'pending';
@@ -390,6 +434,12 @@ export class MainOrchestrator {
 
   private findImplementationCheckpointTasks(runtime: RuntimeState): ExecutionNode[] {
     return Object.values(runtime.tasks).filter((task) => task.status === 'implementation_done');
+  }
+
+  private countRuntimeMiddlewareContinuations(runtime: RuntimeState, taskId: string): number {
+    return runtime.events.filter((event) =>
+      event.task_id === taskId && event.type === 'runtime_middleware_requested_continuation',
+    ).length;
   }
 
   private async syncControlFromStore(runtime: RuntimeState): Promise<void> {
