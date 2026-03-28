@@ -151,3 +151,27 @@ test('runtime context builder assembles compact worker-facing context from repo 
   assert.ok(runtimeContext.repo_context_summary.every((item) => !item.includes('##')));
   assert.ok(runtimeContext.repo_context_summary.every((item) => !item.includes('```')));
 });
+
+test('runtime context builder derives the visible attempt number from prior_attempt when continuations happened', () => {
+  const repoPath = process.cwd();
+  const task = buildExecutionGuidanceTask();
+
+  task.retry_count = 0;
+  task.max_retries = 2;
+  task.prior_attempt = createWorkerRetryHandoff(
+    {
+      blocker_category: 'quality',
+      blocker_message: 'A middleware continuation asked for one more verification pass.',
+    },
+    1,
+    'needs_fix',
+    'A middleware continuation asked for one more verification pass.',
+  );
+
+  const runtimeContext = buildRuntimeContextPackage({
+    repoPath,
+    task,
+  });
+
+  assert.match(runtimeContext.time_budget_hint, /Attempt 2 of 3/);
+});

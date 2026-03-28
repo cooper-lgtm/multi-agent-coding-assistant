@@ -10,6 +10,7 @@ import {
 } from '../adapters/openclaw-runtime-adapter.js';
 import {
   createImplementationWorkerExecutionRequest,
+  getWorkerAttemptNumber,
   type ImplementationWorkerExecutionResult,
   type WorkerBlockerCategory,
 } from '../workers/contracts.js';
@@ -64,7 +65,7 @@ export class MockImplementationDispatcher implements ImplementationDispatcher {
     const blockerMessage = this.resolveBlockerMessage(decision, blockerCategory, task);
     const implementationEvidence =
       decision.implementation_evidence ??
-      [decision.summary, `Attempt ${task.retry_count + 1} finished implementation for ${task.task_id}.`];
+      [decision.summary, `Attempt ${getWorkerAttemptNumber(task)} finished implementation for ${task.task_id}.`];
 
     return {
       taskId: task.task_id,

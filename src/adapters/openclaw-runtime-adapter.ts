@@ -9,6 +9,7 @@ import type {
 import type { ExecutionNode, RuntimeState } from '../schemas/runtime.js';
 import {
   createWorkerExecutionContext,
+  getWorkerAttemptNumber,
   type WorkerExecutionContext,
   type WorkerRuntimeContext,
 } from '../workers/contracts.js';
@@ -202,6 +203,7 @@ export function createOpenClawWorkerRoleRequest(
     repoPath: input.repoPath,
     task: input.task,
   });
+  const attempt = input.attempt ?? getWorkerAttemptNumber(input.task);
 
   return {
     envelope_version: 'openclaw.role-exec.v1',
@@ -226,7 +228,7 @@ export function createOpenClawWorkerRoleRequest(
         run_id: input.runtime.run_id,
         epic: input.runtime.epic,
         planning_mode: input.runtime.graph.planning_mode,
-        retry_count: input.task.retry_count,
+        retry_count: attempt - 1,
         max_retries: input.task.max_retries,
       },
       ...createWorkerExecutionContext(input.task),
@@ -235,7 +237,7 @@ export function createOpenClawWorkerRoleRequest(
     metadata: {
       run_id: input.runtime.run_id,
       task_id: input.task.task_id,
-      attempt: input.attempt ?? input.task.retry_count + 1,
+      attempt,
       prompt_language: 'en',
     },
   };

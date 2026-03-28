@@ -209,6 +209,95 @@ test('orchestrator retries goose implementation after needs_fix feedback and per
   assert.deepEqual(persisted.tasks['task-api-contract'].commands_run, task.commands_run);
 });
 
+test('goose redispatch receives middleware continuation context on the next implementation attempt', async () => {
+  const fixture = buildDemoPlanningFixture();
+  fixture.tasks = [structuredClone(fixture.tasks[0])];
+  const receivedAttempts = [];
+  let shouldContinue = true;
+
+  const implementationDispatcher = new GooseBackedImplementationDispatcher({
+    repoPath: '/tmp/example-repo',
+    executeRole: async (request) => {
+      receivedAttempts.push({
+        retry_count: request.payload.runtime.retry_count,
+        prior_attempt: request.payload.prior_attempt ? structuredClone(request.payload.prior_attempt) : null,
+      });
+
+      const attempt = receivedAttempts.length;
+
+      return {
+        ok: true,
+        run_id: request.run_id,
+        role: request.role,
+        model: request.model,
+        summary: `Goose implementation attempt ${attempt}.`,
+        output: {
+          role: request.role,
+          status: 'implementation_done',
+          summary: `Goose implementation attempt ${attempt}.`,
+          changed_files: [`src/goose/task-api-contract-attempt-${attempt}.ts`],
+          blocker_category: null,
+          blocker_message: null,
+          implementation_evidence: [`Implementation attempt ${attempt}.`],
+          test_evidence: [],
+          review_feedback: [],
+          commands_run: ['npm run build'],
+          test_results: [],
+          risk_notes: [],
+          suggested_status: 'implementation_done',
+          delivery_metadata: null,
+          prior_attempt: request.payload.prior_attempt ?? null,
+        },
+      };
+    },
+  });
+
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher,
+    qualityGateRunner: new MockQualityGateRunner(),
+    retryManager: new RetryEscalationManager(),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+    runtimeMiddleware: [
+      {
+        name: 'goose-continuation-check',
+        beforeQualityGates() {
+          if (!shouldContinue) {
+            return undefined;
+          }
+
+          shouldContinue = false;
+          return {
+            action: 'continue_task',
+            message: 'Run the missing local verification before external gates.',
+          };
+        },
+      },
+    ],
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+  });
+
+  assert.equal(result.summary.final_status, 'completed');
+  assert.equal(receivedAttempts.length, 2);
+  assert.equal(receivedAttempts[0].retry_count, 0);
+  assert.equal(receivedAttempts[0].prior_attempt, null);
+  assert.equal(receivedAttempts[1].retry_count, 1);
+  assert.equal(receivedAttempts[1].prior_attempt?.status, 'needs_fix');
+  assert.equal(receivedAttempts[1].prior_attempt?.attempt, 1);
+  assert.equal(
+    receivedAttempts[1].prior_attempt?.summary,
+    'Run the missing local verification before external gates.',
+  );
+});
+
 test('orchestrator treats non-retryable goose adapter errors as terminal blocked work', async () => {
   const fixture = buildDemoPlanningFixture();
   const orchestrator = new MainOrchestrator({
