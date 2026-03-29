@@ -9,7 +9,55 @@ import {
   RetryEscalationManager,
   ReportingManager,
   buildDemoPlanningFixture,
+  buildExecutionDag,
 } from '../dist/index.js';
+
+function buildSingleTaskFixtureWithExecutionGuidance() {
+  const fixture = buildDemoPlanningFixture();
+  const singleTask = structuredClone(fixture.tasks[0]);
+
+  singleTask.execution_guidance = {
+    must_read_files: ['README.md'],
+    verification_commands: ['npm run build', 'npm run test:runtime'],
+    environment_checks: ['git status --short'],
+    definition_of_done: ['Verification commands ran before quality gates.'],
+    reconsider_signals: ['Verification evidence is missing from the worker handoff.'],
+  };
+
+  return {
+    ...fixture,
+    tasks: [singleTask],
+  };
+}
+
+class RecordingImplementationDispatcher {
+  constructor(inner, calls) {
+    this.inner = inner;
+    this.calls = calls;
+  }
+
+  async dispatch(task, runtime) {
+    this.calls.push({
+      task_id: task.task_id,
+      retry_count: task.retry_count,
+      checklist_feedback: [...(task.checklist_feedback ?? [])],
+      prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
+    });
+    return this.inner.dispatch(task, runtime);
+  }
+}
+
+class RecordingQualityGateRunner {
+  constructor(inner, calls) {
+    this.inner = inner;
+    this.calls = calls;
+  }
+
+  async run(task, runtime) {
+    this.calls.push(task.task_id);
+    return this.inner.run(task, runtime);
+  }
+}
 
 test('orchestrator completes a dependency chain and returns a final summary', async () => {
   const fixture = buildDemoPlanningFixture();
@@ -454,4 +502,98 @@ test('orchestrator summary carries richer worker bridge details into reporting',
   ]);
   assert.equal(summaryTask.prior_attempt?.suggested_status, 'blocked');
   assert.equal(summaryTask.prior_attempt?.delivery_metadata?.commit_sha, 'deadbeef0');
+});
+
+test('reporting summary tolerates legacy runtime tasks without checklist feedback', () => {
+  const fixture = buildDemoPlanningFixture();
+  const { runtime } = buildExecutionDag(fixture, {
+    runId: 'run-legacy-summary-checklist-feedback',
+  });
+  const reportingManager = new ReportingManager();
+
+  delete runtime.tasks['task-api-contract'].checklist_feedback;
+
+  const summary = reportingManager.buildSummary(runtime);
+  const summaryTask = summary.tasks.find((task) => task.task_id === 'task-api-contract');
+
+  assert.ok(summaryTask);
+  assert.deepEqual(summaryTask.checklist_feedback, []);
+});
+
+test('runtime flow continues unverified implementation before external quality gates decide completion', async () => {
+  const fixture = buildSingleTaskFixtureWithExecutionGuidance();
+  const implementationCalls = [];
+  const qualityGateCalls = [];
+
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher: new RecordingImplementationDispatcher(
+      new MockImplementationDispatcher({
+        taskDecisions: {
+          'task-api-contract': [
+            {
+              status: 'implementation_done',
+              summary: 'Attempt 1 changed code but skipped one required verification command.',
+              commands_run: ['npm run build'],
+            },
+            {
+              status: 'implementation_done',
+              summary: 'Attempt 2 included the missing verification command.',
+              commands_run: ['npm run build', 'npm run test:runtime'],
+            },
+          ],
+        },
+      }),
+      implementationCalls,
+    ),
+    qualityGateRunner: new RecordingQualityGateRunner(
+      new MockQualityGateRunner({
+        taskDecisions: {
+          'task-api-contract': [
+            {
+              status: 'completed',
+              summary: 'External quality gates approved the verified implementation.',
+              test_status: 'pass',
+              review_status: 'approved',
+            },
+          ],
+        },
+      }),
+      qualityGateCalls,
+    ),
+    retryManager: new RetryEscalationManager(),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+  });
+
+  assert.equal(result.summary.final_status, 'completed');
+  assert.deepEqual(implementationCalls.map((call) => call.task_id), [
+    'task-api-contract',
+    'task-api-contract',
+  ]);
+  assert.deepEqual(qualityGateCalls, ['task-api-contract']);
+  assert.deepEqual(implementationCalls[1].checklist_feedback, [
+    'Missing verification evidence for required command: npm run test:runtime',
+  ]);
+  assert.deepEqual(implementationCalls[1].prior_attempt?.checklist_feedback, [
+    'Missing verification evidence for required command: npm run test:runtime',
+  ]);
+  assert.equal(
+    implementationCalls[1].prior_attempt?.summary,
+    'Missing required verification evidence before external quality gates. Run the missing commands and return explicit evidence.',
+  );
+  assert.equal(result.runtime.tasks['task-api-contract'].status, 'completed');
+  assert.deepEqual(result.runtime.tasks['task-api-contract'].checklist_feedback, []);
+  assert.match(
+    result.summary.events.join('\n'),
+    /pre-completion checklist requested task continuation/i,
+  );
 });

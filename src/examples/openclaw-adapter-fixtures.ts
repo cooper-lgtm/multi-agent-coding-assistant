@@ -47,6 +47,7 @@ export function buildOpenClawWorkerRoleRequestFixture() {
   task.changed_files = ['src/api/contract.ts'];
   task.blocker_category = 'quality';
   task.blocker_message = 'Previous review requested one naming cleanup before approval.';
+  task.checklist_feedback = [];
   task.implementation_evidence = ['Locked the API contract for downstream UI consumers.'];
   task.test_evidence = ['Previous adapter smoke test passed before review feedback arrived.'];
   task.review_feedback = ['Review requested one naming cleanup before approval.'];
@@ -65,6 +66,7 @@ export function buildOpenClawWorkerRoleRequestFixture() {
     changed_files: ['src/api/contract.ts'],
     blocker_category: 'quality',
     blocker_message: 'Previous review requested one naming cleanup before approval.',
+    checklist_feedback: [],
     implementation_evidence: ['Locked the API contract for downstream UI consumers.'],
     test_evidence: ['Previous adapter smoke test passed before review feedback arrived.'],
     review_feedback: ['Review requested one naming cleanup before approval.'],

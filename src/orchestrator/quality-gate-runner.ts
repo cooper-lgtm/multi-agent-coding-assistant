@@ -66,6 +66,7 @@ export class MockQualityGateRunner implements QualityGateRunner {
         (request.changed_files.length > 0 ? request.changed_files : [...(task.changed_files ?? [])]),
       blocker_category: this.resolveBlockerCategory(decision, request, task),
       blocker_message: this.resolveBlockerMessage(decision, task),
+      checklist_feedback: decision.checklist_feedback ?? request.checklist_feedback,
       implementation_evidence: decision.implementation_evidence ?? request.implementation_evidence,
       test_evidence:
         decision.test_evidence ??
@@ -110,6 +111,7 @@ export class MockQualityGateRunner implements QualityGateRunner {
       changed_files: [...(task.changed_files ?? [])],
       blocker_category: null,
       blocker_message: null,
+      checklist_feedback: [...(task.checklist_feedback ?? [])],
       implementation_evidence: [...(task.implementation_evidence ?? [])],
       test_evidence: this.buildDefaultTestEvidence(task, task.quality_gate.test_required ? 'pass' : 'skipped', testModel),
       review_feedback: this.buildDefaultReviewFeedback(

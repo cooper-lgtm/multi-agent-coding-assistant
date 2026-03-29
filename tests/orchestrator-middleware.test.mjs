@@ -260,9 +260,9 @@ test('middleware continuations fail closed when they exceed the task retry budge
   assert.equal(result.summary.final_status, 'failed');
   assert.equal(result.runtime.tasks['task-api-contract'].status, 'failed');
   assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 0);
-  assert.equal(
-    result.runtime.tasks['task-api-contract'].blocker_message,
-    'Runtime middleware requested more continuations than task-api-contract allows.',
+  assert.match(
+    result.runtime.tasks['task-api-contract'].blocker_message ?? '',
+    /continuation budget/i,
   );
   assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract']);
   assert.deepEqual(qualityGateCalls, []);
@@ -417,9 +417,9 @@ test('middleware continuations share the same per-task budget as earlier retries
   assert.equal(result.summary.final_status, 'failed');
   assert.equal(result.runtime.tasks['task-api-contract'].status, 'failed');
   assert.equal(result.runtime.tasks['task-api-contract'].retry_count, 1);
-  assert.equal(
-    result.runtime.tasks['task-api-contract'].blocker_message,
-    'Runtime middleware requested more continuations than task-api-contract allows.',
+  assert.match(
+    result.runtime.tasks['task-api-contract'].blocker_message ?? '',
+    /continuation budget/i,
   );
   assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract']);
   assert.deepEqual(qualityGateCalls, []);

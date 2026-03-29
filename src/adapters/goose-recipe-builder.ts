@@ -79,6 +79,7 @@ function cloneRuntimeContext(runtimeContext: WorkerRuntimeContext): WorkerRuntim
             summary: runtimeContext.verification_plan.retry_handoff.summary,
             blocker_category: runtimeContext.verification_plan.retry_handoff.blocker_category,
             blocker_message: runtimeContext.verification_plan.retry_handoff.blocker_message,
+            checklist_feedback: [...runtimeContext.verification_plan.retry_handoff.checklist_feedback],
             commands_run: [...runtimeContext.verification_plan.retry_handoff.commands_run],
             review_feedback: [...runtimeContext.verification_plan.retry_handoff.review_feedback],
           }

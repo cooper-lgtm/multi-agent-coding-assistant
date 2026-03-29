@@ -13,6 +13,7 @@ import {
   type RuntimeMiddleware,
   type RuntimeMiddlewareRunner,
 } from './runtime-middleware.js';
+import { createPreCompletionChecklistMiddleware } from './pre-completion-checklist-middleware.js';
 import {
   applyWorkerExecutionContext,
   createWorkerRetryHandoff,
@@ -39,7 +40,10 @@ export class MainOrchestrator {
   constructor(private readonly deps: OrchestratorDependencies) {
     this.approvalManager = deps.approvalManager ?? new ApprovalManager();
     this.policyEngine = deps.policyEngine ?? new PolicyEngine();
-    this.runtimeMiddleware = createRuntimeMiddlewareRunner(deps.runtimeMiddleware ?? []);
+    this.runtimeMiddleware = createRuntimeMiddlewareRunner([
+      createPreCompletionChecklistMiddleware(),
+      ...(deps.runtimeMiddleware ?? []),
+    ]);
   }
 
   async run(request: PlanningRequest): Promise<OrchestrationRunResult> {
@@ -245,9 +249,10 @@ export class MainOrchestrator {
 
     if (middlewareDecision) {
       const continuationCount = this.countRuntimeMiddlewareContinuations(runtime, task.task_id);
+      const middlewareName = this.formatMiddlewareName(middlewareDecision.middlewareName);
 
       if (task.retry_count + continuationCount >= task.max_retries) {
-        const message = `Runtime middleware requested more continuations than ${task.task_id} allows.`;
+        const message = `Runtime middleware ${middlewareName} exhausted the continuation budget for ${task.task_id}.`;
         task.status = 'failed';
         task.error = message;
         task.blocker_category = 'quality';
@@ -255,7 +260,7 @@ export class MainOrchestrator {
         this.deps.reportingManager.record(
           runtime,
           'runtime_middleware_continuation_exhausted',
-          `Runtime middleware ${middlewareDecision.middlewareName} exhausted the continuation budget for ${task.task_id}.`,
+          message,
           task.task_id,
         );
         await this.persist(runtime);
@@ -277,7 +282,7 @@ export class MainOrchestrator {
       this.deps.reportingManager.record(
         runtime,
         'runtime_middleware_requested_continuation',
-        `Runtime middleware ${middlewareDecision.middlewareName} requested task continuation for ${task.task_id}: ${middlewareDecision.message}`,
+        `Runtime middleware ${middlewareName} requested task continuation for ${task.task_id}: ${middlewareDecision.message}`,
         task.task_id,
       );
       await this.persist(runtime);
@@ -451,6 +456,14 @@ export class MainOrchestrator {
     return runtime.events.filter((event) =>
       event.task_id === taskId && event.type === 'runtime_middleware_requested_continuation',
     ).length;
+  }
+
+  private formatMiddlewareName(name: string): string {
+    if (name === 'pre-completion-checklist') {
+      return 'pre-completion checklist';
+    }
+
+    return name.replaceAll('-', ' ');
   }
 
   private decideRetry(task: ExecutionNode, runtime: RuntimeState, cause: RetryCause): RetryDecision {

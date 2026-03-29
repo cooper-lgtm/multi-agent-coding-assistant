@@ -75,6 +75,7 @@ export function buildExecutionDag(
       changed_files: [],
       blocker_category: null,
       blocker_message: null,
+      checklist_feedback: [],
       implementation_evidence: [],
       test_evidence: [],
       review_feedback: [],

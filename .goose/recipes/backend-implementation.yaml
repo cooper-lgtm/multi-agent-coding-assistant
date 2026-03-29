@@ -16,13 +16,17 @@ instructions: |
   2. inspect the repository before making changes
   3. complete only the assigned task scope
   4. run the local verification commands required for the task
-  5. return only candidate implementation evidence
+  5. treat missing verification evidence as unfinished work
+  6. return explicit verification evidence with the candidate implementation result
 
   Rules:
   - Do not claim final orchestrator approval
   - Keep `test-agent` and `review-agent` as external quality gates
   - Preserve `needs_fix`, `blocked`, and `failed` as distinct states
   - Use `runtime_context.task_context_files` and `runtime_context.verification_plan` before guessing
+  - Verification is part of task completion, not optional follow-up work
+  - Missing verification evidence is unfinished work, not a valid `implementation_done` handoff
+  - Return explicit verification evidence in `commands_run`, `test_evidence`, and `test_results`
 prompt: |
   Execute the assigned backend implementation task for run {{ run_id }} in repository {{ repo_path }}.
 

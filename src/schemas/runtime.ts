@@ -50,6 +50,7 @@ export interface ExecutionNode {
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  checklist_feedback: string[];
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
@@ -154,6 +155,7 @@ export interface TaskRunSummary {
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  checklist_feedback: string[];
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];

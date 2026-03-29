@@ -32,6 +32,7 @@ interface GooseStructuredWorkerOutput {
   changed_files?: string[];
   blocker_category?: WorkerBlockerCategory | null;
   blocker_message?: string | null;
+  checklist_feedback?: string[];
   implementation_evidence?: string[];
   test_evidence?: string[];
   review_feedback?: string[];
@@ -196,6 +197,7 @@ export class GooseWorkerAdapter implements OpenClawWorkerRoleAdapter {
       changed_files: output.changed_files,
       blocker_category: output.blocker_category,
       blocker_message: output.blocker_message,
+      checklist_feedback: output.checklist_feedback,
       implementation_evidence: output.implementation_evidence,
       test_evidence: output.test_evidence,
       review_feedback: output.review_feedback,
@@ -229,6 +231,7 @@ function parseStructuredWorkerPayload(raw: unknown): GooseStructuredWorkerOutput
   if (!copyOptionalStringArray(raw, normalized, 'changed_files')) return null;
   if (!copyOptionalNullableBlockerCategory(raw, normalized, 'blocker_category')) return null;
   if (!copyOptionalNullableString(raw, normalized, 'blocker_message')) return null;
+  if (!copyOptionalStringArray(raw, normalized, 'checklist_feedback')) return null;
   if (!copyOptionalStringArray(raw, normalized, 'implementation_evidence')) return null;
   if (!copyOptionalStringArray(raw, normalized, 'test_evidence')) return null;
   if (!copyOptionalStringArray(raw, normalized, 'review_feedback')) return null;
@@ -305,6 +308,7 @@ function isWorkerRetryHandoff(value: unknown): value is WorkerRetryHandoff {
     typeof value.summary === 'string' &&
     isNullableBlockerCategory(value.blocker_category) &&
     isNullableString(value.blocker_message) &&
+    isStringArray(value.checklist_feedback ?? []) &&
     isStringArray(value.changed_files) &&
     isStringArray(value.implementation_evidence) &&
     isStringArray(value.test_evidence) &&
@@ -337,7 +341,14 @@ function isNullableDeliveryMetadata(value: unknown): value is WorkerDeliveryMeta
 function copyOptionalStringArray(
   source: Record<string, unknown>,
   target: GooseStructuredWorkerOutput,
-  key: 'changed_files' | 'implementation_evidence' | 'test_evidence' | 'review_feedback' | 'commands_run' | 'risk_notes',
+  key:
+    | 'changed_files'
+    | 'checklist_feedback'
+    | 'implementation_evidence'
+    | 'test_evidence'
+    | 'review_feedback'
+    | 'commands_run'
+    | 'risk_notes',
 ): boolean {
   if (!Object.prototype.hasOwnProperty.call(source, key)) {
     return true;
@@ -474,6 +485,7 @@ function copyOptionalRetryHandoff(
         changed_files: [...value.changed_files],
         blocker_category: value.blocker_category,
         blocker_message: value.blocker_message,
+        checklist_feedback: [...(value.checklist_feedback ?? [])],
         implementation_evidence: [...value.implementation_evidence],
         test_evidence: [...value.test_evidence],
         review_feedback: [...value.review_feedback],

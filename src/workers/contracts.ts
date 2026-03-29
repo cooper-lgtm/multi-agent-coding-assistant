@@ -48,6 +48,7 @@ export interface WorkerRetryContextSummary {
   summary: string;
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  checklist_feedback: string[];
   commands_run: string[];
   review_feedback: string[];
 }
@@ -75,6 +76,7 @@ export interface WorkerRetryHandoff {
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  checklist_feedback: string[];
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
@@ -89,6 +91,7 @@ export interface WorkerExecutionContext {
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  checklist_feedback: string[];
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
@@ -145,6 +148,7 @@ export function createWorkerExecutionContext(
     changed_files: [...(source?.changed_files ?? [])],
     blocker_category: source?.blocker_category ?? null,
     blocker_message: source?.blocker_message ?? null,
+    checklist_feedback: [...(source?.checklist_feedback ?? [])],
     implementation_evidence: [...(source?.implementation_evidence ?? [])],
     test_evidence: [...(source?.test_evidence ?? [])],
     review_feedback: [...(source?.review_feedback ?? [])],
@@ -206,6 +210,7 @@ export function applyWorkerExecutionContext(
   task.changed_files = normalized.changed_files;
   task.blocker_category = normalized.blocker_category;
   task.blocker_message = normalized.blocker_message;
+  task.checklist_feedback = normalized.checklist_feedback;
   task.implementation_evidence = normalized.implementation_evidence;
   task.test_evidence = normalized.test_evidence;
   task.review_feedback = normalized.review_feedback;
@@ -232,6 +237,7 @@ export function createWorkerRetryHandoff(
     changed_files: context.changed_files,
     blocker_category: context.blocker_category,
     blocker_message: context.blocker_message,
+    checklist_feedback: context.checklist_feedback,
     implementation_evidence: context.implementation_evidence,
     test_evidence: context.test_evidence,
     review_feedback: context.review_feedback,
@@ -270,6 +276,7 @@ function cloneRetryHandoff(handoff: WorkerRetryHandoff): WorkerRetryHandoff {
     changed_files: [...handoff.changed_files],
     blocker_category: handoff.blocker_category,
     blocker_message: handoff.blocker_message,
+    checklist_feedback: [...(handoff.checklist_feedback ?? [])],
     implementation_evidence: [...handoff.implementation_evidence],
     test_evidence: [...handoff.test_evidence],
     review_feedback: [...handoff.review_feedback],
@@ -325,6 +332,7 @@ function cloneRuntimeContext(runtimeContext: WorkerRuntimeContext): WorkerRuntim
             summary: runtimeContext.verification_plan.retry_handoff.summary,
             blocker_category: runtimeContext.verification_plan.retry_handoff.blocker_category,
             blocker_message: runtimeContext.verification_plan.retry_handoff.blocker_message,
+            checklist_feedback: [...runtimeContext.verification_plan.retry_handoff.checklist_feedback],
             commands_run: [...runtimeContext.verification_plan.retry_handoff.commands_run],
             review_feedback: [...runtimeContext.verification_plan.retry_handoff.review_feedback],
           }

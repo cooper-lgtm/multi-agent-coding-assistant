@@ -14,8 +14,11 @@ Goose recipes for implementation workers must return a **candidate** task result
 4. Prefer the injected `runtime_context.verification_plan` and `runtime_context.environment_snapshot` over ad hoc guesswork when choosing commands.
 5. Stay within the assigned task scope.
 6. Run the required local verification commands for the task.
-7. Return structured output matching `.goose/recipes/shared/worker-output-schema.json`.
-8. Do not claim global run completion; orchestrator-owned quality gates make final status decisions.
+7. Verification is part of task completion, not optional follow-up work.
+8. Treat missing verification evidence as unfinished work instead of handing off `implementation_done` early.
+9. Return explicit verification evidence in `commands_run`, `test_evidence`, and `test_results`.
+10. Return structured output matching `.goose/recipes/shared/worker-output-schema.json`.
+11. Do not claim global run completion; orchestrator-owned quality gates make final status decisions.
 
 ## Injected runtime context
 
@@ -32,6 +35,7 @@ This context is intentionally compact and portable:
 - verification guidance is advisory for the implementation task only
 
 Workers should treat missing or conflicting injected context as a blocker, not as permission to invent orchestration policy.
+Workers should also treat missing verification evidence as unfinished work, not as an acceptable candidate handoff.
 
 ## Required output fields
 
