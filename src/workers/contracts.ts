@@ -276,7 +276,7 @@ function cloneRetryHandoff(handoff: WorkerRetryHandoff): WorkerRetryHandoff {
     changed_files: [...handoff.changed_files],
     blocker_category: handoff.blocker_category,
     blocker_message: handoff.blocker_message,
-    checklist_feedback: [...handoff.checklist_feedback],
+    checklist_feedback: [...(handoff.checklist_feedback ?? [])],
     implementation_evidence: [...handoff.implementation_evidence],
     test_evidence: [...handoff.test_evidence],
     review_feedback: [...handoff.review_feedback],

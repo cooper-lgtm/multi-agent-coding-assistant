@@ -9,6 +9,7 @@ import {
   RetryEscalationManager,
   ReportingManager,
   buildDemoPlanningFixture,
+  buildExecutionDag,
 } from '../dist/index.js';
 
 function buildSingleTaskFixtureWithExecutionGuidance() {
@@ -501,6 +502,22 @@ test('orchestrator summary carries richer worker bridge details into reporting',
   ]);
   assert.equal(summaryTask.prior_attempt?.suggested_status, 'blocked');
   assert.equal(summaryTask.prior_attempt?.delivery_metadata?.commit_sha, 'deadbeef0');
+});
+
+test('reporting summary tolerates legacy runtime tasks without checklist feedback', () => {
+  const fixture = buildDemoPlanningFixture();
+  const { runtime } = buildExecutionDag(fixture, {
+    runId: 'run-legacy-summary-checklist-feedback',
+  });
+  const reportingManager = new ReportingManager();
+
+  delete runtime.tasks['task-api-contract'].checklist_feedback;
+
+  const summary = reportingManager.buildSummary(runtime);
+  const summaryTask = summary.tasks.find((task) => task.task_id === 'task-api-contract');
+
+  assert.ok(summaryTask);
+  assert.deepEqual(summaryTask.checklist_feedback, []);
 });
 
 test('runtime flow continues unverified implementation before external quality gates decide completion', async () => {

@@ -86,7 +86,7 @@ export class ReportingManager {
       changed_files: [...task.changed_files],
       blocker_category: task.blocker_category,
       blocker_message: task.blocker_message,
-      checklist_feedback: [...task.checklist_feedback],
+      checklist_feedback: [...(task.checklist_feedback ?? [])],
       implementation_evidence: [...task.implementation_evidence],
       test_evidence: [...task.test_evidence],
       review_feedback: [...task.review_feedback],
