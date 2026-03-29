@@ -208,6 +208,7 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     changed_files: ['src/api/contract.ts'],
     blocker_category: 'quality',
     blocker_message: 'Previous review requested changes before approval.',
+    checklist_feedback: ['Missing verification evidence for required command: npm run test:adapter'],
     implementation_evidence: ['Contract types now compile for downstream callers.'],
     test_evidence: ['npm run test:adapter passed locally on the previous attempt.'],
     review_feedback: ['Review flagged missing edge-case coverage.'],
@@ -261,6 +262,9 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   assert.equal(envelope.payload.delivery_metadata?.branch_name, 'feat/goose-worker-contracts');
   assert.equal(envelope.payload.prior_attempt?.attempt, 1);
   assert.equal(envelope.payload.prior_attempt?.status, 'needs_fix');
+  assert.deepEqual(envelope.payload.prior_attempt?.checklist_feedback, [
+    'Missing verification evidence for required command: npm run test:adapter',
+  ]);
   assert.ok(envelope.payload.runtime_context);
   assert.deepEqual(envelope.payload.runtime_context.task_context_files, [
     'docs/context/repo-context.md',
@@ -282,6 +286,7 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     summary: 'Review requested changes after the first quality-gate pass.',
     blocker_category: 'quality',
     blocker_message: 'Previous review requested changes before approval.',
+    checklist_feedback: ['Missing verification evidence for required command: npm run test:adapter'],
     commands_run: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
     review_feedback: ['Review flagged missing edge-case coverage.'],
   });

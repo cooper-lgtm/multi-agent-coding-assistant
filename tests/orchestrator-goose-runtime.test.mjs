@@ -55,7 +55,11 @@ function createGooseDispatcher(taskDecisions = {}, capturedRequests = []) {
           implementation_evidence: selected.implementation_evidence ?? [selected.summary],
           test_evidence: selected.test_evidence ?? [],
           review_feedback: selected.review_feedback ?? [],
-          commands_run: selected.commands_run ?? ['npm run build'],
+          commands_run: selected.commands_run ?? (
+            request.payload.runtime_context?.verification_plan.commands.length
+              ? request.payload.runtime_context.verification_plan.commands
+              : ['npm run build']
+          ),
           test_results: selected.test_results ?? [],
           risk_notes: selected.risk_notes ?? [],
           suggested_status: selected.suggested_status ?? selected.status,
@@ -218,13 +222,13 @@ test(
 );
 
 test(
-  'goose redispatch receives middleware continuation context on the next implementation attempt',
+  'goose redispatch receives checklist continuation context before external quality gates run',
   { concurrency: false },
   async () => {
-  const fixture = buildDemoPlanningFixture();
+  const fixture = addExecutionGuidance(buildDemoPlanningFixture());
   fixture.tasks = [structuredClone(fixture.tasks[0])];
   const receivedAttempts = [];
-  let shouldContinue = true;
+  const qualityGateCalls = [];
 
   const implementationDispatcher = new GooseBackedImplementationDispatcher({
     repoPath: '/tmp/example-repo',
@@ -232,6 +236,9 @@ test(
       receivedAttempts.push({
         retry_count: request.payload.runtime.retry_count,
         prior_attempt: request.payload.prior_attempt ? structuredClone(request.payload.prior_attempt) : null,
+        runtime_retry_handoff: request.payload.runtime_context?.verification_plan.retry_handoff
+          ? structuredClone(request.payload.runtime_context.verification_plan.retry_handoff)
+          : null,
       });
 
       const attempt = receivedAttempts.length;
@@ -252,7 +259,9 @@ test(
           implementation_evidence: [`Implementation attempt ${attempt}.`],
           test_evidence: [],
           review_feedback: [],
-          commands_run: ['npm run build'],
+          commands_run: attempt === 1
+            ? ['npm run build']
+            : ['npm run build', 'npm run test:runtime'],
           test_results: [],
           risk_notes: [],
           suggested_status: 'implementation_done',
@@ -266,26 +275,15 @@ test(
   const orchestrator = new MainOrchestrator({
     createPlan: async () => fixture,
     implementationDispatcher,
-    qualityGateRunner: new MockQualityGateRunner(),
+    qualityGateRunner: {
+      async run(task, runtime) {
+        qualityGateCalls.push(task.task_id);
+        return new MockQualityGateRunner().run(task, runtime);
+      },
+    },
     retryManager: new RetryEscalationManager(),
     reportingManager: new ReportingManager(),
     runStore: new InMemoryRunStore(),
-    runtimeMiddleware: [
-      {
-        name: 'goose-continuation-check',
-        beforeQualityGates() {
-          if (!shouldContinue) {
-            return undefined;
-          }
-
-          shouldContinue = false;
-          return {
-            action: 'continue_task',
-            message: 'Run the missing local verification before external gates.',
-          };
-        },
-      },
-    ],
   });
 
   const result = await orchestrator.run({
@@ -298,6 +296,7 @@ test(
 
   assert.equal(result.summary.final_status, 'completed');
   assert.equal(receivedAttempts.length, 2);
+  assert.deepEqual(qualityGateCalls, ['task-api-contract']);
   assert.equal(receivedAttempts[0].retry_count, 0);
   assert.equal(receivedAttempts[0].prior_attempt, null);
   assert.equal(receivedAttempts[1].retry_count, 1);
@@ -305,8 +304,14 @@ test(
   assert.equal(receivedAttempts[1].prior_attempt?.attempt, 1);
   assert.equal(
     receivedAttempts[1].prior_attempt?.summary,
-    'Run the missing local verification before external gates.',
+    'Missing required verification evidence before external quality gates. Run the missing commands and return explicit evidence.',
   );
+  assert.deepEqual(receivedAttempts[1].prior_attempt?.checklist_feedback, [
+    'Missing verification evidence for required command: npm run test:runtime',
+  ]);
+  assert.deepEqual(receivedAttempts[1].runtime_retry_handoff?.checklist_feedback, [
+    'Missing verification evidence for required command: npm run test:runtime',
+  ]);
   },
 );
 

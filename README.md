@@ -4,6 +4,7 @@ A TypeScript implementation of an OpenClaw-native orchestrator system for:
 - planning user requests into structured implementation tasks,
 - converting planning output into an execution DAG,
 - dispatching ready tasks to implementation workers,
+- enforcing a pre-completion verification checklist before external handoff,
 - running post-implementation quality gates,
 - handling retry, escalation, and reporting.
 
@@ -29,12 +30,13 @@ Core flow:
 5. Validate `planning result`
 6. Convert to execution DAG
 7. Dispatch ready implementation tasks
-8. Run `test-agent` and `review-agent` as quality gates
-9. Re-route `needs_fix`, escalate failures, and summarize results
+8. Enforce the pre-completion checklist and continue unfinished work when verification is missing
+9. Run `test-agent` and `review-agent` as quality gates
+10. Re-route `needs_fix`, escalate failures, and summarize results
 
 This MVP now includes both:
 - a coherent planning pipeline with typed contracts, normalization, synthesis, and mock planners/analyzers
-- a coherent runtime loop with mockable adapters for implementation dispatch, quality gates, retry/escalation, persistence, and reporting
+- a coherent runtime loop with mockable adapters for implementation dispatch, pre-completion checklist continuations, quality gates, retry/escalation, persistence, and reporting
 - a goose-backed implementation dispatch path that keeps `frontend-agent` / `backend-agent` work at the worker seam while preserving external quality gates
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
 - a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
