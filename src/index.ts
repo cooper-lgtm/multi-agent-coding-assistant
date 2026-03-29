@@ -22,6 +22,7 @@ export * from './orchestrator/local-context-discovery.js';
 export * from './orchestrator/runtime-context-builder.js';
 export * from './orchestrator/runtime-middleware.js';
 export * from './orchestrator/pre-completion-checklist-middleware.js';
+export * from './orchestrator/loop-detection-middleware.js';
 export * from './orchestrator/implementation-dispatcher.js';
 export * from './orchestrator/approval-manager.js';
 export * from './orchestrator/policy-engine.js';

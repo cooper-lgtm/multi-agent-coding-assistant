@@ -16,6 +16,7 @@ import type {
 import type {
   WorkerBlockerCategory,
   WorkerDeliveryMetadata,
+  WorkerFailureCategory,
   WorkerRetryHandoff,
   WorkerSuggestedStatus,
   WorkerTestResult,
@@ -50,6 +51,10 @@ export interface ExecutionNode {
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  failure_category: WorkerFailureCategory | null;
+  failure_diagnosis: string | null;
+  reconsider_instructions: string[];
+  repeated_pattern_summary: string | null;
   checklist_feedback: string[];
   implementation_evidence: string[];
   test_evidence: string[];
@@ -60,6 +65,7 @@ export interface ExecutionNode {
   suggested_status: WorkerSuggestedStatus | null;
   delivery_metadata: WorkerDeliveryMetadata | null;
   prior_attempt: WorkerRetryHandoff | null;
+  attempt_history: WorkerRetryHandoff[];
   result: string | null;
   error: string | null;
 }
@@ -155,6 +161,10 @@ export interface TaskRunSummary {
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  failure_category: WorkerFailureCategory | null;
+  failure_diagnosis: string | null;
+  reconsider_instructions: string[];
+  repeated_pattern_summary: string | null;
   checklist_feedback: string[];
   implementation_evidence: string[];
   test_evidence: string[];
@@ -165,6 +175,7 @@ export interface TaskRunSummary {
   suggested_status: WorkerSuggestedStatus | null;
   delivery_metadata: WorkerDeliveryMetadata | null;
   prior_attempt: WorkerRetryHandoff | null;
+  attempt_history: WorkerRetryHandoff[];
 }
 
 export type RunFinalStatus = RunLifecycleStatus;

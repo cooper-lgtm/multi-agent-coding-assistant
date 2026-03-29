@@ -222,6 +222,124 @@ test(
 );
 
 test(
+  'goose third attempt payload includes retry diagnosis and loop-detection guidance',
+  { concurrency: false },
+  async () => {
+  const fixture = buildDemoPlanningFixture();
+  fixture.tasks = [structuredClone(fixture.tasks[0])];
+  const receivedAttempts = [];
+
+  const implementationDispatcher = new GooseBackedImplementationDispatcher({
+    repoPath: '/tmp/example-repo',
+    executeRole: async (request) => {
+      receivedAttempts.push({
+        retry_count: request.payload.runtime.retry_count,
+        model: request.model,
+        prior_attempt: request.payload.prior_attempt ? structuredClone(request.payload.prior_attempt) : null,
+        attempt_history: structuredClone(request.payload.attempt_history ?? []),
+        reconsider_instructions: [...(request.payload.reconsider_instructions ?? [])],
+        repeated_pattern_summary: request.payload.repeated_pattern_summary ?? null,
+        runtime_retry_handoff: request.payload.runtime_context?.verification_plan.retry_handoff
+          ? structuredClone(request.payload.runtime_context.verification_plan.retry_handoff)
+          : null,
+      });
+
+      const attempt = receivedAttempts.length;
+      const isRetryLoopAttempt = attempt < 3;
+
+      return {
+        ok: true,
+        run_id: request.run_id,
+        role: request.role,
+        model: request.model,
+        summary: isRetryLoopAttempt
+          ? `Goose attempt ${attempt} repeated the same repository blocker.`
+          : 'Goose attempt 3 changed approach and regenerated the missing client stub.',
+        output: {
+          role: request.role,
+          status: isRetryLoopAttempt ? 'failed' : 'implementation_done',
+          summary: isRetryLoopAttempt
+            ? `Goose attempt ${attempt} repeated the same repository blocker.`
+            : 'Goose attempt 3 changed approach and regenerated the missing client stub.',
+          changed_files: isRetryLoopAttempt
+            ? ['src/api/generated-client.ts']
+            : ['src/api/generated-client.ts', 'tests/api-client.test.mjs'],
+          blocker_category: isRetryLoopAttempt ? 'repository' : null,
+          blocker_message: isRetryLoopAttempt ? 'Generated client stub is missing.' : null,
+          implementation_evidence: isRetryLoopAttempt
+            ? [`Goose attempt ${attempt} still could not regenerate the client stub.`]
+            : ['Goose regenerated the client stub and updated coverage.'],
+          test_evidence: isRetryLoopAttempt
+            ? []
+            : ['node --test tests/orchestrator-goose-runtime.test.mjs'],
+          review_feedback: [],
+          commands_run: isRetryLoopAttempt
+            ? ['npm run build']
+            : ['npm run build', 'node --test tests/orchestrator-goose-runtime.test.mjs'],
+          test_results: [],
+          risk_notes: [],
+          suggested_status: isRetryLoopAttempt ? 'failed' : 'implementation_done',
+          delivery_metadata: null,
+          prior_attempt: request.payload.prior_attempt ?? null,
+        },
+      };
+    },
+  });
+
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher,
+    qualityGateRunner: new MockQualityGateRunner(),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+  });
+
+  assert.equal(result.summary.final_status, 'completed');
+  assert.equal(receivedAttempts.length, 3);
+  assert.equal(receivedAttempts[2].retry_count, 2);
+  assert.equal(receivedAttempts[2].model.logical_model, 'claude');
+  assert.equal(receivedAttempts[2].prior_attempt?.failure_category, 'implementation_failed');
+  assert.match(
+    receivedAttempts[2].prior_attempt?.failure_diagnosis ?? '',
+    /generated client stub is missing/i,
+  );
+  assert.equal(receivedAttempts[2].attempt_history.length, 2);
+  assert.equal(receivedAttempts[2].attempt_history[1].failure_category, 'implementation_failed');
+  assert.match(
+    receivedAttempts[2].repeated_pattern_summary ?? '',
+    /same blocker on unchanged files/i,
+  );
+  assert.ok(
+    receivedAttempts[2].reconsider_instructions.some((instruction) =>
+      /change approach/i.test(instruction),
+    ),
+  );
+  assert.ok(
+    receivedAttempts[2].reconsider_instructions.some((instruction) =>
+      /generated client stub is missing/i.test(instruction),
+    ),
+  );
+  assert.match(
+    receivedAttempts[2].runtime_retry_handoff?.failure_diagnosis ?? '',
+    /generated client stub is missing/i,
+  );
+  assert.match(
+    result.summary.events.join('\n'),
+    /retry loop detected for task-api-contract/i,
+  );
+  },
+);
+
+test(
   'goose redispatch receives checklist continuation context before external quality gates run',
   { concurrency: false },
   async () => {

@@ -39,8 +39,8 @@ This MVP now includes both:
 - a coherent runtime loop with mockable adapters for implementation dispatch, pre-completion checklist continuations, quality gates, retry/escalation, persistence, and reporting
 - a goose-backed implementation dispatch path that keeps `frontend-agent` / `backend-agent` work at the worker seam while preserving external quality gates
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
-- a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
-- compact runtime context injection that threads repo summaries, environment snapshots, task-context files, verification plans, and reconsideration signals into worker payloads and goose recipe inputs
+- a richer worker execution bridge MVP that carries changed files, blocker metadata, bounded attempt history, structured failure diagnosis, evidence, and retry handoff context through runtime reporting
+- compact runtime context injection that threads repo summaries, environment snapshots, task-context files, verification plans, reconsideration signals, and repeated-pattern summaries into worker payloads and goose recipe inputs
 - approval controls that can pause after planning until a human explicitly approves execution
 - a policy engine that keeps max parallelism, retry budgets, role-specific fallback chains, and high-risk manual-review guardrails in the orchestrator layer
 - durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
@@ -87,12 +87,14 @@ This MVP now includes both:
 ## Runtime Modules
 
 - `implementation-dispatcher`: dispatches ready implementation tasks to `frontend-agent` or `backend-agent`, including a goose-backed dispatcher option
+- `runtime-middleware`: keeps pre-dispatch guardrails in the orchestrator layer instead of pushing them into worker adapters
+- `loop-detection-middleware`: detects repeated low-yield retries and injects reconsideration guidance before the next dispatch
 - `approval-manager`: keeps confirm-before-run approval as an orchestrator concern instead of pushing it into worker adapters
 - `policy-engine`: applies runtime budget and safety rules before dispatch without pushing orchestration policy into goose recipes
 - `quality-gate-runner`: runs `test-agent` and `review-agent` after implementation completes
-- `retry-escalation-manager`: applies the runtime retry policy and explicit per-role model fallback
-- `reporting-manager`: records runtime events and builds concise run summaries
-- runtime task records now persist changed files, blocker category/message, implementation evidence, test evidence, review feedback, and the latest retry handoff
+- `retry-escalation-manager`: applies the runtime retry policy, explicit per-role model fallback, and diagnosis-aware retry messaging
+- `reporting-manager`: records runtime events and builds concise run summaries, including retry-loop detection and richer retry handoff detail
+- runtime task records now persist changed files, blocker category/message, structured failure diagnosis, reconsideration guidance, implementation evidence, test evidence, review feedback, bounded attempt history, and the latest retry handoff
 
 ## Persistence and Resume
 
@@ -112,7 +114,7 @@ This MVP now includes both:
 - `goose-worker-adapter`: shells out to goose implementation recipes and normalizes structured worker output
 - `goose-process-runner`: serializes recipe params into non-interactive goose CLI invocations
 - `openclaw-model-resolver`: maps logical labels and exact ids to provider-aware model metadata
-- `openclaw-runtime-adapter`: standardizes planning and worker request/result/error envelopes for OpenClaw-facing execution, including compact runtime-context threading for workers
+- `openclaw-runtime-adapter`: standardizes planning and worker request/result/error envelopes for OpenClaw-facing execution, including compact runtime-context threading and retry-diagnosis payloads for workers
 - `model-router`: keeps role-based fallback ordering while attaching exact-model metadata when available
 
 ## Demo

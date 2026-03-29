@@ -79,6 +79,10 @@ test(
   assert.deepEqual(envelope.payload.changed_files, []);
   assert.equal(envelope.payload.blocker_category, null);
   assert.equal(envelope.payload.blocker_message, null);
+  assert.equal(envelope.payload.failure_category, null);
+  assert.equal(envelope.payload.failure_diagnosis, null);
+  assert.deepEqual(envelope.payload.reconsider_instructions, []);
+  assert.equal(envelope.payload.repeated_pattern_summary, null);
   assert.deepEqual(envelope.payload.implementation_evidence, []);
   assert.deepEqual(envelope.payload.test_evidence, []);
   assert.deepEqual(envelope.payload.review_feedback, []);
@@ -88,6 +92,7 @@ test(
   assert.equal(envelope.payload.suggested_status, null);
   assert.equal(envelope.payload.delivery_metadata, null);
   assert.equal(envelope.payload.prior_attempt, null);
+  assert.deepEqual(envelope.payload.attempt_history, []);
   assert.ok(envelope.payload.runtime_context);
   assert.ok(envelope.payload.runtime_context.repo_context_summary.length > 0);
   assert.equal(envelope.payload.runtime_context.environment_snapshot.package_manager, 'npm');
@@ -189,6 +194,14 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   task.changed_files = ['src/api/contract.ts'];
   task.blocker_category = 'quality';
   task.blocker_message = 'Previous review requested changes before approval.';
+  task.failure_category = 'quality_needs_fix';
+  task.failure_diagnosis = 'Previous review feedback still requires broader edge-case coverage.';
+  task.reconsider_instructions = [
+    'Read the review feedback before editing the same contract again.',
+    'Add the missing edge-case coverage before requesting another review.',
+  ];
+  task.repeated_pattern_summary =
+    'Attempts 1 and 2 repeated the same review blocker on unchanged files.';
   task.implementation_evidence = ['Contract types now compile for downstream callers.'];
   task.test_evidence = ['npm run test:adapter passed locally on the previous attempt.'];
   task.review_feedback = ['Review flagged missing edge-case coverage.'];
@@ -208,6 +221,14 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     changed_files: ['src/api/contract.ts'],
     blocker_category: 'quality',
     blocker_message: 'Previous review requested changes before approval.',
+    failure_category: 'quality_needs_fix',
+    failure_diagnosis: 'Previous review feedback still requires broader edge-case coverage.',
+    reconsider_instructions: [
+      'Read the review feedback before editing the same contract again.',
+      'Add the missing edge-case coverage before requesting another review.',
+    ],
+    repeated_pattern_summary:
+      'Attempts 1 and 2 repeated the same review blocker on unchanged files.',
     checklist_feedback: ['Missing verification evidence for required command: npm run test:adapter'],
     implementation_evidence: ['Contract types now compile for downstream callers.'],
     test_evidence: ['npm run test:adapter passed locally on the previous attempt.'],
@@ -222,6 +243,7 @@ test('worker role envelopes preserve retry handoff context for quality gate role
       pr_url: 'https://github.com/example/repo/pull/123',
     },
   };
+  task.attempt_history = [structuredClone(task.prior_attempt)];
 
   const envelope = createOpenClawWorkerRoleRequest({
     task,
@@ -239,6 +261,19 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   assert.deepEqual(envelope.payload.changed_files, ['src/api/contract.ts']);
   assert.equal(envelope.payload.blocker_category, 'quality');
   assert.equal(envelope.payload.blocker_message, 'Previous review requested changes before approval.');
+  assert.equal(envelope.payload.failure_category, 'quality_needs_fix');
+  assert.equal(
+    envelope.payload.failure_diagnosis,
+    'Previous review feedback still requires broader edge-case coverage.',
+  );
+  assert.deepEqual(envelope.payload.reconsider_instructions, [
+    'Read the review feedback before editing the same contract again.',
+    'Add the missing edge-case coverage before requesting another review.',
+  ]);
+  assert.equal(
+    envelope.payload.repeated_pattern_summary,
+    'Attempts 1 and 2 repeated the same review blocker on unchanged files.',
+  );
   assert.deepEqual(envelope.payload.implementation_evidence, [
     'Contract types now compile for downstream callers.',
   ]);
@@ -262,6 +297,7 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   assert.equal(envelope.payload.delivery_metadata?.branch_name, 'feat/goose-worker-contracts');
   assert.equal(envelope.payload.prior_attempt?.attempt, 1);
   assert.equal(envelope.payload.prior_attempt?.status, 'needs_fix');
+  assert.equal(envelope.payload.attempt_history.length, 1);
   assert.deepEqual(envelope.payload.prior_attempt?.checklist_feedback, [
     'Missing verification evidence for required command: npm run test:adapter',
   ]);
@@ -277,8 +313,12 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   ]);
   assert.deepEqual(envelope.payload.runtime_context.verification_plan.reconsider_signals, [
     'Review feedback is not visible to the next attempt.',
+    'Read the review feedback before editing the same contract again.',
+    'Add the missing edge-case coverage before requesting another review.',
+    'Attempts 1 and 2 repeated the same review blocker on unchanged files.',
     'Prior attempt 1 ended as needs_fix: Review requested changes after the first quality-gate pass.',
     'Previous blocker: Previous review requested changes before approval.',
+    'Previous diagnosis: Previous review feedback still requires broader edge-case coverage.',
   ]);
   assert.deepEqual(envelope.payload.runtime_context.verification_plan.retry_handoff, {
     attempt: 1,
@@ -286,6 +326,14 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     summary: 'Review requested changes after the first quality-gate pass.',
     blocker_category: 'quality',
     blocker_message: 'Previous review requested changes before approval.',
+    failure_category: 'quality_needs_fix',
+    failure_diagnosis: 'Previous review feedback still requires broader edge-case coverage.',
+    reconsider_instructions: [
+      'Read the review feedback before editing the same contract again.',
+      'Add the missing edge-case coverage before requesting another review.',
+    ],
+    repeated_pattern_summary:
+      'Attempts 1 and 2 repeated the same review blocker on unchanged files.',
     checklist_feedback: ['Missing verification evidence for required command: npm run test:adapter'],
     commands_run: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
     review_feedback: ['Review flagged missing edge-case coverage.'],

@@ -1,6 +1,10 @@
 import type { AssignedAgent } from '../schemas/planning.js';
 import type { ExecutionNode } from '../schemas/runtime.js';
-import type { WorkerRetryHandoff, WorkerRuntimeContext } from '../workers/contracts.js';
+import type {
+  WorkerFailureCategory,
+  WorkerRetryHandoff,
+  WorkerRuntimeContext,
+} from '../workers/contracts.js';
 
 export interface GooseRecipeExecutionSpec {
   recipe_path: string;
@@ -17,6 +21,11 @@ export interface GooseRecipeExecutionSpec {
         changed_files: string[];
     };
     retry_context: WorkerRetryHandoff | null;
+    attempt_history: WorkerRetryHandoff[];
+    failure_category: WorkerFailureCategory | null;
+    failure_diagnosis: string | null;
+    reconsider_instructions: string[];
+    repeated_pattern_summary: string | null;
     runtime_context: WorkerRuntimeContext | null;
   };
 }
@@ -51,6 +60,11 @@ export function buildGooseRecipeExecution(input: {
         changed_files: [...input.task.changed_files],
       },
       retry_context: input.retryContext,
+      attempt_history: structuredClone(input.task.attempt_history ?? []),
+      failure_category: input.task.failure_category ?? null,
+      failure_diagnosis: input.task.failure_diagnosis ?? null,
+      reconsider_instructions: [...(input.task.reconsider_instructions ?? [])],
+      repeated_pattern_summary: input.task.repeated_pattern_summary ?? null,
       runtime_context: input.runtimeContext ? cloneRuntimeContext(input.runtimeContext) : null,
     },
   };
@@ -79,6 +93,12 @@ function cloneRuntimeContext(runtimeContext: WorkerRuntimeContext): WorkerRuntim
             summary: runtimeContext.verification_plan.retry_handoff.summary,
             blocker_category: runtimeContext.verification_plan.retry_handoff.blocker_category,
             blocker_message: runtimeContext.verification_plan.retry_handoff.blocker_message,
+            failure_category: runtimeContext.verification_plan.retry_handoff.failure_category,
+            failure_diagnosis: runtimeContext.verification_plan.retry_handoff.failure_diagnosis,
+            reconsider_instructions: [
+              ...runtimeContext.verification_plan.retry_handoff.reconsider_instructions,
+            ],
+            repeated_pattern_summary: runtimeContext.verification_plan.retry_handoff.repeated_pattern_summary,
             checklist_feedback: [...runtimeContext.verification_plan.retry_handoff.checklist_feedback],
             commands_run: [...runtimeContext.verification_plan.retry_handoff.commands_run],
             review_feedback: [...runtimeContext.verification_plan.retry_handoff.review_feedback],
