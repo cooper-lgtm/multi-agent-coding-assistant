@@ -49,6 +49,7 @@ Enable the runtime to:
 - Current runtime contracts preserve rich evidence fields but only one `prior_attempt`.
 - PR35 provides the middleware seam required to insert loop detection without changing global control ownership.
 - PR11b should land first so checklist continuation and retry diagnosis share a coherent attempt model.
+- This document intentionally recombines the breakdown's `PR12a` and `PR12b` slices into one branch-ready execution plan once that runtime base exists.
 - Adapter and prompt surfaces are coupled because reconsideration guidance must reach the next worker attempt.
 - This task extends runtime recovery behavior without changing planning task ownership or DAG semantics.
 
