@@ -131,6 +131,7 @@ test('buildGooseRecipeExecution maps backend-agent to backend recipe and passes 
         summary: 'Address review feedback on validation flow.',
         blocker_category: null,
         blocker_message: null,
+        checklist_feedback: ['Missing verification evidence for required command: npm run test:runtime'],
         commands_run: ['npm run build'],
         review_feedback: ['Please tighten null-handling around retry state.'],
       },
@@ -174,6 +175,9 @@ test('buildGooseRecipeExecution maps backend-agent to backend recipe and passes 
   ]);
   assert.deepEqual(spec.inputs.runtime_context?.verification_plan.reconsider_signals, [
     'Backend goose recipe dropped reconsideration guidance.',
+  ]);
+  assert.deepEqual(spec.inputs.runtime_context?.verification_plan.retry_handoff?.checklist_feedback, [
+    'Missing verification evidence for required command: npm run test:runtime',
   ]);
   assert.deepEqual(spec.inputs.runtime_context?.task_context_files, [
     'docs/context/repo-context.md',
@@ -251,5 +255,27 @@ test('implementation recipes declare and reference runtime_context so goose-back
     assert.match(recipe, /- key: runtime_context\b/);
     assert.match(recipe, /Runtime context JSON:\s*\n\s*\{\{ runtime_context \}\}/);
     assert.match(recipe, /start with the injected runtime context/i);
+  }
+});
+
+test('implementation protocols treat missing verification evidence as unfinished work', () => {
+  const frontendPrompt = fs.readFileSync('prompts/frontend-agent.md', 'utf8');
+  const backendPrompt = fs.readFileSync('prompts/backend-agent.md', 'utf8');
+  const taskContract = fs.readFileSync('docs/goose/task-contract.md', 'utf8');
+
+  for (const content of [frontendPrompt, backendPrompt, taskContract]) {
+    assert.match(content, /verification .* part of task completion/i);
+    assert.match(content, /missing verification .* unfinished work/i);
+    assert.match(content, /explicit verification evidence/i);
+  }
+
+  for (const recipePath of [
+    '.goose/recipes/frontend-implementation.yaml',
+    '.goose/recipes/backend-implementation.yaml',
+  ]) {
+    const recipe = fs.readFileSync(recipePath, 'utf8');
+
+    assert.match(recipe, /missing verification .* unfinished work/i);
+    assert.match(recipe, /explicit verification evidence/i);
   }
 });
