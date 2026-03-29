@@ -147,6 +147,7 @@ function summarizeRetryHandoff(priorAttempt: WorkerRetryHandoff | null): WorkerR
     summary: priorAttempt.summary,
     blocker_category: priorAttempt.blocker_category,
     blocker_message: priorAttempt.blocker_message,
+    checklist_feedback: uniqueStrings(priorAttempt.checklist_feedback),
     commands_run: uniqueStrings(priorAttempt.commands_run),
     review_feedback: uniqueStrings(priorAttempt.review_feedback),
   };
