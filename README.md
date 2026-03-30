@@ -14,6 +14,7 @@ Start here before non-trivial changes:
 - `PRODUCT.md`: current goals, priorities, and non-goals
 - `ARCHITECTURE.md`: end-to-end system flow, role boundaries, and invariants
 - `AGENTS.md`: contributor workflow, repo map, and validation expectations
+- `docs/harness-engineering-v2.1-report.zh-CN.md`: Chinese deep-dive report covering the current Harness framework across `main` plus active PR-defined extensions
 - `docs/roadmap/2026-03-22-runtime-success-roadmap.md`: next planned runtime-first harness upgrades for real-task success
 - `docs/templates/task-template.md`: standard task input for non-trivial work
 - `docs/reviews/recurring-issues.md`: repeated review failures worth preventing
