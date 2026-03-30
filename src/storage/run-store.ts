@@ -5,6 +5,7 @@ import {
   type RuntimeControlState,
   type RuntimeEvent,
   type RuntimeState,
+  normalizeRuntimeEvents,
 } from '../schemas/runtime.js';
 
 export interface RunApprovalUpdate {
@@ -47,12 +48,22 @@ export class InMemoryRunStore implements RunStore {
   private readonly runs = new Map<string, RuntimeState>();
 
   async save(runtime: RuntimeState): Promise<void> {
-    this.runs.set(runtime.run_id, structuredClone(runtime));
+    const snapshot = structuredClone(runtime);
+    snapshot.events = normalizeRuntimeEvents(snapshot.events);
+    this.runs.set(runtime.run_id, snapshot);
+    runtime.events = structuredClone(snapshot.events);
   }
 
   async load(runId: string): Promise<RuntimeState | null> {
     const runtime = this.runs.get(runId);
-    return runtime ? structuredClone(runtime) : null;
+
+    if (!runtime) {
+      return null;
+    }
+
+    const snapshot = structuredClone(runtime);
+    snapshot.events = normalizeRuntimeEvents(snapshot.events);
+    return snapshot;
   }
 
   async listRuns(): Promise<RunManifest[]> {
@@ -68,7 +79,7 @@ export class InMemoryRunStore implements RunStore {
 
   async loadEvents(runId: string): Promise<RuntimeEvent[]> {
     const runtime = this.runs.get(runId);
-    return runtime ? structuredClone(runtime.events) : [];
+    return runtime ? normalizeRuntimeEvents(structuredClone(runtime.events)) : [];
   }
 
   async approveRun(runId: string, approval: RunApprovalUpdate): Promise<void> {

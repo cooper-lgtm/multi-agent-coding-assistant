@@ -1,5 +1,11 @@
 import type { PlanningRequest, PlanningResult, RuntimeTaskStatus } from '../schemas/planning.js';
-import type { ExecutionNode, OrchestrationRunResult, RunLifecycleStatus, RuntimeState } from '../schemas/runtime.js';
+import {
+  createRuntimeEventModelSelection,
+  type ExecutionNode,
+  type OrchestrationRunResult,
+  type RunLifecycleStatus,
+  type RuntimeState,
+} from '../schemas/runtime.js';
 import { buildExecutionDag, findReadyTasks } from './dag-builder.js';
 import type { ImplementationDispatcher } from './implementation-dispatcher.js';
 import type { QualityGateRunner } from './quality-gate-runner.js';
@@ -61,6 +67,12 @@ export class MainOrchestrator {
         runtime,
         'awaiting_human_approval',
         `Run ${runtime.run_id} is waiting for explicit approval before execution.`,
+        undefined,
+        {
+          metadata: {
+            approval_mode: runtime.approval_state?.mode ?? 'confirm-before-run',
+          },
+        },
       );
       await this.persist(runtime);
       await this.finalize(runtime);
@@ -101,6 +113,12 @@ export class MainOrchestrator {
         runtime,
         'awaiting_human_approval',
         `Run ${runtime.run_id} is still waiting for approval before execution can resume.`,
+        undefined,
+        {
+          metadata: {
+            approval_mode: runtime.approval_state?.mode ?? 'confirm-before-run',
+          },
+        },
       );
       await this.persist(runtime, { syncControl: false });
       await this.finalize(runtime);
@@ -186,6 +204,12 @@ export class MainOrchestrator {
         'task_blocked_by_policy',
         task.blocker_message,
         task.task_id,
+        {
+          failureCategory: 'policy',
+          metadata: {
+            assigned_agent: task.assigned_agent,
+          },
+        },
       );
     }
   }
@@ -197,6 +221,11 @@ export class MainOrchestrator {
       'task_routed',
       `Dispatching ${task.task_id} to ${task.assigned_agent} on ${task.model}.`,
       task.task_id,
+      {
+        metadata: {
+          assigned_agent: task.assigned_agent,
+        },
+      },
     );
     await this.persist(runtime);
 
@@ -215,6 +244,11 @@ export class MainOrchestrator {
         'implementation_completed',
         `Implementation completed for ${task.task_id}.`,
         task.task_id,
+        {
+          metadata: {
+            changed_files: task.changed_files,
+          },
+        },
       );
       await this.persist(runtime);
       return;
@@ -238,6 +272,11 @@ export class MainOrchestrator {
       'quality_gate_started',
       `Running quality gates for ${task.task_id}.`,
       task.task_id,
+      {
+        metadata: {
+          roles: ['test-agent', 'review-agent'],
+        },
+      },
     );
     await this.persist(runtime);
 
@@ -253,6 +292,12 @@ export class MainOrchestrator {
         'test_gate_routed',
         `Test gate for ${task.task_id} ran on ${gateResult.test_model}.`,
         task.task_id,
+        {
+          model: createRuntimeEventModelSelection(gateResult.test_model),
+          metadata: {
+            gate: 'test-agent',
+          },
+        },
       );
     }
     if (gateResult.review_model) {
@@ -261,6 +306,12 @@ export class MainOrchestrator {
         'review_gate_routed',
         `Review gate for ${task.task_id} ran on ${gateResult.review_model}.`,
         task.task_id,
+        {
+          model: createRuntimeEventModelSelection(gateResult.review_model),
+          metadata: {
+            gate: 'review-agent',
+          },
+        },
       );
     }
 
@@ -272,6 +323,11 @@ export class MainOrchestrator {
         'task_completed',
         `Task ${task.task_id} completed after quality gates.`,
         task.task_id,
+        {
+          metadata: {
+            changed_files: task.changed_files,
+          },
+        },
       );
       await this.persist(runtime);
       return;
@@ -309,6 +365,13 @@ export class MainOrchestrator {
         'retry_scheduled',
         `${this.formatRetryMessage(task, decision)}`,
         task.task_id,
+        {
+          failureCategory: decision.cause,
+          metadata: {
+            retry_action: decision.action,
+            next_model: decision.next_model,
+          },
+        },
       );
       return;
     }
@@ -319,6 +382,12 @@ export class MainOrchestrator {
       'task_terminal_negative',
       decision.reason,
       task.task_id,
+      {
+        failureCategory: decision.cause,
+        metadata: {
+          terminal_status: decision.next_status,
+        },
+      },
     );
   }
 
@@ -354,6 +423,12 @@ export class MainOrchestrator {
           'task_blocked_by_dependency',
           `Task ${task.task_id} is blocked by dependency ${blockingDependency}.`,
           task.task_id,
+          {
+            failureCategory: 'dependency',
+            metadata: {
+              blocking_dependency: blockingDependency,
+            },
+          },
         );
         hasChanges = true;
       }
@@ -418,7 +493,7 @@ export class MainOrchestrator {
         'run_cancelled',
         `Run ${runtime.run_id} stopped at a safe checkpoint after cancellation.`,
       );
-      await this.persist(runtime);
+      await this.persist(runtime, { syncControl: false });
       return true;
     }
 
@@ -434,7 +509,7 @@ export class MainOrchestrator {
         'run_paused',
         `Run ${runtime.run_id} paused at a safe checkpoint.`,
       );
-      await this.persist(runtime);
+      await this.persist(runtime, { syncControl: false });
       return true;
     }
 

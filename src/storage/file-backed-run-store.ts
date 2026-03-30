@@ -1,7 +1,13 @@
 import { appendFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { type RunManifest, type RuntimeControlState, type RuntimeEvent, type RuntimeState } from '../schemas/runtime.js';
+import {
+  normalizeRuntimeEvents,
+  type RunManifest,
+  type RuntimeControlState,
+  type RuntimeEvent,
+  type RuntimeState,
+} from '../schemas/runtime.js';
 import { buildRunManifest, type RunApprovalUpdate, type RunStore } from './run-store.js';
 
 export interface FileBackedRunStoreOptions {
@@ -24,6 +30,7 @@ export class FileBackedRunStore implements RunStore {
       const existingManifest = await this.readManifest(runtime.run_id);
       const persistedRuntime = structuredClone(runtime);
       persistedRuntime.control = this.resolvePersistedControl(runtime, existingManifest);
+      persistedRuntime.events = normalizeRuntimeEvents(persistedRuntime.events);
 
       const manifest = buildRunManifest(persistedRuntime);
 
@@ -32,6 +39,7 @@ export class FileBackedRunStore implements RunStore {
       await this.persistEventLog(path.join(runDir, 'events.jsonl'), persistedRuntime.events);
 
       runtime.control = { ...persistedRuntime.control };
+      runtime.events = structuredClone(persistedRuntime.events);
     });
   }
 
@@ -46,6 +54,8 @@ export class FileBackedRunStore implements RunStore {
     if (manifest) {
       runtime.control = { ...manifest.control };
     }
+
+    runtime.events = normalizeRuntimeEvents(runtime.events);
 
     return runtime;
   }
@@ -85,7 +95,8 @@ export class FileBackedRunStore implements RunStore {
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as RuntimeEvent);
+      .map((line) => JSON.parse(line) as RuntimeEvent)
+      .map((event) => normalizeRuntimeEvents([event])[0]);
   }
 
   async approveRun(runId: string, approval: RunApprovalUpdate): Promise<void> {
