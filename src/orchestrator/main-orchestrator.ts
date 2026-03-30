@@ -505,8 +505,15 @@ export class MainOrchestrator {
     summary: string,
   ): void {
     task.failure_category = failureCategory;
-    task.failure_diagnosis = this.buildFailureDiagnosis(task, failureCategory, summary);
-    task.reconsider_instructions = this.buildReconsiderInstructions(task, failureCategory);
+    const fallbackDiagnosis = this.buildFailureDiagnosis(task, failureCategory, summary);
+
+    if (!this.hasSpecificFailureDiagnosis(task.failure_diagnosis, summary, task.blocker_message)) {
+      task.failure_diagnosis = fallbackDiagnosis;
+    }
+
+    if (task.reconsider_instructions.length === 0) {
+      task.reconsider_instructions = this.buildReconsiderInstructions(task, failureCategory);
+    }
   }
 
   private buildFailureDiagnosis(
@@ -530,10 +537,37 @@ export class MainOrchestrator {
       case 'implementation_blocked':
         return task.blocker_message ?? summary;
       case 'implementation_failed':
-        return task.blocker_message ? `${summary} ${task.blocker_message}` : summary;
+        if (!task.blocker_message || task.blocker_message === summary) {
+          return summary;
+        }
+        return `${summary} ${task.blocker_message}`;
       default:
         return summary;
     }
+  }
+
+  private hasSpecificFailureDiagnosis(
+    diagnosis: string | null,
+    summary: string,
+    blockerMessage: string | null,
+  ): boolean {
+    if (!diagnosis) {
+      return false;
+    }
+
+    if (diagnosis === summary) {
+      return false;
+    }
+
+    if (blockerMessage && diagnosis === blockerMessage) {
+      return false;
+    }
+
+    if (blockerMessage && diagnosis === `${summary} ${blockerMessage}`) {
+      return false;
+    }
+
+    return true;
   }
 
   private buildReconsiderInstructions(
