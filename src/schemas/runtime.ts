@@ -100,6 +100,7 @@ export type RuntimeEventFailureCategory =
   | 'implementation_blocked'
   | 'quality_failed'
   | 'quality_needs_fix'
+  | 'verification_incomplete'
   | 'policy';
 
 export type RuntimeEventMetadataValue = string | number | boolean | null | Array<string | number | boolean>;
@@ -308,6 +309,7 @@ const RUNTIME_EVENT_FAILURE_CATEGORIES = new Set<RuntimeEventFailureCategory>([
   'implementation_blocked',
   'quality_failed',
   'quality_needs_fix',
+  'verification_incomplete',
   'policy',
 ]);
 

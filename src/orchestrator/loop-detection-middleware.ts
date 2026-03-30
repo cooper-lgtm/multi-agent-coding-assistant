@@ -1,3 +1,8 @@
+import {
+  createRuntimeEvent,
+  createRuntimeEventModelSelection,
+  type RuntimeEventFailureCategory,
+} from '../schemas/runtime.js';
 import type { WorkerRetryHandoff } from '../workers/contracts.js';
 import type { RuntimeMiddleware } from './runtime-middleware.js';
 
@@ -31,12 +36,21 @@ export function createLoopDetectionMiddleware(): RuntimeMiddleware {
         return;
       }
 
-      runtime.events.push({
-        timestamp: new Date().toISOString(),
+      runtime.events.push(createRuntimeEvent({
         task_id: task.task_id,
         type: LOOP_DETECTION_EVENT_TYPE,
         message,
-      });
+        phase: 'retry',
+        attempt: task.retry_count + 1,
+        task_status: task.status,
+        failure_category: detection.failure_category,
+        model: createRuntimeEventModelSelection(task.model, task.model_metadata),
+        metadata: {
+          repeated_attempts: detection.repeated_attempts,
+          repeated_changed_files: detection.repeated_changed_files,
+          repeated_blocker_message: detection.repeated_blocker_message,
+        },
+      }));
     },
   };
 }
@@ -44,6 +58,10 @@ export function createLoopDetectionMiddleware(): RuntimeMiddleware {
 interface LoopDetectionResult {
   summary: string;
   reconsider_instructions: string[];
+  failure_category: RuntimeEventFailureCategory | null;
+  repeated_attempts: number[];
+  repeated_changed_files: string[];
+  repeated_blocker_message: string | null;
 }
 
 function detectRepeatedLowYieldPattern(history: WorkerRetryHandoff[]): LoopDetectionResult | null {
@@ -75,6 +93,10 @@ function detectRepeatedLowYieldPattern(history: WorkerRetryHandoff[]): LoopDetec
         : 'Re-read the latest blocker or review feedback before retrying.',
       ...latestAttempt.reconsider_instructions,
     ]),
+    failure_category: latestAttempt.failure_category ?? latestAttempt.blocker_category ?? null,
+    repeated_attempts: [previousAttempt.attempt, latestAttempt.attempt],
+    repeated_changed_files: uniqueStrings(latestAttempt.changed_files),
+    repeated_blocker_message: latestAttempt.blocker_message ?? null,
   };
 }
 
