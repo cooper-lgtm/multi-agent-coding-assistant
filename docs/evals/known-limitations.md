@@ -9,4 +9,6 @@ Current limitations:
 - Golden runtime snapshots compare compact summaries, not full persisted runtime artifacts, so timestamp-level drift is intentionally out of scope.
 - The happy-path and retry-recovery scenarios assert behavior directly in tests instead of storing additional runtime golden files.
 - Event messages remain contract-sensitive: changing reporting copy may require fixture updates even when runtime behavior is unchanged.
+- The trace analyzer only summarizes structured event fields and explicit loop/continuation signals; it does not infer root cause from free-form message text.
+- Trace-analysis output is intentionally repo-local and read-only; it does not aggregate historical metrics across branches or mutate harness policy automatically.
 - CLI-driven goose delivery is still out of scope for this slice and is covered by Task 8.

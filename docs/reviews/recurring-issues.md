@@ -51,6 +51,7 @@ Suggested actions:
 - preserve bounded attempt history plus structured diagnosis on the runtime task
 - let orchestrator-owned middleware attach reconsideration guidance before the next dispatch
 - refresh runtime goldens and reporting assertions when retry-loop events or diagnosis strings change
+- run `npm run analyze:traces -- --state-dir state` after repeated failures so the same loop is visible in repo-local summaries, not only in one PR discussion
 
 ---
 
@@ -100,3 +101,16 @@ Suggested actions:
 - check whether the task explicitly requires migration or legacy support before changing current contracts
 - prefer current correctness, recoverability, and traceable schema updates when no shipped artifact depends on the old shape
 - if compatibility is required, document the supported legacy source and add focused regression coverage
+
+---
+
+## 9. Trace findings stay trapped in chat
+Common symptoms:
+- repeated blocker categories or verification failures show up in persisted runs, but nobody writes them back into docs
+- retry hotspots are only discussed in one review thread instead of becoming reusable repository guidance
+- analyzer output is treated as automatically authoritative rather than a prompt to inspect code and plans
+
+Suggested actions:
+- run `npm run analyze:traces -- --state-dir state` after noisy runs or before proposing another harness change
+- summarize stable findings in `docs/reviews/recurring-issues.md`, `docs/context/repo-context.*`, or a fresh plan doc
+- keep the analyzer read-only and require a human decision before changing prompts, policies, or roadmap priorities

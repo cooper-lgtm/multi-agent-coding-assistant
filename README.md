@@ -44,12 +44,14 @@ This MVP now includes both:
 - approval controls that can pause after planning until a human explicitly approves execution
 - a policy engine that keeps max parallelism, retry budgets, role-specific fallback chains, and high-risk manual-review guardrails in the orchestrator layer
 - durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
+- a repo-local run-trace analyzer plus CLI script that summarizes persisted runtime failure patterns without mutating harness policy automatically
 
 ## Current Structure
 
 - `docs/`: plans, templates, prompt notes, roadmap items, and review guidance
 - `prompts/`: English prompt assets for planning and worker roles
 - `src/schemas/`: shared runtime and planning types
+- `src/analysis/`: runtime trace analysis helpers for persisted events
 - `src/adapters/`: model routing, exact-model resolution, and OpenClaw runtime integration adapters
 - `src/planning/`: planning contracts, mode resolution, normalization, synthesis, mock planners/analyzers, controller facade, pipeline service
 - `src/orchestrator/`: DAG builder, main orchestrator, implementation dispatch, quality gates, retry/escalation, reporting
@@ -94,6 +96,7 @@ This MVP now includes both:
 - `quality-gate-runner`: runs `test-agent` and `review-agent` after implementation completes
 - `retry-escalation-manager`: applies the runtime retry policy, explicit per-role model fallback, and diagnosis-aware retry messaging
 - `reporting-manager`: records runtime events and builds concise run summaries, including retry-loop detection and richer retry handoff detail
+- `run-trace-analyzer`: summarizes persisted runtime events into blocker-frequency, continuation, retry-hotspot, and model-linked failure reports
 - runtime task records now persist changed files, blocker category/message, structured failure diagnosis, reconsideration guidance, implementation evidence, test evidence, review feedback, bounded attempt history, and the latest retry handoff
 
 ## Persistence and Resume
@@ -136,6 +139,8 @@ Example artifacts included in this MVP:
 - `tests/file-backed-run-store.test.mjs`: compiled-output checks for manifest/runtime/event-log persistence and inspection helpers
 - `tests/openclaw-model-resolution.test.mjs`: compiled-output checks for alias resolution and exact-model metadata
 - `tests/openclaw-runtime-adapter.test.mjs`: compiled-output checks for planning/worker envelope shaping
+- `tests/run-trace-analyzer.test.mjs`: compiled-output checks for deterministic trace-analysis summaries
+- `tests/analyze-run-traces.test.mjs`: CLI smoke coverage for fixture-backed trace analysis output
 - `tests/goose-recipe-builder.test.mjs`: compiled-output checks for compact runtime-context propagation into goose recipe inputs
 - `tests/orchestrator-persistence.test.mjs`: compiled-output checks for checkpoint resume plus cooperative pause/cancel behavior
 - `tests/planning-mode-resolution.test.mjs`: compiled-output checks for `auto`/`direct`/`debate` resolution
@@ -158,10 +163,16 @@ npm run test:runtime
 npm run demo:orchestrator
 npm run demo:adapter
 npm run demo:planning
+npm run analyze:traces -- --state-dir state
 npm run cli -- --help
 npm run review:local
 npm run build && node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
 ```
+
+Trace-analysis notes:
+- `npm run analyze:traces -- --state-dir state` reads persisted `events.jsonl` files under `state/` and prints a deterministic markdown summary.
+- `node scripts/analyze-run-traces.mjs --state-dir tests/fixtures/runtime-traces` runs the analyzer against the repository fixture used by focused regression tests.
+- Treat analyzer output as review/planning input. Promote stable findings into `docs/reviews/recurring-issues.md`, `docs/context/repo-context.*`, or a new plan doc instead of treating the CLI summary as automatic policy.
 
 Lint notes:
 - `npm run lint` is the repository-standard local lint entry point
