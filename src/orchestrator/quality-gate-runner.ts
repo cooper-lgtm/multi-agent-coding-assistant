@@ -66,6 +66,10 @@ export class MockQualityGateRunner implements QualityGateRunner {
         (request.changed_files.length > 0 ? request.changed_files : [...(task.changed_files ?? [])]),
       blocker_category: this.resolveBlockerCategory(decision, request, task),
       blocker_message: this.resolveBlockerMessage(decision, task),
+      failure_category: this.resolveFailureCategory(decision, request),
+      failure_diagnosis: this.resolveFailureDiagnosis(decision, request),
+      reconsider_instructions: this.resolveReconsiderInstructions(decision, request),
+      repeated_pattern_summary: this.resolveRepeatedPatternSummary(decision, request),
       checklist_feedback: decision.checklist_feedback ?? request.checklist_feedback,
       implementation_evidence: decision.implementation_evidence ?? request.implementation_evidence,
       test_evidence:
@@ -80,6 +84,7 @@ export class MockQualityGateRunner implements QualityGateRunner {
       suggested_status: this.resolveSuggestedStatus(decision, request.suggested_status),
       delivery_metadata: this.resolveDeliveryMetadata(decision, request.delivery_metadata),
       prior_attempt: decision.prior_attempt ?? request.prior_attempt,
+      attempt_history: decision.attempt_history ?? request.attempt_history,
       test_status: decision.test_status,
       review_status: decision.review_status,
       test_model: testModel,
@@ -111,6 +116,10 @@ export class MockQualityGateRunner implements QualityGateRunner {
       changed_files: [...(task.changed_files ?? [])],
       blocker_category: null,
       blocker_message: null,
+      failure_category: null,
+      failure_diagnosis: null,
+      reconsider_instructions: [],
+      repeated_pattern_summary: null,
       checklist_feedback: [...(task.checklist_feedback ?? [])],
       implementation_evidence: [...(task.implementation_evidence ?? [])],
       test_evidence: this.buildDefaultTestEvidence(task, task.quality_gate.test_required ? 'pass' : 'skipped', testModel),
@@ -125,6 +134,7 @@ export class MockQualityGateRunner implements QualityGateRunner {
       suggested_status: task.suggested_status ?? null,
       delivery_metadata: task.delivery_metadata ? structuredClone(task.delivery_metadata) : null,
       prior_attempt: task.prior_attempt ?? null,
+      attempt_history: structuredClone(task.attempt_history ?? []),
       test_status: task.quality_gate.test_required ? 'pass' : 'skipped',
       review_status: task.quality_gate.review_required ? 'approved' : 'skipped',
       test_model: testModel,
@@ -222,5 +232,57 @@ export class MockQualityGateRunner implements QualityGateRunner {
     return Object.prototype.hasOwnProperty.call(decision, 'delivery_metadata')
       ? (decision.delivery_metadata ?? null)
       : fallback;
+  }
+
+  private resolveFailureCategory(
+    decision: MockQualityGateDecision,
+    request: ReturnType<typeof createQualityGateWorkerExecutionRequest>,
+  ): QualityGateRunResult['failure_category'] {
+    if (Object.prototype.hasOwnProperty.call(decision, 'failure_category')) {
+      return decision.failure_category ?? null;
+    }
+
+    if (decision.status === 'completed') {
+      return null;
+    }
+
+    return request.failure_category ?? (decision.status === 'needs_fix' ? 'quality_needs_fix' : 'quality_failed');
+  }
+
+  private resolveFailureDiagnosis(
+    decision: MockQualityGateDecision,
+    request: ReturnType<typeof createQualityGateWorkerExecutionRequest>,
+  ): QualityGateRunResult['failure_diagnosis'] {
+    if (Object.prototype.hasOwnProperty.call(decision, 'failure_diagnosis')) {
+      return decision.failure_diagnosis ?? null;
+    }
+
+    if (decision.status === 'completed') {
+      return null;
+    }
+
+    return request.failure_diagnosis ?? decision.summary;
+  }
+
+  private resolveReconsiderInstructions(
+    decision: MockQualityGateDecision,
+    request: ReturnType<typeof createQualityGateWorkerExecutionRequest>,
+  ): QualityGateRunResult['reconsider_instructions'] {
+    if (Object.prototype.hasOwnProperty.call(decision, 'reconsider_instructions')) {
+      return decision.reconsider_instructions ?? [];
+    }
+
+    return decision.status === 'completed' ? [] : request.reconsider_instructions;
+  }
+
+  private resolveRepeatedPatternSummary(
+    decision: MockQualityGateDecision,
+    request: ReturnType<typeof createQualityGateWorkerExecutionRequest>,
+  ): QualityGateRunResult['repeated_pattern_summary'] {
+    if (Object.prototype.hasOwnProperty.call(decision, 'repeated_pattern_summary')) {
+      return decision.repeated_pattern_summary ?? null;
+    }
+
+    return decision.status === 'completed' ? null : request.repeated_pattern_summary;
   }
 }

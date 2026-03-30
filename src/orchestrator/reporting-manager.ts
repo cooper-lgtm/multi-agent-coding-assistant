@@ -86,6 +86,10 @@ export class ReportingManager {
       changed_files: [...task.changed_files],
       blocker_category: task.blocker_category,
       blocker_message: task.blocker_message,
+      failure_category: task.failure_category,
+      failure_diagnosis: task.failure_diagnosis,
+      reconsider_instructions: [...(task.reconsider_instructions ?? [])],
+      repeated_pattern_summary: task.repeated_pattern_summary,
       checklist_feedback: [...(task.checklist_feedback ?? [])],
       implementation_evidence: [...task.implementation_evidence],
       test_evidence: [...task.test_evidence],
@@ -96,6 +100,7 @@ export class ReportingManager {
       suggested_status: task.suggested_status,
       delivery_metadata: task.delivery_metadata ? structuredClone(task.delivery_metadata) : null,
       prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
+      attempt_history: structuredClone(task.attempt_history ?? []),
     };
   }
 }

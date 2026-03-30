@@ -75,6 +75,10 @@ export class MockImplementationDispatcher implements ImplementationDispatcher {
       changed_files: changedFiles,
       blocker_category: blockerCategory,
       blocker_message: blockerMessage,
+      failure_category: this.resolveFailureCategory(decision, request),
+      failure_diagnosis: this.resolveFailureDiagnosis(decision, request, blockerMessage),
+      reconsider_instructions: this.resolveReconsiderInstructions(decision, request),
+      repeated_pattern_summary: this.resolveRepeatedPatternSummary(decision, request),
       checklist_feedback: decision.checklist_feedback ?? request.checklist_feedback,
       implementation_evidence: implementationEvidence,
       test_evidence: decision.test_evidence ?? request.test_evidence,
@@ -85,6 +89,7 @@ export class MockImplementationDispatcher implements ImplementationDispatcher {
       suggested_status: decision.suggested_status ?? decision.status,
       delivery_metadata: this.resolveDeliveryMetadata(decision, request.delivery_metadata),
       prior_attempt: decision.prior_attempt ?? request.prior_attempt,
+      attempt_history: decision.attempt_history ?? request.attempt_history,
     };
   }
 
@@ -126,6 +131,59 @@ export class MockImplementationDispatcher implements ImplementationDispatcher {
       ? (decision.delivery_metadata ?? null)
       : fallback;
   }
+
+  private resolveFailureCategory(
+    decision: MockImplementationDecision,
+    request: ReturnType<typeof createImplementationWorkerExecutionRequest>,
+  ): ImplementationDispatchResult['failure_category'] {
+    if (Object.prototype.hasOwnProperty.call(decision, 'failure_category')) {
+      return decision.failure_category ?? null;
+    }
+
+    if (decision.status === 'implementation_done') {
+      return null;
+    }
+
+    return request.failure_category ?? (decision.status === 'blocked' ? 'implementation_blocked' : 'implementation_failed');
+  }
+
+  private resolveFailureDiagnosis(
+    decision: MockImplementationDecision,
+    request: ReturnType<typeof createImplementationWorkerExecutionRequest>,
+    blockerMessage: string | null,
+  ): ImplementationDispatchResult['failure_diagnosis'] {
+    if (Object.prototype.hasOwnProperty.call(decision, 'failure_diagnosis')) {
+      return decision.failure_diagnosis ?? null;
+    }
+
+    if (decision.status === 'implementation_done') {
+      return null;
+    }
+
+    return request.failure_diagnosis ?? blockerMessage ?? decision.summary;
+  }
+
+  private resolveReconsiderInstructions(
+    decision: MockImplementationDecision,
+    request: ReturnType<typeof createImplementationWorkerExecutionRequest>,
+  ): ImplementationDispatchResult['reconsider_instructions'] {
+    if (Object.prototype.hasOwnProperty.call(decision, 'reconsider_instructions')) {
+      return decision.reconsider_instructions ?? [];
+    }
+
+    return decision.status === 'implementation_done' ? [] : request.reconsider_instructions;
+  }
+
+  private resolveRepeatedPatternSummary(
+    decision: MockImplementationDecision,
+    request: ReturnType<typeof createImplementationWorkerExecutionRequest>,
+  ): ImplementationDispatchResult['repeated_pattern_summary'] {
+    if (Object.prototype.hasOwnProperty.call(decision, 'repeated_pattern_summary')) {
+      return decision.repeated_pattern_summary ?? null;
+    }
+
+    return decision.status === 'implementation_done' ? null : request.repeated_pattern_summary;
+  }
 }
 
 export class GooseBackedImplementationDispatcher implements ImplementationDispatcher {
@@ -158,6 +216,10 @@ export class GooseBackedImplementationDispatcher implements ImplementationDispat
         changed_files: [...task.changed_files],
         blocker_category: response.error.retryable ? 'unknown' : resolveAdapterErrorBlockerCategory(response.error),
         blocker_message: response.error.message,
+        failure_category: task.failure_category,
+        failure_diagnosis: task.failure_diagnosis,
+        reconsider_instructions: [...task.reconsider_instructions],
+        repeated_pattern_summary: task.repeated_pattern_summary,
         checklist_feedback: [...task.checklist_feedback],
         implementation_evidence: [response.error.message],
         test_evidence: [...task.test_evidence],
@@ -168,6 +230,7 @@ export class GooseBackedImplementationDispatcher implements ImplementationDispat
         suggested_status: status,
         delivery_metadata: task.delivery_metadata ? structuredClone(task.delivery_metadata) : null,
         prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
+        attempt_history: structuredClone(task.attempt_history),
       };
     }
     const output = response.output;
@@ -180,6 +243,10 @@ export class GooseBackedImplementationDispatcher implements ImplementationDispat
       changed_files: output.changed_files,
       blocker_category: output.blocker_category,
       blocker_message: output.blocker_message,
+      failure_category: output.failure_category,
+      failure_diagnosis: output.failure_diagnosis,
+      reconsider_instructions: output.reconsider_instructions,
+      repeated_pattern_summary: output.repeated_pattern_summary,
       checklist_feedback: output.checklist_feedback,
       implementation_evidence: output.implementation_evidence,
       test_evidence: output.test_evidence,
@@ -190,6 +257,7 @@ export class GooseBackedImplementationDispatcher implements ImplementationDispat
       suggested_status: output.suggested_status,
       delivery_metadata: output.delivery_metadata,
       prior_attempt: output.prior_attempt,
+      attempt_history: output.attempt_history,
     };
   }
 }

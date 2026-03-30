@@ -47,6 +47,10 @@ export function buildOpenClawWorkerRoleRequestFixture() {
   task.changed_files = ['src/api/contract.ts'];
   task.blocker_category = 'quality';
   task.blocker_message = 'Previous review requested one naming cleanup before approval.';
+  task.failure_category = 'quality_needs_fix';
+  task.failure_diagnosis = 'Previous review feedback still requires one naming cleanup before approval.';
+  task.reconsider_instructions = ['Read the latest review feedback before editing again.'];
+  task.repeated_pattern_summary = null;
   task.checklist_feedback = [];
   task.implementation_evidence = ['Locked the API contract for downstream UI consumers.'];
   task.test_evidence = ['Previous adapter smoke test passed before review feedback arrived.'];
@@ -66,6 +70,10 @@ export function buildOpenClawWorkerRoleRequestFixture() {
     changed_files: ['src/api/contract.ts'],
     blocker_category: 'quality',
     blocker_message: 'Previous review requested one naming cleanup before approval.',
+    failure_category: 'quality_needs_fix',
+    failure_diagnosis: 'Previous review feedback still requires one naming cleanup before approval.',
+    reconsider_instructions: ['Read the latest review feedback before editing again.'],
+    repeated_pattern_summary: null,
     checklist_feedback: [],
     implementation_evidence: ['Locked the API contract for downstream UI consumers.'],
     test_evidence: ['Previous adapter smoke test passed before review feedback arrived.'],
@@ -79,6 +87,7 @@ export function buildOpenClawWorkerRoleRequestFixture() {
       commit_sha: 'abc1234',
     },
   };
+  task.attempt_history = [structuredClone(task.prior_attempt)];
 
   return createOpenClawWorkerRoleRequest({
     task,

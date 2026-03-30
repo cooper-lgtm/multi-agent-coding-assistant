@@ -41,6 +41,11 @@ class RecordingImplementationDispatcher {
       task_id: task.task_id,
       retry_count: task.retry_count,
       checklist_feedback: [...(task.checklist_feedback ?? [])],
+      failure_category: task.failure_category ?? null,
+      failure_diagnosis: task.failure_diagnosis ?? null,
+      reconsider_instructions: [...(task.reconsider_instructions ?? [])],
+      repeated_pattern_summary: task.repeated_pattern_summary ?? null,
+      attempt_history: structuredClone(task.attempt_history ?? []),
       prior_attempt: task.prior_attempt ? structuredClone(task.prior_attempt) : null,
     });
     return this.inner.dispatch(task, runtime);
@@ -146,6 +151,154 @@ test('retry escalation upgrades the implementation model explicitly by role', as
     result.summary.events.join('\n'),
     /retry escalation.*task-api-contract.*claude/i,
   );
+});
+
+test('default runtime middleware injects loop-detection guidance before a third low-yield retry', async () => {
+  const fixture = buildDemoPlanningFixture();
+  fixture.tasks = [structuredClone(fixture.tasks[0])];
+  const implementationCalls = [];
+
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher: new RecordingImplementationDispatcher(
+      new MockImplementationDispatcher({
+        taskDecisions: {
+          'task-api-contract': [
+            {
+              status: 'failed',
+              summary: 'Attempt 1 repeated the same repository blocker.',
+              changed_files: ['src/api/generated-client.ts'],
+              blocker_category: 'repository',
+              blocker_message: 'Generated client stub is missing.',
+              commands_run: ['npm run build'],
+              test_evidence: [],
+            },
+            {
+              status: 'failed',
+              summary: 'Attempt 2 repeated the same repository blocker.',
+              changed_files: ['src/api/generated-client.ts'],
+              blocker_category: 'repository',
+              blocker_message: 'Generated client stub is missing.',
+              commands_run: ['npm run build'],
+              test_evidence: [],
+            },
+            {
+              status: 'implementation_done',
+              summary: 'Attempt 3 changed approach and regenerated the missing client stub.',
+              changed_files: ['src/api/generated-client.ts', 'tests/api-client.test.mjs'],
+              commands_run: ['npm run build', 'node --test tests/orchestrator-runtime.test.mjs'],
+              test_evidence: ['node --test tests/orchestrator-runtime.test.mjs'],
+            },
+          ],
+        },
+      }),
+      implementationCalls,
+    ),
+    qualityGateRunner: new MockQualityGateRunner(),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+  });
+
+  assert.equal(result.summary.final_status, 'completed');
+  assert.equal(implementationCalls.length, 3);
+  assert.equal(implementationCalls[2].retry_count, 2);
+  assert.equal(implementationCalls[2].failure_category, 'implementation_failed');
+  assert.match(
+    implementationCalls[2].failure_diagnosis ?? '',
+    /generated client stub is missing/i,
+  );
+  assert.equal(implementationCalls[2].prior_attempt?.failure_category, 'implementation_failed');
+  assert.equal(implementationCalls[2].attempt_history.length, 2);
+  assert.match(
+    implementationCalls[2].repeated_pattern_summary ?? '',
+    /same blocker on unchanged files/i,
+  );
+  assert.ok(
+    implementationCalls[2].reconsider_instructions.some((instruction) =>
+      /change approach/i.test(instruction),
+    ),
+  );
+  assert.ok(
+    implementationCalls[2].reconsider_instructions.some((instruction) =>
+      /generated client stub is missing/i.test(instruction),
+    ),
+  );
+  assert.match(
+    result.summary.events.join('\n'),
+    /retry loop detected for task-api-contract/i,
+  );
+});
+
+test('worker-supplied failure diagnosis survives into the next retry handoff', async () => {
+  const fixture = buildDemoPlanningFixture();
+  fixture.tasks = [structuredClone(fixture.tasks[0])];
+  const implementationCalls = [];
+
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher: new RecordingImplementationDispatcher(
+      new MockImplementationDispatcher({
+        taskDecisions: {
+          'task-api-contract': [
+            {
+              status: 'failed',
+              summary: 'Attempt 1 could not reconcile the generated client stub.',
+              blocker_category: 'repository',
+              blocker_message: 'Generated client stub is missing.',
+              failure_diagnosis:
+                'Injected retry diagnosis conflicts with the live repository state: the generated client stub was removed after the last attempt.',
+              reconsider_instructions: [
+                'Regenerate the client stub before retrying the same API contract edits.',
+              ],
+            },
+            {
+              status: 'implementation_done',
+              summary: 'Attempt 2 regenerated the client stub before retrying.',
+            },
+          ],
+        },
+      }),
+      implementationCalls,
+    ),
+    qualityGateRunner: new MockQualityGateRunner(),
+    retryManager: new RetryEscalationManager({ availableModels: ['codex', 'claude'] }),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+  });
+
+  assert.equal(result.summary.final_status, 'completed');
+  assert.equal(implementationCalls.length, 2);
+  assert.equal(
+    implementationCalls[1].failure_diagnosis,
+    'Injected retry diagnosis conflicts with the live repository state: the generated client stub was removed after the last attempt.',
+  );
+  assert.deepEqual(implementationCalls[1].reconsider_instructions, [
+    'Regenerate the client stub before retrying the same API contract edits.',
+  ]);
+  assert.equal(
+    implementationCalls[1].prior_attempt?.failure_diagnosis,
+    'Injected retry diagnosis conflicts with the live repository state: the generated client stub was removed after the last attempt.',
+  );
+  assert.deepEqual(implementationCalls[1].prior_attempt?.reconsider_instructions, [
+    'Regenerate the client stub before retrying the same API contract edits.',
+  ]);
 });
 
 test('downstream tasks become blocked when an upstream task ends needs_fix after retries', async () => {
