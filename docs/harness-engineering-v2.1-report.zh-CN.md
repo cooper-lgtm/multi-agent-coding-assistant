@@ -231,7 +231,7 @@ flowchart TD
 
 这一层负责把用户需求转成结构化计划结果。
 
-### 它做的事
+### Planning 层做的事
 
 - 决定 planning 模式是 `direct`、`debate` 还是从 `auto` 自动解析
 - 组织单规划器或多规划器辩论式规划流程
@@ -267,7 +267,7 @@ flowchart TD
 
 这层的作用是把 planning 结果变成运行时真正可执行的图结构。
 
-### 它做的事
+### DAG 构建层做的事
 
 - 校验 planning 结果是否满足架构规则
 - 为每个 task 生成运行时节点 `ExecutionNode`
@@ -356,7 +356,7 @@ Harness 的一个关键原则是：
 
 这是 `V2.0` 里非常关键的一步。
 
-### 它解决的问题
+### Runtime Context 注入层解决的问题
 
 以前的典型问题是：
 
@@ -543,7 +543,7 @@ Harness 的一个关键原则是：
 
 `PR #41` 是 `V2.0 core` 中非常关键的一步。
 
-### 它解决的问题
+### Retry / Escalation 层解决的问题
 
 很多多 Agent 系统会把 retry 做成：
 
