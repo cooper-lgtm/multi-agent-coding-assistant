@@ -41,7 +41,20 @@ Suggested actions:
 
 ---
 
-## 4. Logical-model and exact-model metadata drift
+## 4. Low-yield retry loops go unchallenged
+Common symptoms:
+- consecutive retries touch the same files with the same blocker or review feedback
+- retry history only preserves one shallow summary, so repeated patterns stay invisible
+- model escalation happens without an explicit change in strategy or verification evidence
+
+Suggested actions:
+- preserve bounded attempt history plus structured diagnosis on the runtime task
+- let orchestrator-owned middleware attach reconsideration guidance before the next dispatch
+- refresh runtime goldens and reporting assertions when retry-loop events or diagnosis strings change
+
+---
+
+## 5. Logical-model and exact-model metadata drift
 Common symptoms:
 - routing uses logical labels but runtime state drops exact model ids
 - adapters return incomplete `model_metadata`
@@ -53,7 +66,7 @@ Suggested actions:
 
 ---
 
-## 5. Docs lag behind current contracts
+## 6. Docs lag behind current contracts
 Common symptoms:
 - root docs describe an older architecture snapshot
 - plan docs still imply old ownership or runtime states
@@ -65,7 +78,7 @@ Suggested actions:
 
 ---
 
-## 6. Task input is too vague
+## 7. Task input is too vague
 Common symptoms:
 - "improve orchestration"
 - "make planning smarter"

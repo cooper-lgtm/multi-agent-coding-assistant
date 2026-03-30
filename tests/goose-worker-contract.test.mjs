@@ -61,6 +61,30 @@ test('retry handoff and execution output preserve goose evidence payloads', () =
   assert.equal(output.delivery_metadata?.pr_url, 'https://github.com/example/repo/pull/1');
 });
 
+test('worker execution context tolerates legacy retry handoffs without checklist feedback', () => {
+  const context = createWorkerExecutionContext({
+    prior_attempt: {
+      attempt: 1,
+      status: 'needs_fix',
+      summary: 'Legacy persisted handoff without checklist feedback.',
+      changed_files: ['src/a.ts'],
+      blocker_category: 'quality',
+      blocker_message: 'Previous review requested changes.',
+      implementation_evidence: ['Updated the contract.'],
+      test_evidence: ['npm run test:adapter passed.'],
+      review_feedback: ['Review requested broader fixture coverage.'],
+      commands_run: ['npm run build'],
+      test_results: [{ name: 'tests/a.test.mjs', status: 'pass' }],
+      risk_notes: ['Legacy persisted snapshot omitted checklist feedback.'],
+      suggested_status: 'needs_fix',
+      delivery_metadata: null,
+    },
+  });
+
+  assert.deepEqual(context.prior_attempt?.checklist_feedback, []);
+  assert.deepEqual(context.prior_attempt?.commands_run, ['npm run build']);
+});
+
 test('worker role success envelope accepts implementation goose evidence while remaining optional', () => {
   const fixture = buildDemoPlanningFixture();
   const { runtime } = buildExecutionDag(fixture, {

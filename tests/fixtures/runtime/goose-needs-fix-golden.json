@@ -44,6 +44,14 @@
         ],
         "blocker_category": "quality",
         "blocker_message": "Review still requests changes.",
+        "failure_category": "quality_needs_fix",
+        "failure_diagnosis": "External quality feedback still requires changes: review-agent still requests changes for task-api-contract on claude.",
+        "reconsider_instructions": [
+          "Read the latest review feedback before editing again.",
+          "review-agent still requests changes for task-api-contract on claude."
+        ],
+        "repeated_pattern_summary": null,
+        "checklist_feedback": [],
         "implementation_evidence": [
           "Goose implemented task-api-contract."
         ],
@@ -115,6 +123,7 @@
     "Test gate for task-api-contract ran on codex.",
     "Review gate for task-api-contract ran on claude.",
     "Retry escalation for task-api-contract: retry 2 will use claude.",
+    "Retry loop detected for task-api-contract: Attempts 1 and 2 repeated the same review blocker on unchanged files with no new verification evidence.",
     "Dispatching task-api-contract to backend-agent on claude.",
     "Implementation completed for task-api-contract.",
     "Running quality gates for task-api-contract.",
