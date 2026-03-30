@@ -24,6 +24,38 @@ export interface RunStore {
   requestCancel(runId: string): Promise<void>;
 }
 
+export function resolvePersistedControl(
+  runtime: RuntimeState,
+  persisted: Pick<RunManifest, 'status' | 'control'> | null,
+): RuntimeControlState {
+  if (runtime.control.cancel_requested) {
+    return {
+      pause_requested: runtime.control.pause_requested,
+      cancel_requested: true,
+    };
+  }
+
+  if (!persisted) {
+    return { ...runtime.control };
+  }
+
+  if (
+    persisted.status === 'paused' &&
+    runtime.status === 'running' &&
+    !runtime.control.pause_requested
+  ) {
+    return {
+      pause_requested: false,
+      cancel_requested: runtime.control.cancel_requested || persisted.control.cancel_requested,
+    };
+  }
+
+  return {
+    pause_requested: runtime.control.pause_requested || persisted.control.pause_requested,
+    cancel_requested: runtime.control.cancel_requested || persisted.control.cancel_requested,
+  };
+}
+
 export function buildRunManifest(runtime: RuntimeState, lastPersistedAt = runtime.updated_at): RunManifest {
   return {
     schema_version: runtime.storage_version,
@@ -48,9 +80,17 @@ export class InMemoryRunStore implements RunStore {
   private readonly runs = new Map<string, RuntimeState>();
 
   async save(runtime: RuntimeState): Promise<void> {
+    const existing = this.runs.get(runtime.run_id);
     const snapshot = structuredClone(runtime);
+    snapshot.control = resolvePersistedControl(runtime, existing
+      ? {
+          status: existing.status,
+          control: structuredClone(existing.control),
+        }
+      : null);
     snapshot.events = normalizeRuntimeEvents(snapshot.events);
     this.runs.set(runtime.run_id, snapshot);
+    runtime.control = { ...snapshot.control };
     runtime.events = structuredClone(snapshot.events);
   }
 

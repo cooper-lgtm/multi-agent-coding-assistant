@@ -289,6 +289,7 @@ export class MainOrchestrator {
     if (middlewareDecision) {
       const continuationCount = this.countRuntimeMiddlewareContinuations(runtime, task.task_id);
       const middlewareName = this.formatMiddlewareName(middlewareDecision.middlewareName);
+      const continuationAttempt = getWorkerAttemptNumber(task);
 
       if (task.retry_count + continuationCount >= task.max_retries) {
         const message = `Runtime middleware ${middlewareName} exhausted the continuation budget for ${task.task_id}.`;
@@ -301,6 +302,9 @@ export class MainOrchestrator {
           'runtime_middleware_continuation_exhausted',
           message,
           task.task_id,
+          {
+            failureCategory: 'verification_incomplete',
+          },
         );
         await this.persist(runtime);
         return;
@@ -312,7 +316,7 @@ export class MainOrchestrator {
       this.annotateFailureContext(task, 'verification_incomplete', middlewareDecision.message);
       recordWorkerRetryHandoff(task, createWorkerRetryHandoff(
         task,
-        getWorkerAttemptNumber(task),
+        continuationAttempt,
         'needs_fix',
         middlewareDecision.message,
       ));
@@ -324,6 +328,10 @@ export class MainOrchestrator {
         'runtime_middleware_requested_continuation',
         `Runtime middleware ${middlewareName} requested task continuation for ${task.task_id}: ${middlewareDecision.message}`,
         task.task_id,
+        {
+          attempt: continuationAttempt,
+          failureCategory: 'verification_incomplete',
+        },
       );
       await this.persist(runtime);
       return;
@@ -688,6 +696,7 @@ export class MainOrchestrator {
 
   private async handleControlRequests(runtime: RuntimeState): Promise<boolean> {
     if (runtime.control.cancel_requested) {
+      runtime.control.pause_requested = false;
       this.deps.reportingManager.record(
         runtime,
         'cancel_requested',

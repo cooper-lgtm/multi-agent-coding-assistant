@@ -42,7 +42,7 @@ export class ReportingManager {
       phase: options.phase ?? inferRuntimeEventPhase(type),
       attempt: options.attempt ?? inferAttempt(task),
       task_status: options.taskStatus ?? task?.status ?? null,
-      failure_category: options.failureCategory ?? task?.blocker_category ?? null,
+      failure_category: options.failureCategory ?? null,
       model: options.model ?? inferModel(task),
       metadata: options.metadata,
     });
@@ -150,7 +150,11 @@ function inferAttempt(task: ExecutionNode | undefined): number | null {
     return null;
   }
 
-  return task.retry_count + 1;
+  const retryBasedAttempt = task.retry_count + 1;
+  const priorAttemptBased = (task.prior_attempt?.attempt ?? 0) + 1;
+  const historyBasedAttempt = ((task.attempt_history ?? []).at(-1)?.attempt ?? 0) + 1;
+
+  return Math.max(retryBasedAttempt, priorAttemptBased, historyBasedAttempt);
 }
 
 function inferModel(task: ExecutionNode | undefined): RuntimeEventModelSelection | null {

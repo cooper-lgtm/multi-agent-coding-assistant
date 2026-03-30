@@ -71,6 +71,25 @@ test('reporting manager records structured runtime event metadata alongside huma
   assert.equal(runtime.events.at(-1).message, event.message);
 });
 
+test('reporting manager does not infer failure categories for healthy task lifecycle events', () => {
+  const runtime = buildRuntime('run-runtime-event-no-stale-failure-category');
+  const task = runtime.tasks['task-api-contract'];
+  task.status = 'pending';
+  task.blocker_category = 'quality';
+  task.blocker_message = 'Previous review feedback still needs changes.';
+
+  const reportingManager = new ReportingManager();
+  const event = reportingManager.record(
+    runtime,
+    'task_routed',
+    'Dispatching task-api-contract to backend-agent on codex.',
+    task.task_id,
+  );
+
+  assert.equal(event.phase, 'implementation');
+  assert.equal(event.failure_category, null);
+});
+
 test('file-backed run store preserves structured runtime events and normalizes legacy event records', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'runtime-event-schema-'));
   const stateDir = path.join(root, 'state');

@@ -8,7 +8,12 @@ import {
   type RuntimeEvent,
   type RuntimeState,
 } from '../schemas/runtime.js';
-import { buildRunManifest, type RunApprovalUpdate, type RunStore } from './run-store.js';
+import {
+  buildRunManifest,
+  resolvePersistedControl,
+  type RunApprovalUpdate,
+  type RunStore,
+} from './run-store.js';
 
 export interface FileBackedRunStoreOptions {
   stateDir?: string;
@@ -29,7 +34,7 @@ export class FileBackedRunStore implements RunStore {
 
       const existingManifest = await this.readManifest(runtime.run_id);
       const persistedRuntime = structuredClone(runtime);
-      persistedRuntime.control = this.resolvePersistedControl(runtime, existingManifest);
+      persistedRuntime.control = resolvePersistedControl(runtime, existingManifest);
       persistedRuntime.events = normalizeRuntimeEvents(persistedRuntime.events);
 
       const manifest = buildRunManifest(persistedRuntime);
@@ -109,7 +114,7 @@ export class FileBackedRunStore implements RunStore {
         throw new Error(`Unknown run: ${runId}`);
       }
 
-      runtime.control = this.resolvePersistedControl(runtime, manifest);
+      runtime.control = resolvePersistedControl(runtime, manifest);
       runtime.approval_state = {
         mode: runtime.approval_state?.mode ?? 'confirm-before-run',
         status: 'approved',
@@ -155,26 +160,6 @@ export class FileBackedRunStore implements RunStore {
 
       await this.writeJsonAtomic(path.join(this.getRunDir(runId), 'manifest.json'), nextManifest);
     });
-  }
-
-  private resolvePersistedControl(runtime: RuntimeState, manifest: RunManifest | null): RuntimeControlState {
-    if (!manifest) {
-      return { ...runtime.control };
-    }
-
-    if (
-      manifest.status === 'paused' &&
-      runtime.status === 'running' &&
-      !runtime.control.pause_requested &&
-      !runtime.control.cancel_requested
-    ) {
-      return { ...runtime.control };
-    }
-
-    return {
-      pause_requested: runtime.control.pause_requested || manifest.control.pause_requested,
-      cancel_requested: runtime.control.cancel_requested || manifest.control.cancel_requested,
-    };
   }
 
   private async persistEventLog(eventsPath: string, events: RuntimeEvent[]): Promise<void> {

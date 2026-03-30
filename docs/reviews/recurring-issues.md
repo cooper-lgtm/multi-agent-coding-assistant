@@ -87,3 +87,16 @@ Common symptoms:
 Suggested actions:
 - use `docs/templates/task-template.md`
 - define scope, constraints, and validation before broad edits
+
+---
+
+## 8. Premature backward-compatibility pressure
+Common symptoms:
+- review feedback asks for compatibility with runtime snapshots, worker payloads, or event records that have never shipped
+- a PR starts adding fallback parsing for hypothetical older formats without a stated migration requirement
+- compatibility arguments override clearer current contracts during active MVP development
+
+Suggested actions:
+- check whether the task explicitly requires migration or legacy support before changing current contracts
+- prefer current correctness, recoverability, and traceable schema updates when no shipped artifact depends on the old shape
+- if compatibility is required, document the supported legacy source and add focused regression coverage

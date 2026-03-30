@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  InMemoryRunStore,
   MainOrchestrator,
   ReportingManager,
   RetryEscalationManager,
   buildDemoPlanningFixture,
   buildExecutionDag,
+  resolvePersistedControl,
 } from '../dist/index.js';
 
 function buildRuntime(runId) {
@@ -46,7 +48,15 @@ class ControlledRunStore {
 
   async save(runtime) {
     const snapshot = structuredClone(runtime);
+    const existing = this.runtimes.get(runtime.run_id);
+    snapshot.control = resolvePersistedControl(runtime, existing
+      ? {
+          status: existing.status,
+          control: structuredClone(existing.control),
+        }
+      : null);
     this.runtimes.set(runtime.run_id, snapshot);
+    runtime.control = structuredClone(snapshot.control);
   }
 
   async load(runId) {
@@ -101,6 +111,33 @@ class ControlledRunStore {
       cancel_requested: runtime.control?.cancel_requested ?? false,
     };
     runtime.control.cancel_requested = true;
+  }
+}
+
+class CancelDuringResumeRunStore extends InMemoryRunStore {
+  constructor(initialRuntime = null) {
+    super();
+    this.saveCalls = 0;
+
+    if (initialRuntime) {
+      this.runs.set(initialRuntime.run_id, structuredClone(initialRuntime));
+    }
+  }
+
+  async save(runtime) {
+    this.saveCalls += 1;
+
+    if (this.saveCalls === 1) {
+      const persisted = this.runs.get(runtime.run_id);
+      if (persisted) {
+        persisted.control = {
+          pause_requested: persisted.control?.pause_requested ?? false,
+          cancel_requested: true,
+        };
+      }
+    }
+
+    await super.save(runtime);
   }
 }
 
@@ -304,6 +341,35 @@ test('resume normalizes transient in-flight task states back to pending before s
   assert.equal(result.runtime.tasks['task-ui-shell'].status, 'completed');
   assert.equal(result.runtime.tasks['task-ui-shell'].error, null);
   assert.equal(result.summary.final_status, 'completed');
+});
+
+test('resume preserves cancel requests that arrive before the first resume checkpoint save', async () => {
+  const runtime = buildRuntime('run-resume-concurrent-cancel');
+  runtime.status = 'paused';
+  runtime.control.pause_requested = true;
+  runtime.graph.nodes = structuredClone(runtime.tasks);
+
+  const runStore = new CancelDuringResumeRunStore(runtime);
+  const dispatcher = new CountingImplementationDispatcher();
+  const qualityGateRunner = new CountingQualityGateRunner();
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => {
+      throw new Error('resume should not re-run planning');
+    },
+    implementationDispatcher: dispatcher,
+    qualityGateRunner,
+    retryManager: new RetryEscalationManager(),
+    reportingManager: new ReportingManager(),
+    runStore,
+  });
+
+  const result = await orchestrator.resume(runtime.run_id);
+
+  assert.deepEqual(dispatcher.calls, []);
+  assert.deepEqual(qualityGateRunner.calls, []);
+  assert.equal(result.runtime.status, 'cancelled');
+  assert.equal(result.runtime.control.cancel_requested, true);
+  assert.equal(result.summary.final_status, 'cancelled');
 });
 
 test('pause requests stop new scheduling at the next safe checkpoint and mark the run paused', async () => {

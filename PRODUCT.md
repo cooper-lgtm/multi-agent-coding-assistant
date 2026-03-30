@@ -125,6 +125,11 @@ Logical labels are useful, but runtime integrations must still preserve exact mo
 ### 6.5 docs are part of the product surface
 If the repo cannot explain how it works, it is not stable enough for agent collaboration.
 
+### 6.6 pre-release compatibility is opt-in
+This repository is still in MVP development and has not shipped production runtime artifacts yet.
+Do not treat backward compatibility for unpublished runtime snapshots, worker payloads, or event shapes as a default product requirement.
+If a task needs migration or legacy support, it should say so explicitly and carry matching docs and tests.
+
 ---
 
 ## 7. Current Product Risks
