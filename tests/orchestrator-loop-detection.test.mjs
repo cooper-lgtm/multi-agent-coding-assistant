@@ -114,6 +114,15 @@ test('loop detection injects reconsideration guidance before a third low-yield r
       /change approach/i.test(instruction),
     ),
   );
+  const loopEvent = result.runtime.events.find((event) => event.type === 'retry_loop_detected');
+  assert.ok(loopEvent);
+  assert.equal(loopEvent.phase, 'retry');
+  assert.equal(loopEvent.attempt, 3);
+  assert.equal(loopEvent.task_id, 'task-api-contract');
+  assert.equal(loopEvent.task_status, 'pending');
+  assert.equal(loopEvent.failure_category, 'implementation_failed');
+  assert.equal(loopEvent.model?.selected_model, 'claude');
+  assert.deepEqual(loopEvent.metadata.repeated_attempts, [1, 2]);
   assert.match(
     result.summary.events.join('\n'),
     /retry loop detected/i,

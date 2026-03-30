@@ -349,6 +349,80 @@ test('middleware continuation consumes retry budget before a later implementatio
   assert.ok(result.summary.events.every((event) => !/retry scheduled/i.test(event)));
 });
 
+test('runtime events keep continuation-aware attempt numbers across middleware redispatches', async () => {
+  const fixture = buildSingleTaskPlanningFixture();
+  const dispatchCalls = [];
+  const qualityGateCalls = [];
+  let remainingContinuations = 2;
+
+  const implementationDispatcher = new RecordingImplementationDispatcher(
+    new MockImplementationDispatcher({
+      taskDecisions: {
+        'task-api-contract': [
+          {
+            status: 'implementation_done',
+            summary: 'Attempt 1 needs more local verification evidence.',
+          },
+          {
+            status: 'implementation_done',
+            summary: 'Attempt 2 still needs more local verification evidence.',
+          },
+          {
+            status: 'implementation_done',
+            summary: 'Attempt 3 includes the required verification evidence.',
+          },
+        ],
+      },
+    }),
+    dispatchCalls,
+  );
+  const qualityGateRunner = new RecordingQualityGateRunner(new MockQualityGateRunner(), qualityGateCalls);
+
+  const orchestrator = new MainOrchestrator({
+    createPlan: async () => fixture,
+    implementationDispatcher,
+    qualityGateRunner,
+    retryManager: new RetryEscalationManager(),
+    reportingManager: new ReportingManager(),
+    runStore: new InMemoryRunStore(),
+    runtimeMiddleware: [
+      {
+        name: 'attempt-tracker',
+        beforeQualityGates() {
+          if (remainingContinuations === 0) {
+            return undefined;
+          }
+
+          remainingContinuations -= 1;
+          return {
+            action: 'continue_task',
+            message: `Continuation ${2 - remainingContinuations} still requires extra verification.`,
+          };
+        },
+      },
+    ],
+  });
+
+  const result = await orchestrator.run({
+    request: 'demo',
+    project_summary: 'demo',
+    relevant_context: [],
+    planning_mode: 'direct',
+    constraints: [],
+  });
+
+  const continuationEvents = result.runtime.events.filter(
+    (event) => event.type === 'runtime_middleware_requested_continuation',
+  );
+  const routedEvents = result.runtime.events.filter((event) => event.type === 'task_routed');
+
+  assert.equal(result.summary.final_status, 'completed');
+  assert.deepEqual(dispatchCalls, ['task-api-contract', 'task-api-contract', 'task-api-contract']);
+  assert.deepEqual(qualityGateCalls, ['task-api-contract']);
+  assert.deepEqual(continuationEvents.map((event) => event.attempt), [1, 2]);
+  assert.deepEqual(routedEvents.map((event) => event.attempt), [1, 2, 3]);
+});
+
 test('middleware continuations share the same per-task budget as earlier retries', async () => {
   const fixture = buildSingleTaskPlanningFixture();
   const dispatchCalls = [];

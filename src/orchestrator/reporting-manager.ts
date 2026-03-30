@@ -1,21 +1,51 @@
 import type {
   ExecutionNode,
+  RuntimeEventFailureCategory,
+  RuntimeEventMetadata,
+  RuntimeEventModelSelection,
   RunSummary,
   RunSummaryCounts,
   RuntimeApprovalState,
   RuntimeEvent,
+  RuntimeEventPhase,
   RuntimeState,
   TaskRunSummary,
 } from '../schemas/runtime.js';
+import {
+  createRuntimeEvent,
+  createRuntimeEventModelSelection,
+  inferRuntimeEventPhase,
+} from '../schemas/runtime.js';
+
+export interface RuntimeEventRecordOptions {
+  phase?: RuntimeEventPhase;
+  attempt?: number | null;
+  taskStatus?: ExecutionNode['status'] | null;
+  failureCategory?: RuntimeEventFailureCategory | null;
+  model?: RuntimeEventModelSelection | null;
+  metadata?: RuntimeEventMetadata | null;
+}
 
 export class ReportingManager {
-  record(runtime: RuntimeState, type: string, message: string, taskId?: string): RuntimeEvent {
-    const event: RuntimeEvent = {
-      timestamp: new Date().toISOString(),
+  record(
+    runtime: RuntimeState,
+    type: string,
+    message: string,
+    taskId?: string,
+    options: RuntimeEventRecordOptions = {},
+  ): RuntimeEvent {
+    const task = taskId ? runtime.tasks[taskId] : undefined;
+    const event = createRuntimeEvent({
       task_id: taskId,
       type,
       message,
-    };
+      phase: options.phase ?? inferRuntimeEventPhase(type),
+      attempt: options.attempt ?? inferAttempt(task),
+      task_status: options.taskStatus ?? task?.status ?? null,
+      failure_category: options.failureCategory ?? null,
+      model: options.model ?? inferModel(task),
+      metadata: options.metadata,
+    });
 
     runtime.events.push(event);
     return event;
@@ -113,4 +143,24 @@ function cloneApprovalState(approvalState: RuntimeApprovalState): RuntimeApprova
     approved_at: approvalState.approved_at,
     approved_by: approvalState.approved_by,
   };
+}
+
+function inferAttempt(task: ExecutionNode | undefined): number | null {
+  if (!task) {
+    return null;
+  }
+
+  const retryBasedAttempt = task.retry_count + 1;
+  const priorAttemptBased = (task.prior_attempt?.attempt ?? 0) + 1;
+  const historyBasedAttempt = ((task.attempt_history ?? []).at(-1)?.attempt ?? 0) + 1;
+
+  return Math.max(retryBasedAttempt, priorAttemptBased, historyBasedAttempt);
+}
+
+function inferModel(task: ExecutionNode | undefined): RuntimeEventModelSelection | null {
+  if (!task) {
+    return null;
+  }
+
+  return createRuntimeEventModelSelection(task.model, task.model_metadata);
 }

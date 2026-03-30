@@ -154,6 +154,7 @@ When lint becomes part of repository execution, `test-agent` should call the rep
 5. `needs_fix`, `blocked`, and `failed` have distinct meanings.
 6. Retry handoff must preserve changed files, blocker metadata, and prior evidence.
 7. Logical model routing and exact-model metadata should stay aligned when available.
+8. Until this MVP ships real production artifacts, backward compatibility for unpublished runtime snapshots, worker payloads, and event formats is opt-in rather than automatic.
 
 ---
 
@@ -222,3 +223,6 @@ The next useful steps are adjacent to the current MVP:
 - CLI or chat entry integration
 
 Those changes should preserve the same core invariants rather than bypass them.
+
+When a task explicitly requires migration or legacy support, add that compatibility target to docs and tests.
+Absent that explicit scope, prioritize current correctness and contract clarity over hypothetical historical compatibility.

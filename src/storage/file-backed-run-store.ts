@@ -1,8 +1,19 @@
 import { appendFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { type RunManifest, type RuntimeControlState, type RuntimeEvent, type RuntimeState } from '../schemas/runtime.js';
-import { buildRunManifest, type RunApprovalUpdate, type RunStore } from './run-store.js';
+import {
+  normalizeRuntimeEvents,
+  type RunManifest,
+  type RuntimeControlState,
+  type RuntimeEvent,
+  type RuntimeState,
+} from '../schemas/runtime.js';
+import {
+  buildRunManifest,
+  resolvePersistedControl,
+  type RunApprovalUpdate,
+  type RunStore,
+} from './run-store.js';
 
 export interface FileBackedRunStoreOptions {
   stateDir?: string;
@@ -23,7 +34,8 @@ export class FileBackedRunStore implements RunStore {
 
       const existingManifest = await this.readManifest(runtime.run_id);
       const persistedRuntime = structuredClone(runtime);
-      persistedRuntime.control = this.resolvePersistedControl(runtime, existingManifest);
+      persistedRuntime.control = resolvePersistedControl(runtime, existingManifest);
+      persistedRuntime.events = normalizeRuntimeEvents(persistedRuntime.events);
 
       const manifest = buildRunManifest(persistedRuntime);
 
@@ -32,6 +44,7 @@ export class FileBackedRunStore implements RunStore {
       await this.persistEventLog(path.join(runDir, 'events.jsonl'), persistedRuntime.events);
 
       runtime.control = { ...persistedRuntime.control };
+      runtime.events = structuredClone(persistedRuntime.events);
     });
   }
 
@@ -46,6 +59,8 @@ export class FileBackedRunStore implements RunStore {
     if (manifest) {
       runtime.control = { ...manifest.control };
     }
+
+    runtime.events = normalizeRuntimeEvents(runtime.events);
 
     return runtime;
   }
@@ -85,7 +100,8 @@ export class FileBackedRunStore implements RunStore {
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
-      .map((line) => JSON.parse(line) as RuntimeEvent);
+      .map((line) => JSON.parse(line) as RuntimeEvent)
+      .map((event) => normalizeRuntimeEvents([event])[0]);
   }
 
   async approveRun(runId: string, approval: RunApprovalUpdate): Promise<void> {
@@ -98,7 +114,7 @@ export class FileBackedRunStore implements RunStore {
         throw new Error(`Unknown run: ${runId}`);
       }
 
-      runtime.control = this.resolvePersistedControl(runtime, manifest);
+      runtime.control = resolvePersistedControl(runtime, manifest);
       runtime.approval_state = {
         mode: runtime.approval_state?.mode ?? 'confirm-before-run',
         status: 'approved',
@@ -144,26 +160,6 @@ export class FileBackedRunStore implements RunStore {
 
       await this.writeJsonAtomic(path.join(this.getRunDir(runId), 'manifest.json'), nextManifest);
     });
-  }
-
-  private resolvePersistedControl(runtime: RuntimeState, manifest: RunManifest | null): RuntimeControlState {
-    if (!manifest) {
-      return { ...runtime.control };
-    }
-
-    if (
-      manifest.status === 'paused' &&
-      runtime.status === 'running' &&
-      !runtime.control.pause_requested &&
-      !runtime.control.cancel_requested
-    ) {
-      return { ...runtime.control };
-    }
-
-    return {
-      pause_requested: runtime.control.pause_requested || manifest.control.pause_requested,
-      cancel_requested: runtime.control.cancel_requested || manifest.control.cancel_requested,
-    };
   }
 
   private async persistEventLog(eventsPath: string, events: RuntimeEvent[]): Promise<void> {
