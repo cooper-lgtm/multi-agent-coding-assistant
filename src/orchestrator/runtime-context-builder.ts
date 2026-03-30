@@ -3,11 +3,12 @@ import path from 'node:path';
 
 import type { ExecutionGuidance } from '../schemas/planning.js';
 import type { ExecutionNode } from '../schemas/runtime.js';
-import type {
-  WorkerEnvironmentSnapshot,
-  WorkerRetryContextSummary,
-  WorkerRetryHandoff,
-  WorkerRuntimeContext,
+import {
+  getWorkerAttemptNumber,
+  type WorkerEnvironmentSnapshot,
+  type WorkerRetryContextSummary,
+  type WorkerRetryHandoff,
+  type WorkerRuntimeContext,
 } from '../workers/contracts.js';
 import { discoverLocalExecutionHints } from './local-context-discovery.js';
 
@@ -24,7 +25,16 @@ const EMPTY_EXECUTION_GUIDANCE: ExecutionGuidance = {
 
 export interface RuntimeContextBuilderInput {
   repoPath: string;
-  task: Pick<ExecutionNode, 'execution_guidance' | 'prior_attempt' | 'retry_count' | 'max_retries'>;
+  task: Pick<
+    ExecutionNode,
+    | 'execution_guidance'
+    | 'prior_attempt'
+    | 'attempt_history'
+    | 'retry_count'
+    | 'max_retries'
+    | 'reconsider_instructions'
+    | 'repeated_pattern_summary'
+  >;
   discovery?: WorkerEnvironmentSnapshot;
   repoContextPath?: string;
 }
@@ -44,10 +54,15 @@ export function buildRuntimeContextPackage(input: RuntimeContextBuilderInput): W
       commands: uniqueStrings(guidance.verification_commands),
       environment_checks: uniqueStrings(guidance.environment_checks),
       definition_of_done: uniqueStrings(guidance.definition_of_done),
-      reconsider_signals: buildReconsiderSignals(guidance.reconsider_signals, priorAttempt),
+      reconsider_signals: buildReconsiderSignals(
+        guidance.reconsider_signals,
+        uniqueStrings(input.task.reconsider_instructions ?? []),
+        input.task.repeated_pattern_summary ?? null,
+        priorAttempt,
+      ),
       retry_handoff: summarizeRetryHandoff(priorAttempt),
     },
-    time_budget_hint: buildTimeBudgetHint(input.task.retry_count, input.task.max_retries),
+    time_budget_hint: buildTimeBudgetHint(getWorkerAttemptNumber(input.task), input.task.max_retries),
   };
 }
 
@@ -121,8 +136,17 @@ function collectTaskContextFiles(
   return files;
 }
 
-function buildReconsiderSignals(signals: string[], priorAttempt: WorkerRetryHandoff | null): string[] {
-  const items = uniqueStrings(signals);
+function buildReconsiderSignals(
+  signals: string[],
+  reconsiderInstructions: string[],
+  repeatedPatternSummary: string | null,
+  priorAttempt: WorkerRetryHandoff | null,
+): string[] {
+  const items = uniqueStrings([...signals, ...reconsiderInstructions]);
+
+  if (repeatedPatternSummary) {
+    items.push(repeatedPatternSummary);
+  }
 
   if (priorAttempt?.summary) {
     items.push(`Prior attempt ${priorAttempt.attempt} ended as ${priorAttempt.status}: ${priorAttempt.summary}`);
@@ -130,6 +154,14 @@ function buildReconsiderSignals(signals: string[], priorAttempt: WorkerRetryHand
 
   if (priorAttempt?.blocker_message) {
     items.push(`Previous blocker: ${priorAttempt.blocker_message}`);
+  }
+
+  if (priorAttempt?.failure_diagnosis) {
+    items.push(`Previous diagnosis: ${priorAttempt.failure_diagnosis}`);
+  }
+
+  if (priorAttempt?.repeated_pattern_summary) {
+    items.push(priorAttempt.repeated_pattern_summary);
   }
 
   return uniqueStrings(items);
@@ -146,15 +178,19 @@ function summarizeRetryHandoff(priorAttempt: WorkerRetryHandoff | null): WorkerR
     summary: priorAttempt.summary,
     blocker_category: priorAttempt.blocker_category,
     blocker_message: priorAttempt.blocker_message,
+    failure_category: priorAttempt.failure_category,
+    failure_diagnosis: priorAttempt.failure_diagnosis,
+    reconsider_instructions: uniqueStrings(priorAttempt.reconsider_instructions ?? []),
+    repeated_pattern_summary: priorAttempt.repeated_pattern_summary ?? null,
+    checklist_feedback: uniqueStrings(priorAttempt.checklist_feedback ?? []),
     commands_run: uniqueStrings(priorAttempt.commands_run),
     review_feedback: uniqueStrings(priorAttempt.review_feedback),
   };
 }
 
-function buildTimeBudgetHint(retryCount: number, maxRetries: number): string {
-  const currentAttempt = retryCount + 1;
+function buildTimeBudgetHint(currentAttempt: number, maxRetries: number): string {
   const totalAttempts = maxRetries + 1;
-  const retriesRemaining = Math.max(maxRetries - retryCount, 0);
+  const retriesRemaining = Math.max(totalAttempts - currentAttempt, 0);
   const retrySuffix = retriesRemaining === 1 ? 'retry remains' : 'retries remain';
 
   return `Attempt ${currentAttempt} of ${totalAttempts}; ${retriesRemaining} ${retrySuffix} after this pass.`;

@@ -4,6 +4,7 @@ import {
 } from '../adapters/openclaw-model-resolver.js';
 import { ModelRouter, type RoleName } from '../adapters/model-router.js';
 import {
+  createRuntimeEvent,
   RUNTIME_STORAGE_VERSION,
   type DagBuildResult,
   type ExecutionGraph,
@@ -58,9 +59,11 @@ export function buildExecutionDag(
       depends_on: [...task.depends_on],
       acceptance_criteria: [...task.acceptance_criteria],
       quality_gate: task.quality_gate,
-      execution_guidance: task.execution_guidance
-        ? structuredClone(task.execution_guidance)
-        : undefined,
+      ...(task.execution_guidance
+        ? {
+            execution_guidance: structuredClone(task.execution_guidance),
+          }
+        : {}),
       status: 'pending',
       test_status: 'pending',
       review_status: 'pending',
@@ -75,6 +78,11 @@ export function buildExecutionDag(
       changed_files: [],
       blocker_category: null,
       blocker_message: null,
+      failure_category: null,
+      failure_diagnosis: null,
+      reconsider_instructions: [],
+      repeated_pattern_summary: null,
+      checklist_feedback: [],
       implementation_evidence: [],
       test_evidence: [],
       review_feedback: [],
@@ -84,6 +92,7 @@ export function buildExecutionDag(
       suggested_status: null,
       delivery_metadata: null,
       prior_attempt: null,
+      attempt_history: [],
       result: null,
       error: null,
     };
@@ -110,11 +119,11 @@ export function buildExecutionDag(
     graph,
     tasks: structuredClone(nodes),
     events: [
-      {
+      createRuntimeEvent({
         timestamp: now,
         type: 'runtime_initialized',
         message: `Runtime initialized for epic ${planningResult.epic}`,
-      },
+      }),
     ],
     status: 'running',
     created_at: now,

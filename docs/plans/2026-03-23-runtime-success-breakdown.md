@@ -60,6 +60,8 @@ The recommended order is:
 
 If only one slice is started next, it should be **`PR10a`**.
 
+If a future branch already contains the `PR11b` runtime base and wants one execution document for the full retry-recovery slice, use `docs/plans/2026-03-29-pr12-retry-diagnosis-loop-detection.md` as the combined implementation plan for `PR12a` plus `PR12b`.
+
 ## Detailed Slice Plan
 
 ### PR10a: Execution Guidance Contracts and DAG Propagation

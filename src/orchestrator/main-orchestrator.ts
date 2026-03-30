@@ -1,5 +1,11 @@
 import type { PlanningRequest, PlanningResult, RuntimeTaskStatus } from '../schemas/planning.js';
-import type { ExecutionNode, OrchestrationRunResult, RunLifecycleStatus, RuntimeState } from '../schemas/runtime.js';
+import {
+  createRuntimeEventModelSelection,
+  type ExecutionNode,
+  type OrchestrationRunResult,
+  type RunLifecycleStatus,
+  type RuntimeState,
+} from '../schemas/runtime.js';
 import { buildExecutionDag, findReadyTasks } from './dag-builder.js';
 import type { ImplementationDispatcher } from './implementation-dispatcher.js';
 import type { QualityGateRunner } from './quality-gate-runner.js';
@@ -9,8 +15,18 @@ import type { RunStore } from '../storage/run-store.js';
 import { ApprovalManager } from './approval-manager.js';
 import { PolicyEngine } from './policy-engine.js';
 import {
+  createRuntimeMiddlewareRunner,
+  type RuntimeMiddleware,
+  type RuntimeMiddlewareRunner,
+} from './runtime-middleware.js';
+import { createPreCompletionChecklistMiddleware } from './pre-completion-checklist-middleware.js';
+import { createLoopDetectionMiddleware } from './loop-detection-middleware.js';
+import {
   applyWorkerExecutionContext,
   createWorkerRetryHandoff,
+  getWorkerAttemptNumber,
+  recordWorkerRetryHandoff,
+  type WorkerFailureCategory,
 } from '../workers/contracts.js';
 
 export interface OrchestratorDependencies {
@@ -22,15 +38,22 @@ export interface OrchestratorDependencies {
   runStore: RunStore;
   approvalManager?: ApprovalManager;
   policyEngine?: PolicyEngine;
+  runtimeMiddleware?: RuntimeMiddleware[];
 }
 
 export class MainOrchestrator {
   private readonly approvalManager: ApprovalManager;
   private readonly policyEngine: PolicyEngine;
+  private readonly runtimeMiddleware: RuntimeMiddlewareRunner;
 
   constructor(private readonly deps: OrchestratorDependencies) {
     this.approvalManager = deps.approvalManager ?? new ApprovalManager();
     this.policyEngine = deps.policyEngine ?? new PolicyEngine();
+    this.runtimeMiddleware = createRuntimeMiddlewareRunner([
+      createPreCompletionChecklistMiddleware(),
+      createLoopDetectionMiddleware(),
+      ...(deps.runtimeMiddleware ?? []),
+    ]);
   }
 
   async run(request: PlanningRequest): Promise<OrchestrationRunResult> {
@@ -61,6 +84,12 @@ export class MainOrchestrator {
         runtime,
         'awaiting_human_approval',
         `Run ${runtime.run_id} is waiting for explicit approval before execution.`,
+        undefined,
+        {
+          metadata: {
+            approval_mode: runtime.approval_state?.mode ?? 'confirm-before-run',
+          },
+        },
       );
       await this.persist(runtime);
       await this.finalize(runtime);
@@ -101,6 +130,12 @@ export class MainOrchestrator {
         runtime,
         'awaiting_human_approval',
         `Run ${runtime.run_id} is still waiting for approval before execution can resume.`,
+        undefined,
+        {
+          metadata: {
+            approval_mode: runtime.approval_state?.mode ?? 'confirm-before-run',
+          },
+        },
       );
       await this.persist(runtime, { syncControl: false });
       await this.finalize(runtime);
@@ -186,17 +221,29 @@ export class MainOrchestrator {
         'task_blocked_by_policy',
         task.blocker_message,
         task.task_id,
+        {
+          failureCategory: 'policy',
+          metadata: {
+            assigned_agent: task.assigned_agent,
+          },
+        },
       );
     }
   }
 
   private async executeTask(task: ExecutionNode, runtime: RuntimeState): Promise<void> {
+    await this.runtimeMiddleware.beforeDispatch(task, runtime);
     task.status = 'routed';
     this.deps.reportingManager.record(
       runtime,
       'task_routed',
       `Dispatching ${task.task_id} to ${task.assigned_agent} on ${task.model}.`,
       task.task_id,
+      {
+        metadata: {
+          assigned_agent: task.assigned_agent,
+        },
+      },
     );
     await this.persist(runtime);
 
@@ -206,6 +253,7 @@ export class MainOrchestrator {
     const dispatchResult = await this.deps.implementationDispatcher.dispatch(task, runtime);
     task.result = dispatchResult.summary;
     applyWorkerExecutionContext(task, dispatchResult);
+    await this.runtimeMiddleware.afterImplementationAttempt(task, runtime, dispatchResult);
 
     if (dispatchResult.status === 'implementation_done') {
       task.error = null;
@@ -215,6 +263,11 @@ export class MainOrchestrator {
         'implementation_completed',
         `Implementation completed for ${task.task_id}.`,
         task.task_id,
+        {
+          metadata: {
+            changed_files: task.changed_files,
+          },
+        },
       );
       await this.persist(runtime);
       return;
@@ -224,12 +277,66 @@ export class MainOrchestrator {
     task.error = dispatchResult.blocker_message ?? dispatchResult.summary;
     const failureCause: RetryCause =
       dispatchResult.status === 'blocked' ? 'implementation_blocked' : 'implementation_failed';
-    const decision = this.deps.retryManager.decide(task, failureCause);
+    this.annotateFailureContext(task, failureCause, task.error ?? dispatchResult.summary);
+    const decision = this.decideRetry(task, runtime, failureCause);
     this.applyRetryDecision(task, decision, runtime);
     await this.persist(runtime);
   }
 
   private async runQualityGates(task: ExecutionNode, runtime: RuntimeState): Promise<void> {
+    const middlewareDecision = await this.runtimeMiddleware.beforeQualityGates(task, runtime);
+
+    if (middlewareDecision) {
+      const continuationCount = this.countRuntimeMiddlewareContinuations(runtime, task.task_id);
+      const middlewareName = this.formatMiddlewareName(middlewareDecision.middlewareName);
+      const continuationAttempt = getWorkerAttemptNumber(task);
+
+      if (task.retry_count + continuationCount >= task.max_retries) {
+        const message = `Runtime middleware ${middlewareName} exhausted the continuation budget for ${task.task_id}.`;
+        task.status = 'failed';
+        task.error = message;
+        task.blocker_category = 'quality';
+        task.blocker_message = message;
+        this.deps.reportingManager.record(
+          runtime,
+          'runtime_middleware_continuation_exhausted',
+          message,
+          task.task_id,
+          {
+            failureCategory: 'verification_incomplete',
+          },
+        );
+        await this.persist(runtime);
+        return;
+      }
+
+      task.blocker_category = 'quality';
+      task.blocker_message = middlewareDecision.message;
+      task.error = middlewareDecision.message;
+      this.annotateFailureContext(task, 'verification_incomplete', middlewareDecision.message);
+      recordWorkerRetryHandoff(task, createWorkerRetryHandoff(
+        task,
+        continuationAttempt,
+        'needs_fix',
+        middlewareDecision.message,
+      ));
+      task.status = 'pending';
+      task.test_status = 'pending';
+      task.review_status = 'pending';
+      this.deps.reportingManager.record(
+        runtime,
+        'runtime_middleware_requested_continuation',
+        `Runtime middleware ${middlewareName} requested task continuation for ${task.task_id}: ${middlewareDecision.message}`,
+        task.task_id,
+        {
+          attempt: continuationAttempt,
+          failureCategory: 'verification_incomplete',
+        },
+      );
+      await this.persist(runtime);
+      return;
+    }
+
     task.status = 'testing';
     task.test_status = 'pending';
     task.review_status = 'pending';
@@ -238,6 +345,11 @@ export class MainOrchestrator {
       'quality_gate_started',
       `Running quality gates for ${task.task_id}.`,
       task.task_id,
+      {
+        metadata: {
+          roles: ['test-agent', 'review-agent'],
+        },
+      },
     );
     await this.persist(runtime);
 
@@ -253,6 +365,12 @@ export class MainOrchestrator {
         'test_gate_routed',
         `Test gate for ${task.task_id} ran on ${gateResult.test_model}.`,
         task.task_id,
+        {
+          model: createRuntimeEventModelSelection(gateResult.test_model),
+          metadata: {
+            gate: 'test-agent',
+          },
+        },
       );
     }
     if (gateResult.review_model) {
@@ -261,6 +379,12 @@ export class MainOrchestrator {
         'review_gate_routed',
         `Review gate for ${task.task_id} ran on ${gateResult.review_model}.`,
         task.task_id,
+        {
+          model: createRuntimeEventModelSelection(gateResult.review_model),
+          metadata: {
+            gate: 'review-agent',
+          },
+        },
       );
     }
 
@@ -272,6 +396,11 @@ export class MainOrchestrator {
         'task_completed',
         `Task ${task.task_id} completed after quality gates.`,
         task.task_id,
+        {
+          metadata: {
+            changed_files: task.changed_files,
+          },
+        },
       );
       await this.persist(runtime);
       return;
@@ -281,7 +410,8 @@ export class MainOrchestrator {
     task.error = gateResult.blocker_message ?? gateResult.summary;
     const failureCause: RetryCause =
       gateResult.status === 'needs_fix' ? 'quality_needs_fix' : 'quality_failed';
-    const decision = this.deps.retryManager.decide(task, failureCause);
+    this.annotateFailureContext(task, failureCause, task.error ?? gateResult.summary);
+    const decision = this.decideRetry(task, runtime, failureCause);
     this.applyRetryDecision(task, decision, runtime);
     await this.persist(runtime);
   }
@@ -289,16 +419,17 @@ export class MainOrchestrator {
   private applyRetryDecision(task: ExecutionNode, decision: RetryDecision, runtime: RuntimeState): void {
     const attemptStatus =
       task.status === 'needs_fix' ? 'needs_fix' : task.status === 'blocked' ? 'blocked' : 'failed';
+    const completedAttempt = getWorkerAttemptNumber(task);
 
     task.retry_count = decision.retry_count;
 
     if (decision.action === 'retry_same_model' || decision.action === 'retry_with_upgraded_model') {
-      task.prior_attempt = createWorkerRetryHandoff(
+      recordWorkerRetryHandoff(task, createWorkerRetryHandoff(
         task,
-        task.retry_count,
+        completedAttempt,
         attemptStatus,
         task.result ?? task.error ?? `Attempt ${task.retry_count} finished without a summary.`,
-      );
+      ));
       task.status = 'pending';
       task.model = decision.next_model;
       task.model_metadata = decision.next_model_metadata;
@@ -309,6 +440,13 @@ export class MainOrchestrator {
         'retry_scheduled',
         `${this.formatRetryMessage(task, decision)}`,
         task.task_id,
+        {
+          failureCategory: decision.cause,
+          metadata: {
+            retry_action: decision.action,
+            next_model: decision.next_model,
+          },
+        },
       );
       return;
     }
@@ -319,6 +457,12 @@ export class MainOrchestrator {
       'task_terminal_negative',
       decision.reason,
       task.task_id,
+      {
+        failureCategory: decision.cause,
+        metadata: {
+          terminal_status: decision.next_status,
+        },
+      },
     );
   }
 
@@ -354,6 +498,12 @@ export class MainOrchestrator {
           'task_blocked_by_dependency',
           `Task ${task.task_id} is blocked by dependency ${blockingDependency}.`,
           task.task_id,
+          {
+            failureCategory: 'dependency',
+            metadata: {
+              blocking_dependency: blockingDependency,
+            },
+          },
         );
         hasChanges = true;
       }
@@ -392,6 +542,146 @@ export class MainOrchestrator {
     return Object.values(runtime.tasks).filter((task) => task.status === 'implementation_done');
   }
 
+  private countRuntimeMiddlewareContinuations(runtime: RuntimeState, taskId: string): number {
+    return runtime.events.filter((event) =>
+      event.task_id === taskId && event.type === 'runtime_middleware_requested_continuation',
+    ).length;
+  }
+
+  private formatMiddlewareName(name: string): string {
+    if (name === 'pre-completion-checklist') {
+      return 'pre-completion checklist';
+    }
+
+    return name.replaceAll('-', ' ');
+  }
+
+  private decideRetry(task: ExecutionNode, runtime: RuntimeState, cause: RetryCause): RetryDecision {
+    if (cause === 'implementation_blocked') {
+      return this.deps.retryManager.decide(task, cause);
+    }
+
+    const continuationCount = this.countRuntimeMiddlewareContinuations(runtime, task.task_id);
+    const consumedExtraAttempts = task.retry_count + continuationCount;
+
+    if (consumedExtraAttempts >= task.max_retries) {
+      const nextStatus = this.toTerminalStatus(cause);
+
+      return {
+        taskId: task.task_id,
+        cause,
+        action: 'keep_terminal_status',
+        next_status: nextStatus,
+        next_model: task.model,
+        next_model_metadata: task.model_metadata,
+        retry_count: task.retry_count,
+        reason: `Retry budget exhausted for ${task.task_id}; keeping ${nextStatus}.`,
+      };
+    }
+
+    return this.deps.retryManager.decide(task, cause);
+  }
+
+  private annotateFailureContext(
+    task: ExecutionNode,
+    failureCategory: WorkerFailureCategory,
+    summary: string,
+  ): void {
+    task.failure_category = failureCategory;
+    const fallbackDiagnosis = this.buildFailureDiagnosis(task, failureCategory, summary);
+
+    if (!this.hasSpecificFailureDiagnosis(task.failure_diagnosis, summary, task.blocker_message)) {
+      task.failure_diagnosis = fallbackDiagnosis;
+    }
+
+    if (task.reconsider_instructions.length === 0) {
+      task.reconsider_instructions = this.buildReconsiderInstructions(task, failureCategory);
+    }
+  }
+
+  private buildFailureDiagnosis(
+    task: ExecutionNode,
+    failureCategory: WorkerFailureCategory,
+    summary: string,
+  ): string {
+    switch (failureCategory) {
+      case 'verification_incomplete':
+        if (task.checklist_feedback.length > 0) {
+          return `Verification evidence is still incomplete: ${task.checklist_feedback.join(' ')}`;
+        }
+        return summary;
+      case 'quality_needs_fix':
+        if (task.review_feedback.length > 0) {
+          return `External quality feedback still requires changes: ${task.review_feedback.join(' ')}`;
+        }
+        return summary;
+      case 'quality_failed':
+        return `Quality gates failed: ${summary}`;
+      case 'implementation_blocked':
+        return task.blocker_message ?? summary;
+      case 'implementation_failed':
+        if (!task.blocker_message || task.blocker_message === summary) {
+          return summary;
+        }
+        return `${summary} ${task.blocker_message}`;
+      default:
+        return summary;
+    }
+  }
+
+  private hasSpecificFailureDiagnosis(
+    diagnosis: string | null,
+    summary: string,
+    blockerMessage: string | null,
+  ): boolean {
+    if (!diagnosis) {
+      return false;
+    }
+
+    if (diagnosis === summary) {
+      return false;
+    }
+
+    if (blockerMessage && diagnosis === blockerMessage) {
+      return false;
+    }
+
+    if (blockerMessage && diagnosis === `${summary} ${blockerMessage}`) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private buildReconsiderInstructions(
+    task: ExecutionNode,
+    failureCategory: WorkerFailureCategory,
+  ): string[] {
+    if (failureCategory === 'verification_incomplete') {
+      return task.checklist_feedback.length > 0
+        ? [
+            'Run the missing verification commands before handing work to external quality gates.',
+            ...task.checklist_feedback,
+          ]
+        : ['Re-run the required verification loop and attach explicit evidence.'];
+    }
+
+    if (failureCategory === 'quality_needs_fix') {
+      return task.review_feedback.length > 0
+        ? [
+            'Read the latest review feedback before editing again.',
+            ...task.review_feedback,
+          ]
+        : ['Inspect the latest quality-gate result before retrying the same task.'];
+    }
+
+    if (failureCategory === 'implementation_blocked') {
+      return ['Resolve the blocking prerequisite before retrying implementation.'];
+    }
+
+    return ['Inspect the latest failure evidence before retrying the same task.'];
+  }
+
   private async syncControlFromStore(runtime: RuntimeState): Promise<void> {
     const manifest = await this.deps.runStore.loadManifest(runtime.run_id);
 
@@ -406,6 +696,7 @@ export class MainOrchestrator {
 
   private async handleControlRequests(runtime: RuntimeState): Promise<boolean> {
     if (runtime.control.cancel_requested) {
+      runtime.control.pause_requested = false;
       this.deps.reportingManager.record(
         runtime,
         'cancel_requested',
@@ -418,7 +709,7 @@ export class MainOrchestrator {
         'run_cancelled',
         `Run ${runtime.run_id} stopped at a safe checkpoint after cancellation.`,
       );
-      await this.persist(runtime);
+      await this.persist(runtime, { syncControl: false });
       return true;
     }
 
@@ -434,7 +725,7 @@ export class MainOrchestrator {
         'run_paused',
         `Run ${runtime.run_id} paused at a safe checkpoint.`,
       );
-      await this.persist(runtime);
+      await this.persist(runtime, { syncControl: false });
       return true;
     }
 
@@ -499,6 +790,18 @@ export class MainOrchestrator {
 
   private isRunFinished(status: RunLifecycleStatus): boolean {
     return ['completed', 'needs_fix', 'blocked', 'failed', 'cancelled'].includes(status);
+  }
+
+  private toTerminalStatus(cause: RetryCause): RuntimeTaskStatus {
+    switch (cause) {
+      case 'implementation_blocked':
+        return 'blocked';
+      case 'quality_needs_fix':
+        return 'needs_fix';
+      case 'quality_failed':
+      case 'implementation_failed':
+        return 'failed';
+    }
   }
 
   private async persist(runtime: RuntimeState, options: { syncControl?: boolean } = {}): Promise<void> {

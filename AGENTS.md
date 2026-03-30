@@ -87,6 +87,11 @@ The repository docs are the working source of truth.
 - Avoid opportunistic refactors outside the stated task.
 - If you spot adjacent issues, record them in docs or follow-up notes rather than silently expanding scope.
 
+### Compatibility rules
+- This repository is still a pre-release MVP. Backward compatibility for unpublished runtime snapshots, worker payloads, event records, or other in-flight artifacts is not a default requirement.
+- When review feedback asks for compatibility with historical formats that have never shipped, treat it as optional design input unless the task explicitly calls for migration or legacy support.
+- If a change does need compatibility, name the supported legacy source in docs and add regression coverage for it in the same change where practical.
+
 ---
 
 ## 5. Task Execution Rules
