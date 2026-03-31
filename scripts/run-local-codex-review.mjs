@@ -1383,8 +1383,8 @@ function resolveTrackedWorktreeBaseRef(repoRoot) {
   return result.status === 0 ? 'HEAD' : EMPTY_TREE_HASH;
 }
 
-async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputSchemaPath, prompt, timeoutMs }) {
-  const childEnv = await buildChildEnv(isolatedCodexHome);
+async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputSchemaPath, prompt, timeoutMs, env }) {
+  const childEnv = await buildChildEnv(isolatedCodexHome, env);
 
   return await new Promise((resolve, reject) => {
     let settled = false;
@@ -1513,8 +1513,8 @@ async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputS
   });
 }
 
-async function buildChildEnv(isolatedCodexHome) {
-  const childEnv = { ...process.env, CODEX_HOME: isolatedCodexHome };
+async function buildChildEnv(isolatedCodexHome, baseEnv = process.env) {
+  const childEnv = { ...baseEnv, CODEX_HOME: isolatedCodexHome };
   const allowedCodexEnvKeys = await collectAllowedCodexEnvKeys(isolatedCodexHome);
 
   for (const key of Object.keys(childEnv)) {

@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile, chmod, symlink, stat } from 'n
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { runLocalCodexReview as runLocalCodexReviewProgrammatic } from '../scripts/run-local-codex-review.mjs';
 
 const projectRoot = process.cwd();
 const scriptPath = path.join(projectRoot, 'scripts', 'run-local-codex-review.mjs');
@@ -48,6 +49,63 @@ test('local codex review exits 0 for a clean structured review and strips deskto
     assert.ok(capture.args.includes('features.responses_websockets_v2=false'));
     assert.match(capture.stdin, /Review only the current uncommitted diff\./);
   } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('local codex review programmatic API forwards extraEnv into the spawned codex process', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-programmatic-extra-env-'));
+  const originalPath = process.env.PATH;
+
+  try {
+    const repoRoot = path.join(tempRoot, 'repo');
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\n', 'utf8');
+
+    runGit(repoRoot, ['init', '--initial-branch=main']);
+    runGit(repoRoot, ['config', 'user.name', 'Codex Test']);
+    runGit(repoRoot, ['config', 'user.email', 'codex@example.com']);
+    runGit(repoRoot, ['add', 'tracked.txt']);
+    runGit(repoRoot, ['commit', '-m', 'base']);
+
+    await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\nbranch change\n', 'utf8');
+
+    const { fakeBinPath, sourceCodexHome, capturePath } = await setupFakeCodexEnvironment(tempRoot, 'clean');
+    const limitedBinPath = path.join(tempRoot, 'limited-bin');
+    const gitPathResult = spawnSync('sh', ['-lc', 'command -v git'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    });
+    assert.equal(gitPathResult.status, 0, gitPathResult.stderr || gitPathResult.stdout);
+    const gitPath = gitPathResult.stdout.trim();
+    await mkdir(limitedBinPath, { recursive: true });
+    await symlink(process.execPath, path.join(limitedBinPath, 'node'));
+    await symlink(gitPath, path.join(limitedBinPath, 'git'));
+    process.env.PATH = limitedBinPath;
+
+    const result = await runLocalCodexReviewProgrammatic({
+      cwd: repoRoot,
+      reviewOptions: {
+        mode: 'uncommitted',
+        target: null,
+      },
+      sourceCodexHome,
+      extraEnv: {
+        PATH: `${fakeBinPath}${path.delimiter}${limitedBinPath}`,
+        FAKE_CODEX_CAPTURE: capturePath,
+        FAKE_CODEX_MODE: 'clean',
+        TEST_PROVIDER_KEY: 'provider-secret',
+        HTTPS_PROXY: 'https://proxy.example',
+      },
+    });
+
+    assert.equal(result.status, 'clean');
+
+    const capture = JSON.parse(await readFile(capturePath, 'utf8'));
+    assert.equal(capture.env.TEST_PROVIDER_KEY, 'provider-secret');
+    assert.equal(capture.env.HTTPS_PROXY, 'https://proxy.example');
+  } finally {
+    process.env.PATH = originalPath;
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
