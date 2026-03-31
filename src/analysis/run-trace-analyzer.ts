@@ -110,7 +110,7 @@ export function analyzeRunTraces(sources: readonly RunTraceSource[]): RunTraceAn
         totals.retry_loop_signals += 1;
       }
 
-      if (isRetryEvent(event)) {
+      if (isRetryAttemptEvent(event)) {
         totals.retry_events += 1;
         if (event.task_id) {
           const hotspot = retryHotspots.get(event.task_id) ?? {
@@ -150,7 +150,7 @@ export function analyzeRunTraces(sources: readonly RunTraceSource[]): RunTraceAn
         blockerCategories.set(blockerCategory, summary);
       }
 
-      if (event.failure_category && event.model?.selected_model) {
+      if (shouldAttributeFailureToModel(event)) {
         const hotspotKey = buildModelFailureHotspotKey(event.model, event.failure_category);
         const hotspot = modelFailureHotspots.get(hotspotKey) ?? {
           selected_model: event.model.selected_model,
@@ -271,12 +271,25 @@ function isRetryLoopSignal(event: RuntimeEvent): boolean {
   return event.metadata.loop_detected === true;
 }
 
-function isRetryEvent(event: RuntimeEvent): boolean {
-  return event.phase === 'retry' || event.type === 'retry_scheduled';
+function isRetryAttemptEvent(event: RuntimeEvent): boolean {
+  return event.type === 'retry_scheduled';
 }
 
 function isNegativeTerminalEvent(event: RuntimeEvent): boolean {
   return event.type === 'task_terminal_negative';
+}
+
+function shouldAttributeFailureToModel(
+  event: RuntimeEvent,
+): event is RuntimeEvent & {
+  failure_category: RuntimeEventFailureCategory;
+  model: RuntimeEventModelSelection;
+} {
+  if (!event.failure_category || !event.model?.selected_model) {
+    return false;
+  }
+
+  return event.type !== 'retry_scheduled';
 }
 
 function getBlockerCategory(event: RuntimeEvent): WorkerBlockerCategory | null {

@@ -15,11 +15,11 @@ test('analyze-run-traces script renders the expected markdown summary for fixtur
 
   assert.match(output, /^# Run Trace Analysis/m);
   assert.match(output, /- Sources analyzed: 1/);
-  assert.match(output, /- Retry events: 4/);
+  assert.match(output, /- Retry events: 3/);
   assert.match(output, /## Blocker Categories/);
   assert.match(output, /\| repository \| 3 \| task-ui-shell \|/);
   assert.match(output, /## Retry Hotspots/);
-  assert.match(output, /\| task-api-contract \| 3 \| claude, gemini \| quality_needs_fix \|/);
+  assert.match(output, /\| task-api-contract \| 2 \| claude, gemini \| quality_needs_fix \|/);
   assert.match(output, /## Model-Linked Failure Hotspots/);
-  assert.match(output, /\| claude \| quality_needs_fix \| 2 \| anthropic\/claude-opus-4-6 \|/);
+  assert.match(output, /\| claude \| quality_needs_fix \| 1 \| anthropic\/claude-opus-4-6 \|/);
 });
