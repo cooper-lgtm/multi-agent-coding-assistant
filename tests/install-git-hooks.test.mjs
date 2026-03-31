@@ -88,7 +88,7 @@ process.exit(0);
 
     assert.equal(hookResult, '');
     const capturedArgs = JSON.parse(await readFile(capturePath, 'utf8'));
-    assert.deepEqual(capturedArgs, ['--head-range', 'main', 'HEAD']);
+    assert.deepEqual(capturedArgs, ['--head-range', 'main', headSha]);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
