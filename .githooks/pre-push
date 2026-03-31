@@ -1,0 +1,105 @@
+#!/usr/bin/env sh
+set -eu
+
+resolve_pushed_branch_name() {
+  while IFS=' ' read -r local_ref _remote_local_sha _remote_ref _remote_sha; do
+    case "${local_ref:-}" in
+      refs/heads/*)
+        printf '%s\n' "${local_ref#refs/heads/}"
+        return 0
+        ;;
+    esac
+  done
+
+  return 1
+}
+
+resolve_branch_configured_base_ref() {
+  branch_name="${1:-}"
+  if [ -z "$branch_name" ]; then
+    return 1
+  fi
+
+  for key in \
+    "branch.${branch_name}.codex-review-base" \
+    "branch.${branch_name}.gh-merge-base"
+  do
+    candidate="$(git config --get "$key" || true)"
+    if [ -n "$candidate" ] && git rev-parse --verify "${candidate}^{commit}" >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+resolve_remote_default_branch_ref() {
+  remote_name="${1:-origin}"
+  remote_head_ref="$(git symbolic-ref --quiet --short "refs/remotes/${remote_name}/HEAD" 2>/dev/null || true)"
+  if [ -n "$remote_head_ref" ] && git rev-parse --verify "${remote_head_ref}^{commit}" >/dev/null 2>&1; then
+    printf '%s\n' "$remote_head_ref"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_remote_default_branch_name() {
+  remote_name="${1:-origin}"
+  remote_default_branch_ref="$(resolve_remote_default_branch_ref "$remote_name" || true)"
+  if [ -n "$remote_default_branch_ref" ]; then
+    printf '%s\n' "${remote_default_branch_ref#${remote_name}/}"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_base_ref() {
+  remote_name="${1:-origin}"
+  pushed_branch_name="${2:-}"
+  branch_specific_base_ref="$(resolve_branch_configured_base_ref "$pushed_branch_name" || true)"
+  remote_default_branch_ref="$(resolve_remote_default_branch_ref "$remote_name" || true)"
+  remote_default_branch_name="$(resolve_remote_default_branch_name "$remote_name" || true)"
+
+  for candidate in \
+    "${LOCAL_CODEX_REVIEW_BASE_REF:-}" \
+    "$branch_specific_base_ref" \
+    "$remote_default_branch_ref" \
+    "$remote_default_branch_name" \
+    "${remote_name}/main" \
+    main \
+    "${remote_name}/master" \
+    master
+  do
+    if [ -n "$candidate" ] && git rev-parse --verify "${candidate}^{commit}" >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+REMOTE_NAME="${1:-origin}"
+REVIEW_RUNNER_PATH="${LOCAL_CODEX_REVIEW_RUNNER_PATH:-scripts/run-local-codex-review.mjs}"
+
+while IFS=' ' read -r local_ref local_sha _remote_ref _remote_sha; do
+  case "${local_ref:-}" in
+    refs/heads/*)
+      if [ -z "${local_sha:-}" ] || [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+        continue
+      fi
+
+      pushed_branch_name="${local_ref#refs/heads/}"
+      base_ref="$(resolve_base_ref "$REMOTE_NAME" "$pushed_branch_name" || true)"
+      if [ -z "$base_ref" ]; then
+        printf '%s\n' 'Could not resolve a trusted base ref for the local pre-push Codex review. Set LOCAL_CODEX_REVIEW_BASE_REF, configure branch.<name>.codex-review-base, or fetch the remote default branch.' >&2
+        exit 2
+      fi
+
+      node "$REVIEW_RUNNER_PATH" --head-range "$base_ref" "$local_sha" || exit $?
+      ;;
+  esac
+done

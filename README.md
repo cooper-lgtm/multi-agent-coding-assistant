@@ -166,7 +166,9 @@ npm run demo:adapter
 npm run demo:planning
 npm run analyze:traces -- --state-dir state
 npm run cli -- --help
+npm run hooks:install
 npm run review:local
+npm run verify:local-review-gate
 npm run build && node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
 ```
 
@@ -187,19 +189,26 @@ Lint notes:
 Local strict review gate:
 
 ```bash
+npm run hooks:install
 npm run review:local
 npm run review:local -- --base origin/main
+npm run verify:local-review-gate
 ```
 
 Behavior:
+- `npm run hooks:install` installs the repo-managed `.githooks/pre-push` hook and points `core.hooksPath` at it
 - exits `0` only when the structured local review is clean
 - exits `1` when structured findings are returned
 - exits `2` when the local review process fails or the structured payload is invalid
 - applies a 30 minute watchdog by default so a stalled `codex exec` fails closed; override with `LOCAL_CODEX_REVIEW_TIMEOUT_MS` as a positive millisecond value
 - `npm run review:local` reviews the current uncommitted worktree delta, including untracked files
 - `npm run review:local -- --base origin/main` reviews the current tracked worktree state against the merge-base, plus current untracked worktree files, so local pre-push review covers both committed branch changes and the latest tracked/untracked edits before `git add`
+- automation can also call `node scripts/run-local-codex-review.mjs --head-range <base-ref> <head-ref> --output-format json` for a PR-scoped machine-readable review that excludes unrelated untracked worktree files
+- `npm run verify:local-review-gate` builds the repo, runs the local review regression suites, executes a PR-scoped machine-readable local review against the current branch head, and finishes with `git diff --check`; pass `-- --base-ref <ref> --head-ref <ref>` to override the review range
+- the repo-managed `pre-push` hook resolves its review base in this order: `LOCAL_CODEX_REVIEW_BASE_REF`, then `branch.<name>.codex-review-base`, then `branch.<name>.gh-merge-base`, then the remote default branch, then remote/local `main`/`master`
+- the repo-managed `pre-push` hook reviews `--head-range <base-ref> HEAD`, so unrelated untracked worktree files do not block a push and hook installs into external target repos can pin the trusted runner path back to this repository
 - when `npm run review:local` is run inside this repository, the review prompt and schema are loaded from trusted mainline refs such as `origin/main` instead of the current branch's committed copies
-- same-repo `review:local` also re-executes the runner from a frozen baseline before review logic starts: trusted mainline refs first, then the committed/staged same-repo runner when this branch has not landed on main yet
+- same-repo `review:local` re-executes the runner from a frozen trusted mainline baseline before review logic starts and can fall back to the current branch's committed runner only when trusted mainline refs still supply the review policy assets but have not yet landed the required runner CLI support
 - same-repo `--base main` / `--base master` review can also bootstrap from the explicit local mainline ref when no trusted remote mainline ref exists
 - runs Codex in an isolated `CODEX_HOME` and strips desktop-thread `CODEX_*` variables so local automation does not inherit the interactive Codex Desktop session context
 
@@ -212,17 +221,24 @@ Run `npm run build` before invoking it so `dist/index.js` matches the current ch
 It is aimed at the workflow where one plan document should execute as a sequence of:
 - one task-sized branch
 - one PR
-- required checks
-- Codex review on the current head SHA
-- merge only after the current review is clean
+- one blocking local `codex exec` review before each push
+- required checks after push
+- merge only after the required checks pass
 
 Important behavior:
-- `--checks-timeout-ms` and `--review-timeout-ms` are available for explicit gate timeouts
-- both gates default to a 30 minute timeout when flags are omitted
-- timeout does not report `failed`; it returns `manual_review_required` so a human can inspect the PR and decide how to proceed
+- `scripts/run-plan-doc.mjs` installs the repo-managed pre-push hook in the target repository before goose starts working
+- the local pre-push hook is the only blocking review gate; if it returns findings or infrastructure errors, `git push` does not proceed
+- because the workflow uses one task-sized branch per run, the pre-push review covers the branch delta against the trusted base ref instead of adding a second post-push review pass
+- after a successful push, the outer plan runner waits only on required GitHub checks before merge
+- GitHub-hosted Codex review is now optional comparison/signal, not the blocking repair-loop source of truth
+- `--checks-timeout-ms` is available for an explicit required-check timeout
+- the required-check gate defaults to a 30 minute timeout when the flag is omitted
+- if required checks never finish, the runner returns `manual_review_required` so a human can inspect the PR and decide how to proceed
 
 The first implementation focuses on control-flow correctness and testability.
 Its regression surface lives in:
+- `tests/local-codex-review-adapter.test.mjs`
+- `tests/local-codex-review.test.mjs`
 - `tests/plan-runner.test.mjs`
 - `tests/run-plan-doc.test.mjs`
 - `tests/fixtures/fake-bin/`

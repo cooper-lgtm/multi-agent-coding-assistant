@@ -102,57 +102,115 @@ function readBootstrapRunnerSource(repoRoot, options) {
 
   if (options.mode === 'base' && isTrustedBootstrapBaseRef(options.target, trustedBootstrapRefs)) {
     const trustedTargetRunner = readGitFile(repoRoot, options.target, RUNNER_SCRIPT_RELATIVE_PATH);
-    if (trustedTargetRunner !== null) {
+    if (trustedTargetRunner !== null && runnerSourceSupportsRequestedOptions(trustedTargetRunner, options)) {
       return trustedTargetRunner;
     }
   }
 
   for (const trustedRef of trustedBootstrapRefs) {
     const trustedRunner = readGitFile(scriptRepoRoot, trustedRef, RUNNER_SCRIPT_RELATIVE_PATH);
-    if (trustedRunner !== null) {
+    if (trustedRunner !== null && runnerSourceSupportsRequestedOptions(trustedRunner, options)) {
       return trustedRunner;
     }
   }
 
-  const committedFallbackRevision = resolveCommittedRunnerBootstrapRevision(repoRoot, options);
-  if (committedFallbackRevision !== null) {
-    const committedRunner = readGitFile(repoRoot, committedFallbackRevision, RUNNER_SCRIPT_RELATIVE_PATH);
-    if (committedRunner !== null) {
-      return committedRunner;
-    }
+  const committedSameRepoRunner = readCommittedSameRepoRunnerSource(repoRoot, options, trustedBootstrapRefs);
+  if (committedSameRepoRunner !== null) {
+    return committedSameRepoRunner;
   }
 
-  const indexedRunner = readGitIndexFile(repoRoot, RUNNER_SCRIPT_RELATIVE_PATH);
-  if (indexedRunner !== null) {
-    return indexedRunner;
-  }
-
-  throw new Error(
-    `Could not resolve trusted review runner ${RUNNER_SCRIPT_RELATIVE_PATH}. Fetch origin/main (or another trusted mainline ref), or stage the runner first, so same-repo bootstrap review can run from a frozen baseline.`,
-  );
+  throw new Error(buildTrustedRunnerResolutionError());
 }
 
-function resolveCommittedRunnerBootstrapRevision(repoRoot, options) {
+function buildTrustedRunnerResolutionError() {
+  return `Could not resolve trusted review runner ${RUNNER_SCRIPT_RELATIVE_PATH} from a trusted mainline ref. Fetch origin/main (or another trusted mainline ref) so same-repo bootstrap review can run from a frozen mainline baseline.`;
+}
+
+function readCommittedSameRepoRunnerSource(repoRoot, options, trustedBootstrapRefs) {
   if (!repositoryMatchesScriptRepo(repoRoot)) {
     return null;
   }
 
-  if (options.mode === 'commit') {
-    return runGit(repoRoot, ['rev-parse', '--verify', options.target], { allowedExitCodes: [0, 128] }).trim() || null;
+  if (![...trustedBootstrapRefs].some((refName) => gitRefExists(repoRoot, refName))) {
+    return null;
   }
 
-  return runGit(repoRoot, ['rev-parse', '--verify', 'HEAD'], { allowedExitCodes: [0, 128] }).trim() || null;
+  const committedHeadRunner = readGitFile(repoRoot, 'HEAD', RUNNER_SCRIPT_RELATIVE_PATH);
+  if (committedHeadRunner !== null && runnerSourceSupportsRequestedOptions(committedHeadRunner, options)) {
+    return committedHeadRunner;
+  }
+
+  return null;
 }
 
-async function main() {
-  const options = parseArgs(process.argv.slice(2));
+function runnerSourceSupportsRequestedOptions(source, options) {
+  const parseArgsSource = extractFunctionSource(source, /^function parseArgs\(argv\) \{/m);
+
+  if (options.mode === 'head-range' && !parseArgsSource.includes("if (arg === '--head-range')")) {
+    return false;
+  }
+
+  if (options.outputFormat === 'json' && !parseArgsSource.includes("if (arg === '--output-format')")) {
+    return false;
+  }
+
+  if (Array.isArray(options.changedFiles) && options.changedFiles.length > 0 && !parseArgsSource.includes("if (arg === '--changed-file')")) {
+    return false;
+  }
+
+  if (options.taskHint && !parseArgsSource.includes("if (arg === '--task-hint')")) {
+    return false;
+  }
+
+  return true;
+}
+
+function extractFunctionSource(source, signaturePattern) {
+  const signatureMatch = source.match(signaturePattern);
+  const startIndex = signatureMatch?.index ?? -1;
+  if (startIndex === -1) {
+    return '';
+  }
+
+  let braceDepth = 0;
+  let endIndex = -1;
+
+  for (let index = startIndex; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '{') {
+      braceDepth += 1;
+    } else if (character === '}') {
+      braceDepth -= 1;
+      if (braceDepth === 0) {
+        endIndex = index + 1;
+        break;
+      }
+    }
+  }
+
+  return endIndex === -1 ? '' : source.slice(startIndex, endIndex);
+}
+
+export async function runLocalCodexReview({
+  cwd = process.cwd(),
+  reviewOptions,
+  extraEnv = {},
+  sourceCodexHome,
+  structuredReviewTimeoutMs,
+} = {}) {
+  const options = reviewOptions ?? { mode: 'uncommitted', target: null, outputFormat: 'text' };
   let runTempRoot;
   let isolatedCodexHome;
+  let projectRoot;
 
   try {
-    const projectRoot = resolveRepositoryRoot(process.cwd());
-    const sourceCodexHome = process.env.LOCAL_CODEX_REVIEW_SOURCE_HOME ?? resolveDefaultCodexHome();
-    const structuredReviewTimeoutMs = resolveStructuredReviewTimeoutMs(process.env.LOCAL_CODEX_REVIEW_TIMEOUT_MS);
+    const invocationEnv = { ...process.env, ...extraEnv };
+    projectRoot = resolveRepositoryRoot(cwd);
+    const resolvedSourceCodexHome = sourceCodexHome
+      ?? invocationEnv.LOCAL_CODEX_REVIEW_SOURCE_HOME
+      ?? resolveDefaultCodexHome(invocationEnv);
+    const resolvedStructuredReviewTimeoutMs = structuredReviewTimeoutMs
+      ?? resolveStructuredReviewTimeoutMs(invocationEnv.LOCAL_CODEX_REVIEW_TIMEOUT_MS);
     runTempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-run-'));
     isolatedCodexHome = await mkdtemp(path.join(tmpdir(), 'local-codex-review-home-'));
     const emptyFilePath = path.join(runTempRoot, 'empty-file.txt');
@@ -161,8 +219,8 @@ async function main() {
     const schemaPath = path.join(runTempRoot, 'review-schema.json');
 
     await mkdir(isolatedCodexHome, { recursive: true });
-    await copyConfigToml(sourceCodexHome, isolatedCodexHome);
-    await copyAuthJsonIfPresent(sourceCodexHome, isolatedCodexHome);
+    await copyConfigToml(resolvedSourceCodexHome, isolatedCodexHome);
+    await copyAuthJsonIfPresent(resolvedSourceCodexHome, isolatedCodexHome);
     await writeFile(emptyFilePath, '', 'utf8');
 
     const scope = collectReviewScope(projectRoot, options, emptyFilePath);
@@ -181,32 +239,56 @@ async function main() {
       outputPath,
       outputSchemaPath: schemaPath,
       prompt,
-      timeoutMs: structuredReviewTimeoutMs,
+      timeoutMs: resolvedStructuredReviewTimeoutMs,
+      env: invocationEnv,
     });
 
-    const review = parseStructuredReview(result.lastMessage, {
-      repoRoot: projectRoot,
-      changedFiles: scope.changedFiles.map((filePath) => path.resolve(projectRoot, filePath)),
-      lineRangeExemptFiles: scope.lineRangeExemptFiles.map((filePath) => path.resolve(projectRoot, filePath)),
-      postImageHunkLineRanges,
-      deletedLineRanges,
-      renamedFilePathAliases,
-    });
-
-    if (review.findings.length > 0) {
-      printFindings(review, {
+    let review;
+    try {
+      review = parseStructuredReview(result.lastMessage, {
         repoRoot: projectRoot,
+        changedFiles: scope.changedFiles.map((filePath) => path.resolve(projectRoot, filePath)),
+        lineRangeExemptFiles: scope.lineRangeExemptFiles.map((filePath) => path.resolve(projectRoot, filePath)),
+        postImageHunkLineRanges,
         deletedLineRanges,
         renamedFilePathAliases,
       });
-      return 1;
+    } catch (error) {
+      throw new Error(appendStructuredReviewPayloadPreview(String(error.message ?? error), result.lastMessage));
     }
 
-    process.stdout.write('Structured review is clean.\n');
-    return 0;
+    const normalizedRepoRoot = normalizeComparablePath(projectRoot, projectRoot);
+    return {
+      status: review.findings.length > 0 ? 'findings' : 'clean',
+      findings: review.findings.map((finding) => ({
+        path: path.relative(
+          normalizedRepoRoot,
+          normalizeComparablePath(finding.code_location.absolute_file_path, projectRoot),
+        ),
+        body: finding.body,
+      })),
+      review,
+      repoRoot: projectRoot,
+      deletedLineRanges,
+      renamedFilePathAliases,
+      failure_message: null,
+      review_summary: {
+        overall_correctness: review.overall_correctness,
+        overall_explanation: review.overall_explanation,
+        overall_confidence_score: review.overall_confidence_score,
+      },
+    };
   } catch (error) {
-    process.stdout.write(`${String(error.message ?? error)}\n`);
-    return 2;
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      review: null,
+      repoRoot: projectRoot ?? null,
+      deletedLineRanges: new Map(),
+      renamedFilePathAliases: new Map(),
+      failure_message: String(error.message ?? error),
+      review_summary: null,
+    };
   } finally {
     if (runTempRoot) {
       await rm(runTempRoot, { recursive: true, force: true }).catch(() => {});
@@ -217,10 +299,23 @@ async function main() {
   }
 }
 
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const result = await runLocalCodexReview({
+    cwd: process.cwd(),
+    reviewOptions: options,
+  });
+
+  return emitCliResult(result, { outputFormat: options.outputFormat });
+}
+
 function parseArgs(argv) {
   const options = {
     mode: 'uncommitted',
     target: null,
+    outputFormat: 'text',
+    changedFiles: [],
+    taskHint: null,
   };
   let selectedScopeFlag = null;
 
@@ -257,6 +352,23 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === '--head-range') {
+      const baseRef = argv[index + 1];
+      const headRef = argv[index + 2];
+      if (!baseRef || baseRef.startsWith('--') || !headRef || headRef.startsWith('--')) {
+        throw new Error('--head-range requires <base-ref> and <head-ref>.');
+      }
+      if (selectedScopeFlag !== null) {
+        throw new Error('Choose only one of --base, --commit, or --uncommitted.');
+      }
+      options.mode = 'head-range';
+      options.baseRef = baseRef;
+      options.headRef = headRef;
+      selectedScopeFlag = '--head-range';
+      index += 2;
+      continue;
+    }
+
     if (arg === '--uncommitted') {
       if (selectedScopeFlag !== null) {
         throw new Error('Choose only one of --base, --commit, or --uncommitted.');
@@ -264,6 +376,39 @@ function parseArgs(argv) {
       options.mode = 'uncommitted';
       options.target = null;
       selectedScopeFlag = '--uncommitted';
+      continue;
+    }
+
+    if (arg === '--output-format') {
+      const outputFormat = argv[index + 1];
+      if (!outputFormat || outputFormat.startsWith('--')) {
+        throw new Error('--output-format requires a value.');
+      }
+      if (outputFormat !== 'text' && outputFormat !== 'json') {
+        throw new Error('--output-format must be either text or json.');
+      }
+      options.outputFormat = outputFormat;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--changed-file') {
+      const changedFile = argv[index + 1];
+      if (!changedFile || changedFile.startsWith('--')) {
+        throw new Error('--changed-file requires a value.');
+      }
+      options.changedFiles.push(changedFile);
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--task-hint') {
+      const taskHint = argv[index + 1];
+      if (!taskHint || taskHint.startsWith('--')) {
+        throw new Error('--task-hint requires a value.');
+      }
+      options.taskHint = taskHint;
+      index += 1;
       continue;
     }
 
@@ -277,17 +422,64 @@ function parseArgs(argv) {
   return options;
 }
 
-function resolveDefaultCodexHome() {
-  const homeDir = process.env.HOME ?? process.env.USERPROFILE;
+function resolveRequestedOutputFormat(argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== '--output-format') {
+      continue;
+    }
+
+    const requestedFormat = argv[index + 1];
+    if (requestedFormat === 'json') {
+      return 'json';
+    }
+
+    if (requestedFormat === 'text') {
+      return 'text';
+    }
+  }
+
+  return 'text';
+}
+
+function emitCliResult(result, { outputFormat = 'text' } = {}) {
+  if (outputFormat === 'json') {
+    process.stdout.write(`${JSON.stringify({
+      status: result.status,
+      findings: result.findings,
+      failure_message: result.failure_message,
+    }, null, 2)}\n`);
+    return result.status === 'clean' ? 0 : result.status === 'findings' ? 1 : 2;
+  }
+
+  if (result.status === 'findings') {
+    printFindings(result.review, {
+      repoRoot: result.repoRoot,
+      deletedLineRanges: result.deletedLineRanges,
+      renamedFilePathAliases: result.renamedFilePathAliases,
+    });
+    return 1;
+  }
+
+  if (result.status === 'clean') {
+    process.stdout.write('Structured review is clean.\n');
+    return 0;
+  }
+
+  process.stdout.write(`${result.failure_message}\n`);
+  return 2;
+}
+
+function resolveDefaultCodexHome(env = process.env) {
+  const homeDir = env.HOME ?? env.USERPROFILE;
   if (!homeDir) {
     throw new Error('Could not resolve the default Codex home. Set HOME or LOCAL_CODEX_REVIEW_SOURCE_HOME.');
   }
 
-  const callerCodexHome = process.env.CODEX_HOME?.trim();
+  const callerCodexHome = env.CODEX_HOME?.trim();
   const desktopSessionCodexHome =
-    Boolean(process.env.CODEX_SESSION_CONTEXT)
-    || Boolean(process.env.CODEX_THREAD_ID)
-    || Boolean(process.env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE);
+    Boolean(env.CODEX_SESSION_CONTEXT)
+    || Boolean(env.CODEX_THREAD_ID)
+    || Boolean(env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE);
 
   if (callerCodexHome && !desktopSessionCodexHome) {
     return callerCodexHome;
@@ -775,6 +967,8 @@ function readTomlSectionName(sectionBlock) {
 function buildPrompt(repoRoot, options, scope, promptTemplate) {
   const scopeLine = options.mode === 'base'
     ? `- Review changes against base ref: ${options.target}, plus any current untracked worktree files so newly created local files are not missed before git add. Ignore obviously unrelated scratch or generated artifacts.`
+    : options.mode === 'head-range'
+      ? `- Review changes against base ref: ${options.baseRef} and head ref: ${options.headRef ?? 'HEAD'}. Review only the tracked PR diff and ignore unrelated untracked worktree files.`
     : options.mode === 'commit'
       ? `- Review only commit: ${options.target}.`
       : '- Review only the current uncommitted diff.';
@@ -792,6 +986,7 @@ function buildPrompt(repoRoot, options, scope, promptTemplate) {
     'Review scope:',
     `- Repository root: ${repoRoot}`,
     scopeLine,
+    ...(options.taskHint ? [`- Planned task hint: ${options.taskHint}`] : []),
     '- Focus on correctness, regressions, and merge-blocking issues introduced by the diff.',
     '- Ignore style-only nits.',
     '',
@@ -1054,25 +1249,19 @@ function readGitFile(repoRoot, revision, relativePath) {
   throw new Error(`Git command failed: git show ${revision}:${relativePath}`);
 }
 
-function readGitIndexFile(repoRoot, relativePath) {
-  const result = spawnSync('git', ['show', `:${relativePath}`], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    maxBuffer: GIT_OUTPUT_MAX_BUFFER_BYTES,
-  });
-
-  if (result.status === 0) {
-    return result.stdout ?? '';
-  }
-
-  if (result.status === 128) {
-    return null;
-  }
-
-  throw new Error(`Git command failed: git show :${relativePath}`);
-}
-
 function collectReviewScope(repoRoot, options, emptyFilePath) {
+  const pathspecArgs = buildReviewPathspecArgs(options);
+
+  if (options.mode === 'head-range') {
+    const headRef = options.headRef ?? 'HEAD';
+    const mergeBase = runGit(repoRoot, ['merge-base', options.baseRef, headRef]).trim();
+    return {
+      changedFiles: readGitLines(repoRoot, ['diff', '--name-only', '-z', mergeBase, headRef, ...pathspecArgs]),
+      lineRangeExemptFiles: readGitLines(repoRoot, ['diff', '--name-only', '--diff-filter=D', '-z', mergeBase, headRef, ...pathspecArgs]),
+      patch: runGit(repoRoot, ['diff', '--no-ext-diff', '--unified=3', mergeBase, headRef, ...pathspecArgs]),
+    };
+  }
+
   if (options.mode === 'base') {
     const mergeBase = runGit(repoRoot, ['merge-base', options.target, 'HEAD']).trim();
     return mergeReviewScopes(
@@ -1094,6 +1283,12 @@ function collectReviewScope(repoRoot, options, emptyFilePath) {
   }
 
   return collectUncommittedScope(repoRoot, emptyFilePath);
+}
+
+function buildReviewPathspecArgs(options) {
+  return Array.isArray(options.changedFiles) && options.changedFiles.length > 0
+    ? ['--', ...options.changedFiles]
+    : [];
 }
 
 function readGitLines(repoRoot, args) {
@@ -1188,8 +1383,8 @@ function resolveTrackedWorktreeBaseRef(repoRoot) {
   return result.status === 0 ? 'HEAD' : EMPTY_TREE_HASH;
 }
 
-async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputSchemaPath, prompt, timeoutMs }) {
-  const childEnv = await buildChildEnv(isolatedCodexHome);
+async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputSchemaPath, prompt, timeoutMs, env }) {
+  const childEnv = await buildChildEnv(isolatedCodexHome, env);
 
   return await new Promise((resolve, reject) => {
     let settled = false;
@@ -1318,8 +1513,8 @@ async function runStructuredReview({ cwd, isolatedCodexHome, outputPath, outputS
   });
 }
 
-async function buildChildEnv(isolatedCodexHome) {
-  const childEnv = { ...process.env, CODEX_HOME: isolatedCodexHome };
+async function buildChildEnv(isolatedCodexHome, baseEnv = process.env) {
+  const childEnv = { ...baseEnv, CODEX_HOME: isolatedCodexHome };
   const allowedCodexEnvKeys = await collectAllowedCodexEnvKeys(isolatedCodexHome);
 
   for (const key of Object.keys(childEnv)) {
@@ -1549,6 +1744,30 @@ function parseStructuredReviewPayload(lastMessage) {
 
     throw error;
   }
+}
+
+function appendStructuredReviewPayloadPreview(message, payload) {
+  const preview = formatStructuredReviewPayloadPreview(payload);
+  if (!preview) {
+    return message;
+  }
+
+  return `${message} Payload preview: ${preview}`;
+}
+
+function formatStructuredReviewPayloadPreview(payload) {
+  if (typeof payload !== 'string') {
+    return '';
+  }
+
+  const condensed = payload.replace(/\s+/g, ' ').trim();
+  if (!condensed) {
+    return '';
+  }
+
+  return condensed.length > 240
+    ? `${condensed.slice(0, 237)}...`
+    : condensed;
 }
 
 function isPathWithinRoot(rootPath, candidatePath) {
@@ -2031,10 +2250,27 @@ function printFindings(review, scope = {}) {
   }
 }
 
-try {
-  const trustedRunnerExitCode = await maybeRunTrustedSameRepoRunner(process.argv.slice(2));
-  process.exitCode = trustedRunnerExitCode ?? await main();
-} catch (error) {
-  process.stdout.write(`${String(error.message ?? error)}\n`);
-  process.exitCode = 2;
+const requestedCliOutputFormat = resolveRequestedOutputFormat(process.argv.slice(2));
+
+if (
+  process.argv[1]
+  && normalizeComparablePath(process.argv[1]) === normalizeComparablePath(fileURLToPath(import.meta.url))
+) {
+  try {
+    const trustedRunnerExitCode = await maybeRunTrustedSameRepoRunner(process.argv.slice(2));
+    process.exitCode = trustedRunnerExitCode ?? await main();
+  } catch (error) {
+    process.exitCode = emitCliResult(
+      {
+        status: 'manual_review_required',
+        findings: [],
+        review: null,
+        repoRoot: null,
+        deletedLineRanges: new Map(),
+        renamedFilePathAliases: new Map(),
+        failure_message: String(error.message ?? error),
+      },
+      { outputFormat: requestedCliOutputFormat },
+    );
+  }
 }

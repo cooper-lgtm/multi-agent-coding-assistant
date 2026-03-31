@@ -2,14 +2,19 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { runPlanTaskSequence } from '../dist/index.js';
 
 const execFileAsync = promisify(execFile);
 const NO_MERGE_SYSTEM_PROMPT =
-  'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging.';
+  'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging.';
+const DEFAULT_INSTALL_GIT_HOOKS_SCRIPT_PATH = fileURLToPath(new URL('./install-git-hooks.mjs', import.meta.url));
+const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
+const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
+const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -29,11 +34,12 @@ async function main() {
       taskHints,
       pollIntervalMs: options.pollIntervalMs,
       checksTimeoutMs: options.checksTimeoutMs,
-      reviewTimeoutMs: options.reviewTimeoutMs,
       maxCheckPolls: options.maxCheckPolls,
-      maxReviewPolls: options.maxReviewPolls,
     },
-    createShellDependencies({ cwd: options.repoPath }),
+    createShellDependencies({
+      cwd: options.repoPath,
+      reviewTimeoutMs: options.reviewTimeoutMs,
+    }),
   );
 
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -90,9 +96,7 @@ function parseArgs(args) {
         index += 1;
         break;
       case '--max-review-polls':
-        options.maxReviewPolls = Number(next);
-        index += 1;
-        break;
+        throw new Error('--max-review-polls is no longer supported because local review is now a synchronous pre-push gate.');
       case '--task':
         options.tasks.push(next);
         index += 1;
@@ -113,12 +117,13 @@ function extractPlanTaskHints(markdown) {
   return [...markdown.matchAll(/^### (Task \d+: .+)$/gm)].map((match) => match[1]);
 }
 
-function createShellDependencies({ cwd }) {
-  const cleanReviewObservationByHead = new Map();
+function createShellDependencies({ cwd, reviewTimeoutMs }) {
   const consecutiveCancelledCheckObservationsByPr = new Map();
 
   return {
-    executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch, priorReview }) => {
+    executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch }) => {
+      await ensureGitHooksInstalled(repoPath);
+
       const gooseArgs = [
         'run',
         '--recipe',
@@ -139,14 +144,13 @@ function createShellDependencies({ cwd }) {
         `task_hint=${taskHint}`,
       ];
 
-      if (priorReview && priorReview.findings.length > 0) {
-        gooseArgs.push('--params', `prior_review=${JSON.stringify(priorReview.findings)}`);
-      }
-
       const stdout = await runCommand(
         'goose',
         gooseArgs,
-        { cwd },
+        {
+          cwd,
+          env: buildLocalReviewEnv(reviewTimeoutMs),
+        },
       );
 
       return JSON.parse(stdout);
@@ -252,77 +256,6 @@ function createShellDependencies({ cwd }) {
       consecutiveCancelledCheckObservationsByPr.delete(prUrl);
       return 'pending';
     },
-    getPullRequestHeadSha: async ({ prUrl }) => {
-      return runCommand(
-        'gh',
-        ['pr', 'view', prUrl, '--json', 'headRefOid', '--jq', '.headRefOid'],
-        { cwd },
-      );
-    },
-    getCodexReviewState: async ({ prUrl, headSha }) => {
-      const observationKey = `${prUrl}::${headSha}`;
-      const { owner, repo, number } = parseGitHubPrUrl(prUrl);
-      const reviews = JSON.parse(
-        await runCommand(
-          'gh',
-          ['api', `repos/${owner}/${repo}/pulls/${number}/reviews`],
-          { cwd },
-        ),
-      );
-
-      const matchingReviews = reviews.filter((review) => {
-        return review.user?.login === 'chatgpt-codex-connector[bot]' && review.commit_id === headSha;
-      });
-
-      const latestReview = matchingReviews.at(-1);
-      if (!latestReview) {
-        cleanReviewObservationByHead.delete(observationKey);
-        return { status: 'pending', findings: [] };
-      }
-
-      const commentsResponse = JSON.parse(
-        await runCommand(
-          'gh',
-          ['api', '--paginate', '--slurp', `repos/${owner}/${repo}/pulls/${number}/comments`],
-          { cwd },
-        ),
-      );
-      const comments = flattenPaginatedComments(commentsResponse);
-
-      const findings = comments
-        .filter((comment) => {
-          return (
-            comment.user?.login === 'chatgpt-codex-connector[bot]' &&
-            comment.pull_request_review_id === latestReview.id
-          );
-        })
-        .map((comment) => ({
-          path: comment.path,
-          body: comment.body,
-        }));
-
-      const reviewId = String(latestReview.id);
-      if (findings.length === 0) {
-        const previousObservation = cleanReviewObservationByHead.get(observationKey);
-        cleanReviewObservationByHead.set(observationKey, reviewId);
-
-        if (previousObservation !== reviewId) {
-          return {
-            status: 'pending',
-            review_id: reviewId,
-            findings: [],
-          };
-        }
-      } else {
-        cleanReviewObservationByHead.delete(observationKey);
-      }
-
-      return {
-        status: findings.length > 0 ? 'findings' : 'clean',
-        review_id: reviewId,
-        findings,
-      };
-    },
     mergePullRequest: async ({ prUrl }) => {
       await runCommand(
         'gh',
@@ -334,6 +267,14 @@ function createShellDependencies({ cwd }) {
       await new Promise((resolve) => setTimeout(resolve, ms));
     },
   };
+}
+
+async function ensureGitHooksInstalled(repoPath) {
+  await runCommand(
+    process.execPath,
+    [process.env.PLAN_RUNNER_INSTALL_HOOKS_SCRIPT_PATH?.trim() || DEFAULT_INSTALL_GIT_HOOKS_SCRIPT_PATH, '--repo-path', repoPath],
+    { cwd: repoPath },
+  );
 }
 
 async function readDetailedChecks({ prUrl, cwd }) {
@@ -645,9 +586,295 @@ async function runCommand(command, args, options) {
   const { stdout } = await execFileAsync(command, args, {
     cwd: options.cwd,
     encoding: 'utf8',
+    env: options.env ?? process.env,
+    maxBuffer: options.maxBuffer,
+    timeout: options.timeout,
   });
 
   return stdout.trim();
+}
+
+function buildLocalReviewCommand({ baseRef, headSha, changedFiles = [], taskHint = null }) {
+  const runnerPath = process.env.PLAN_RUNNER_LOCAL_REVIEW_RUNNER_PATH?.trim() || DEFAULT_LOCAL_REVIEW_RUNNER_PATH;
+  const argv = [
+    runnerPath,
+    '--head-range',
+    baseRef,
+    headSha,
+  ];
+
+  for (const changedFile of changedFiles) {
+    argv.push('--changed-file', changedFile);
+  }
+
+  if (taskHint) {
+    argv.push('--task-hint', taskHint);
+  }
+
+  argv.push('--output-format', 'json');
+
+  return {
+    bin: 'node',
+    argv,
+  };
+}
+
+function buildLocalReviewEnv(reviewTimeoutMs) {
+  const env = { ...process.env };
+  if (typeof reviewTimeoutMs === 'number' && Number.isFinite(reviewTimeoutMs) && reviewTimeoutMs > 0) {
+    env.LOCAL_CODEX_REVIEW_TIMEOUT_MS = String(reviewTimeoutMs);
+  }
+
+  return env;
+}
+
+async function runLocalReviewCli({ repoPath, baseRef, headSha, changedFiles, taskHint, reviewTimeoutMs }) {
+  const command = buildLocalReviewCommand({ baseRef, headSha, changedFiles, taskHint });
+  let stdout = '';
+  const outerTimeoutMs = (
+    typeof reviewTimeoutMs === 'number' &&
+    Number.isFinite(reviewTimeoutMs) &&
+    reviewTimeoutMs > 0
+  )
+    ? reviewTimeoutMs + LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS
+    : undefined;
+  const env = buildLocalReviewEnv(reviewTimeoutMs);
+
+  try {
+    const result = await execFileAsync(process.execPath, command.argv, {
+      cwd: repoPath,
+      encoding: 'utf8',
+      env,
+      maxBuffer: LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES,
+      timeout: outerTimeoutMs,
+    });
+    stdout = result.stdout.trim();
+  } catch (error) {
+    if (typeof error?.signal === 'string' && error.signal.length > 0) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        risk_notes: [`Local review runner exceeded the outer timeout after ${outerTimeoutMs}ms.`],
+      };
+    }
+
+    if (typeof error?.code !== 'number' || ![1, 2].includes(error.code)) {
+      throw error;
+    }
+
+    stdout = String(error.stdout ?? '').trim();
+  }
+
+  if (!stdout) {
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      risk_notes: ['Local review runner did not return output.'],
+    };
+  }
+
+  try {
+    return normalizeLocalReviewResult(JSON.parse(stdout));
+  } catch (error) {
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      risk_notes: [`Local review runner returned invalid JSON: ${String(error.message ?? error)}`],
+    };
+  }
+}
+
+async function resolveLocalReviewBaseRef({ prUrl, cwd }) {
+  const baseRefName = await runCommand(
+    'gh',
+    ['pr', 'view', prUrl, '--json', 'baseRefName', '--jq', '.baseRefName'],
+    { cwd },
+  );
+  const baseRefOid = await runCommand(
+    'gh',
+    ['pr', 'view', prUrl, '--json', 'baseRefOid', '--jq', '.baseRefOid'],
+    { cwd },
+  );
+
+  if (baseRefOid && await gitCommitObjectExists(cwd, baseRefOid)) {
+    return baseRefOid;
+  }
+
+  if (baseRefName && baseRefOid) {
+    await fetchBaseRef(cwd, baseRefName);
+  }
+
+  if (baseRefOid && await gitCommitObjectExists(cwd, baseRefOid)) {
+    return baseRefOid;
+  }
+
+  throw new Error(`Could not resolve a trusted local review base ref for ${prUrl}.`);
+}
+
+async function gitCommitObjectExists(cwd, revision) {
+  try {
+    await runCommand('git', ['cat-file', '-e', `${revision}^{commit}`], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchBaseRef(cwd, baseRefName) {
+  try {
+    await runCommand('git', ['fetch', '--no-tags', 'origin', baseRefName], {
+      cwd,
+      maxBuffer: LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES,
+    });
+  } catch {
+    // Keep the final decision fail-closed; fetch is only a best-effort refresh.
+  }
+}
+
+async function runFakeLocalReview({
+  statePath,
+  prUrl,
+  headSha,
+  repoPath,
+  changedFiles,
+  taskHint,
+  reviewTimeoutMs,
+}) {
+  const state = JSON.parse(await readFile(statePath, 'utf8'));
+  const prNumber = parseGitHubPrUrl(prUrl).number;
+  const baseRef = state.currentBaseRefOids?.[prNumber] ?? state.baseRefOids?.[prNumber]?.[0] ?? 'main';
+  const command = buildLocalReviewCommand({ baseRef, headSha, changedFiles, taskHint });
+  state.commands.push({
+    bin: command.bin,
+    argv: command.argv,
+  });
+
+  const localReviewState = shiftQueue(state.localReviews?.[prNumber]?.[headSha], null);
+  const normalizedLocalReviewState = localReviewState
+    ? normalizeLocalReviewResult(localReviewState)
+    : synthesizeLegacyLocalReviewResult(state, prNumber, headSha);
+
+  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  return normalizedLocalReviewState;
+}
+
+function synthesizeLegacyLocalReviewResult(state, prNumber, headSha) {
+  const queuedReviews = state.reviews?.[prNumber]?.[headSha];
+  if (!Array.isArray(queuedReviews) || queuedReviews.length === 0) {
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      risk_notes: ['No fake local review result was configured.'],
+    };
+  }
+
+  let latestReview = shiftQueue(queuedReviews, { status: 'pending' });
+  while (Array.isArray(queuedReviews) && queuedReviews.length > 0) {
+    latestReview = shiftQueue(queuedReviews, latestReview);
+  }
+
+  if (latestReview?.status === 'pending') {
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      risk_notes: ['Fake local review fixture remained pending.'],
+    };
+  }
+
+  const reviewId = latestReview?.review_id === undefined ? null : String(latestReview.review_id);
+  const findings = reviewId ? flattenLegacyCommentState(state.comments?.[prNumber]?.[reviewId]) : [];
+  return {
+    status: findings.length > 0 ? 'findings' : 'clean',
+    review_id: reviewId ?? undefined,
+    findings,
+  };
+}
+
+function flattenLegacyCommentState(commentState) {
+  if (!commentState) {
+    return [];
+  }
+
+  if (Array.isArray(commentState)) {
+    if (commentState.length === 0) {
+      return [];
+    }
+
+    if (Array.isArray(commentState[0])) {
+      return commentState.flat();
+    }
+
+    return commentState;
+  }
+
+  if (Array.isArray(commentState.polls)) {
+    const flattenedPolls = commentState.polls.flatMap((poll) => flattenLegacyCommentState(poll));
+    return flattenedPolls;
+  }
+
+  return [];
+}
+
+function normalizeLocalReviewResult(reviewResult) {
+  if (!reviewResult || typeof reviewResult !== 'object') {
+    return {
+      status: 'manual_review_required',
+      findings: [],
+      risk_notes: ['Local review did not return a valid result.'],
+    };
+  }
+
+  if (reviewResult.status === 'clean' || reviewResult.status === 'findings') {
+    if (!Array.isArray(reviewResult.findings)) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        risk_notes: ['Local review returned a non-array findings payload.'],
+      };
+    }
+
+    if (reviewResult.status === 'clean' && reviewResult.findings.length > 0) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        risk_notes: ['Local review returned a clean status with inline findings.'],
+      };
+    }
+
+    if (reviewResult.status === 'findings' && reviewResult.findings.length === 0) {
+      return {
+        status: 'manual_review_required',
+        findings: [],
+        risk_notes: ['Local review returned a findings status without inline findings.'],
+      };
+    }
+
+    return {
+      status: reviewResult.status,
+      review_id: typeof reviewResult.review_id === 'string' ? reviewResult.review_id : undefined,
+      findings: reviewResult.findings,
+      risk_notes: Array.isArray(reviewResult.risk_notes) ? reviewResult.risk_notes : [],
+    };
+  }
+
+  return {
+    status: 'manual_review_required',
+    findings: Array.isArray(reviewResult.findings) ? reviewResult.findings : [],
+    risk_notes: [
+      ...(Array.isArray(reviewResult.risk_notes) ? reviewResult.risk_notes : []),
+      ...(typeof reviewResult.failure_message === 'string' && reviewResult.failure_message.length > 0
+        ? [reviewResult.failure_message]
+        : []),
+    ],
+  };
+}
+
+function shiftQueue(queue, fallback) {
+  if (!Array.isArray(queue) || queue.length === 0) {
+    return fallback;
+  }
+
+  return queue.shift();
 }
 
 function parseGitHubPrUrl(prUrl) {
