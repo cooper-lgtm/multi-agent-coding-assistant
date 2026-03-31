@@ -196,7 +196,7 @@ Behavior:
 - the repo-managed `pre-push` hook resolves its review base in this order: `LOCAL_CODEX_REVIEW_BASE_REF`, then `branch.<name>.codex-review-base`, then `branch.<name>.gh-merge-base`, then remote/local `main`/`master`
 - the repo-managed `pre-push` hook reviews `--head-range <base-ref> HEAD`, so unrelated untracked worktree files do not block a push and hook installs into external target repos can pin the trusted runner path back to this repository
 - when `npm run review:local` is run inside this repository, the review prompt and schema are loaded from trusted mainline refs such as `origin/main` instead of the current branch's committed copies
-- same-repo `review:local` also re-executes the runner from a frozen trusted mainline baseline before review logic starts; if no trusted mainline runner is available locally, the review fails closed
+- same-repo `review:local` re-executes the runner from a frozen trusted mainline baseline before review logic starts and can fall back to the current branch's committed runner only when trusted mainline refs still supply the review policy assets but have not yet landed the required runner CLI support
 - same-repo `--base main` / `--base master` review can also bootstrap from the explicit local mainline ref when no trusted remote mainline ref exists
 - runs Codex in an isolated `CODEX_HOME` and strips desktop-thread `CODEX_*` variables so local automation does not inherit the interactive Codex Desktop session context
 

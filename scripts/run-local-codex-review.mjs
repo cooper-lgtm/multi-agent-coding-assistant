@@ -114,11 +114,33 @@ function readBootstrapRunnerSource(repoRoot, options) {
     }
   }
 
+  const committedSameRepoRunner = readCommittedSameRepoRunnerSource(repoRoot, options, trustedBootstrapRefs);
+  if (committedSameRepoRunner !== null) {
+    return committedSameRepoRunner;
+  }
+
   throw new Error(buildTrustedRunnerResolutionError());
 }
 
 function buildTrustedRunnerResolutionError() {
   return `Could not resolve trusted review runner ${RUNNER_SCRIPT_RELATIVE_PATH} from a trusted mainline ref. Fetch origin/main (or another trusted mainline ref) so same-repo bootstrap review can run from a frozen mainline baseline.`;
+}
+
+function readCommittedSameRepoRunnerSource(repoRoot, options, trustedBootstrapRefs) {
+  if (!repositoryMatchesScriptRepo(repoRoot)) {
+    return null;
+  }
+
+  if (![...trustedBootstrapRefs].some((refName) => gitRefExists(repoRoot, refName))) {
+    return null;
+  }
+
+  const committedHeadRunner = readGitFile(repoRoot, 'HEAD', RUNNER_SCRIPT_RELATIVE_PATH);
+  if (committedHeadRunner !== null && runnerSourceSupportsRequestedOptions(committedHeadRunner, options)) {
+    return committedHeadRunner;
+  }
+
+  return null;
 }
 
 function runnerSourceSupportsRequestedOptions(source, options) {

@@ -2180,21 +2180,19 @@ test('npm review:local bootstraps same-repo runner code from a trusted mainline 
   }
 });
 
-test('local codex review fails closed when trusted mainline refs do not support machine-readable head-range review', async () => {
+test('local codex review falls back to the committed same-repo runner when trusted mainline refs do not yet support machine-readable head-range review', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-same-repo-head-range-bootstrap-'));
   const repoRoot = path.join(tempRoot, 'repo');
 
   try {
-    const promptTemplate = await readFile(path.join(projectRoot, 'prompts', 'review-agent-codex-exec.md'), 'utf8');
-    const outputSchema = await readFile(path.join(projectRoot, 'prompts', 'review-agent-output-schema.json'), 'utf8');
     const currentRunnerSource = await readFile(scriptPath, 'utf8');
     const legacyTrustedRunnerSource = removeRunnerCliSupport(currentRunnerSource, ['--head-range', '--output-format']);
 
     await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
     await mkdir(path.join(repoRoot, 'prompts'), { recursive: true });
     await writeFile(path.join(repoRoot, 'scripts', 'run-local-codex-review.mjs'), legacyTrustedRunnerSource, 'utf8');
-    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), promptTemplate, 'utf8');
-    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-output-schema.json'), outputSchema, 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), 'Trusted remote head-range prompt.\n', 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-output-schema.json'), '{"trusted":"remote-head-range"}', 'utf8');
     await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\n', 'utf8');
 
     runGit(repoRoot, ['init', '--initial-branch=main']);
@@ -2208,8 +2206,10 @@ test('local codex review fails closed when trusted mainline refs do not support 
     runGit(repoRoot, ['checkout', '-b', 'codex/task-review']);
 
     await writeFile(path.join(repoRoot, 'scripts', 'run-local-codex-review.mjs'), currentRunnerSource, 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), 'Untrusted branch prompt.\n', 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-output-schema.json'), '{"trusted":"branch"}', 'utf8');
     await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\nbranch change\n', 'utf8');
-    runGit(repoRoot, ['add', 'scripts/run-local-codex-review.mjs', 'tracked.txt']);
+    runGit(repoRoot, ['add', 'scripts/run-local-codex-review.mjs', 'prompts/review-agent-codex-exec.md', 'prompts/review-agent-output-schema.json', 'tracked.txt']);
     runGit(repoRoot, ['commit', '-m', 'feature review support']);
 
     const { fakeBinPath, sourceCodexHome, capturePath, mode } = await setupFakeCodexEnvironment(tempRoot, 'findings');
@@ -2229,33 +2229,38 @@ test('local codex review fails closed when trusted mainline refs do not support 
       useTrustedRunnerBootstrap: true,
     });
 
-    assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+    assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
     assert.deepEqual(JSON.parse(result.stdout), {
-      status: 'manual_review_required',
-      findings: [],
-      failure_message: 'Could not resolve trusted review runner scripts/run-local-codex-review.mjs from a trusted mainline ref. Fetch origin/main (or another trusted mainline ref) so same-repo bootstrap review can run from a frozen mainline baseline.',
+      status: 'findings',
+      findings: [
+        {
+          path: 'tracked.txt',
+          body: 'Example body.',
+        },
+      ],
+      failure_message: null,
     });
-    await assert.rejects(() => stat(capturePath));
+    const capture = JSON.parse(await readFile(capturePath, 'utf8'));
+    assert.ok(capture.stdin.startsWith('Trusted remote head-range prompt.'));
+    assert.equal(capture.outputSchemaContent.trim(), '{"trusted":"remote-head-range"}');
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
 
-test('local codex review fails closed when trusted mainline refs do not support task-hint filtered head-range review', async () => {
+test('local codex review falls back to the committed same-repo runner when trusted mainline refs do not yet support task-hint filtered head-range review', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'local-codex-review-same-repo-task-hint-bootstrap-'));
   const repoRoot = path.join(tempRoot, 'repo');
 
   try {
-    const promptTemplate = await readFile(path.join(projectRoot, 'prompts', 'review-agent-codex-exec.md'), 'utf8');
-    const outputSchema = await readFile(path.join(projectRoot, 'prompts', 'review-agent-output-schema.json'), 'utf8');
     const currentRunnerSource = await readFile(scriptPath, 'utf8');
     const legacyTrustedRunnerSource = removeRunnerCliSupport(currentRunnerSource, ['--task-hint']);
 
     await mkdir(path.join(repoRoot, 'scripts'), { recursive: true });
     await mkdir(path.join(repoRoot, 'prompts'), { recursive: true });
     await writeFile(path.join(repoRoot, 'scripts', 'run-local-codex-review.mjs'), legacyTrustedRunnerSource, 'utf8');
-    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), promptTemplate, 'utf8');
-    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-output-schema.json'), outputSchema, 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), 'Trusted remote task-hint prompt.\n', 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-output-schema.json'), '{"trusted":"remote-task-hint"}', 'utf8');
     await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\n', 'utf8');
 
     runGit(repoRoot, ['init', '--initial-branch=main']);
@@ -2269,8 +2274,10 @@ test('local codex review fails closed when trusted mainline refs do not support 
     runGit(repoRoot, ['checkout', '-b', 'codex/task-review']);
 
     await writeFile(path.join(repoRoot, 'scripts', 'run-local-codex-review.mjs'), currentRunnerSource, 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-codex-exec.md'), 'Untrusted branch task-hint prompt.\n', 'utf8');
+    await writeFile(path.join(repoRoot, 'prompts', 'review-agent-output-schema.json'), '{"trusted":"branch-task-hint"}', 'utf8');
     await writeFile(path.join(repoRoot, 'tracked.txt'), 'base\nbranch change\n', 'utf8');
-    runGit(repoRoot, ['add', 'scripts/run-local-codex-review.mjs', 'tracked.txt']);
+    runGit(repoRoot, ['add', 'scripts/run-local-codex-review.mjs', 'prompts/review-agent-codex-exec.md', 'prompts/review-agent-output-schema.json', 'tracked.txt']);
     runGit(repoRoot, ['commit', '-m', 'feature review support']);
 
     const { fakeBinPath, sourceCodexHome, capturePath, mode } = await setupFakeCodexEnvironment(tempRoot, 'clean');
@@ -2285,13 +2292,16 @@ test('local codex review fails closed when trusted mainline refs do not support 
       useTrustedRunnerBootstrap: true,
     });
 
-    assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.deepEqual(JSON.parse(result.stdout), {
-      status: 'manual_review_required',
+      status: 'clean',
       findings: [],
-      failure_message: 'Could not resolve trusted review runner scripts/run-local-codex-review.mjs from a trusted mainline ref. Fetch origin/main (or another trusted mainline ref) so same-repo bootstrap review can run from a frozen mainline baseline.',
+      failure_message: null,
     });
-    await assert.rejects(() => stat(capturePath));
+    const capture = JSON.parse(await readFile(capturePath, 'utf8'));
+    assert.ok(capture.stdin.startsWith('Trusted remote task-hint prompt.'));
+    assert.match(capture.stdin, /Planned task hint: Task 1: filtered task/);
+    assert.equal(capture.outputSchemaContent.trim(), '{"trusted":"remote-task-hint"}');
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

@@ -44,7 +44,7 @@ node --test tests/cli-smoke.test.mjs
 - exit `2` means the local review process failed or did not return a valid structured payload
 - a stalled local `codex exec` is cut off by a 30 minute watchdog by default; override with `LOCAL_CODEX_REVIEW_TIMEOUT_MS` using a positive millisecond value
 - when run inside this repository, uncommitted-mode review loads the prompt/schema from trusted mainline refs instead of the current branch's committed copies
-- same-repo review also re-executes the runner from a frozen baseline before review logic starts: trusted mainline refs first, then the committed/staged same-repo runner when this branch has not landed on main yet
+- same-repo review also re-executes the runner from a frozen baseline before review logic starts: trusted mainline refs first, then the committed same-repo runner only when the mainline policy assets are available but the requested runner CLI support has not landed on main yet
 - same-repo `--base main` / `--base master` review may bootstrap from the explicit local mainline ref when no trusted remote mainline ref exists
 
 ## Guardrails
