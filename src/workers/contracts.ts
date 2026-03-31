@@ -17,6 +17,13 @@ export type WorkerAttemptStatus =
   | 'needs_fix';
 
 export type WorkerSuggestedStatus = WorkerAttemptStatus;
+export type WorkerFailureCategory =
+  | 'implementation_failed'
+  | 'implementation_blocked'
+  | 'quality_failed'
+  | 'quality_needs_fix'
+  | 'verification_incomplete'
+  | 'unknown';
 
 export type WorkerTestStatus = 'pass' | 'fail' | 'skip' | 'pending';
 
@@ -32,6 +39,47 @@ export interface WorkerDeliveryMetadata {
   pr_url?: string | null;
 }
 
+export type WorkerPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun' | 'unknown';
+
+export interface WorkerEnvironmentSnapshot {
+  package_manager: WorkerPackageManager;
+  package_manifest_path: string | null;
+  lockfile_path: string | null;
+  build_command: string | null;
+  test_commands: string[];
+}
+
+export interface WorkerRetryContextSummary {
+  attempt: number;
+  status: WorkerAttemptStatus;
+  summary: string;
+  blocker_category: WorkerBlockerCategory | null;
+  blocker_message: string | null;
+  failure_category: WorkerFailureCategory | null;
+  failure_diagnosis: string | null;
+  reconsider_instructions: string[];
+  repeated_pattern_summary: string | null;
+  checklist_feedback: string[];
+  commands_run: string[];
+  review_feedback: string[];
+}
+
+export interface WorkerVerificationPlan {
+  commands: string[];
+  environment_checks: string[];
+  definition_of_done: string[];
+  reconsider_signals: string[];
+  retry_handoff: WorkerRetryContextSummary | null;
+}
+
+export interface WorkerRuntimeContext {
+  repo_context_summary: string[];
+  environment_snapshot: WorkerEnvironmentSnapshot;
+  task_context_files: string[];
+  verification_plan: WorkerVerificationPlan;
+  time_budget_hint: string | null;
+}
+
 export interface WorkerRetryHandoff {
   attempt: number;
   status: WorkerAttemptStatus;
@@ -39,6 +87,11 @@ export interface WorkerRetryHandoff {
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  failure_category: WorkerFailureCategory | null;
+  failure_diagnosis: string | null;
+  reconsider_instructions: string[];
+  repeated_pattern_summary: string | null;
+  checklist_feedback: string[];
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
@@ -53,6 +106,11 @@ export interface WorkerExecutionContext {
   changed_files: string[];
   blocker_category: WorkerBlockerCategory | null;
   blocker_message: string | null;
+  failure_category: WorkerFailureCategory | null;
+  failure_diagnosis: string | null;
+  reconsider_instructions: string[];
+  repeated_pattern_summary: string | null;
+  checklist_feedback: string[];
   implementation_evidence: string[];
   test_evidence: string[];
   review_feedback: string[];
@@ -62,12 +120,14 @@ export interface WorkerExecutionContext {
   suggested_status: WorkerSuggestedStatus | null;
   delivery_metadata: WorkerDeliveryMetadata | null;
   prior_attempt: WorkerRetryHandoff | null;
+  attempt_history: WorkerRetryHandoff[];
 }
 
 export interface WorkerExecutionInput extends WorkerExecutionContext {
   task: ExecutionNode;
   runtime: RuntimeState;
   repo_path?: string;
+  runtime_context: WorkerRuntimeContext | null;
 }
 
 export interface WorkerExecutionOutput extends WorkerExecutionContext {
@@ -104,10 +164,20 @@ export interface QualityGateWorkerExecutionResult extends WorkerExecutionOutput 
 export function createWorkerExecutionContext(
   source: Partial<WorkerExecutionContext> | Partial<ExecutionNode> | null | undefined,
 ): WorkerExecutionContext {
+  const attemptHistory = normalizeRetryHistory([
+    ...((source?.attempt_history as WorkerRetryHandoff[] | undefined) ?? []),
+    ...(source?.prior_attempt ? [source.prior_attempt] : []),
+  ]);
+
   return {
     changed_files: [...(source?.changed_files ?? [])],
     blocker_category: source?.blocker_category ?? null,
     blocker_message: source?.blocker_message ?? null,
+    failure_category: source?.failure_category ?? null,
+    failure_diagnosis: source?.failure_diagnosis ?? null,
+    reconsider_instructions: [...(source?.reconsider_instructions ?? [])],
+    repeated_pattern_summary: source?.repeated_pattern_summary ?? null,
+    checklist_feedback: [...(source?.checklist_feedback ?? [])],
     implementation_evidence: [...(source?.implementation_evidence ?? [])],
     test_evidence: [...(source?.test_evidence ?? [])],
     review_feedback: [...(source?.review_feedback ?? [])],
@@ -116,7 +186,8 @@ export function createWorkerExecutionContext(
     risk_notes: [...(source?.risk_notes ?? [])],
     suggested_status: source?.suggested_status ?? null,
     delivery_metadata: source?.delivery_metadata ? cloneDeliveryMetadata(source.delivery_metadata) : null,
-    prior_attempt: source?.prior_attempt ? cloneRetryHandoff(source.prior_attempt) : null,
+    prior_attempt: attemptHistory.at(-1) ?? null,
+    attempt_history: attemptHistory,
   };
 }
 
@@ -132,12 +203,14 @@ export function createImplementationWorkerExecutionRequest(input: {
   task: ExecutionNode;
   runtime: RuntimeState;
   repoPath?: string;
+  runtimeContext?: WorkerRuntimeContext | null;
 }): ImplementationWorkerExecutionRequest {
   return {
     role: input.task.assigned_agent,
     task: input.task,
     runtime: input.runtime,
     repo_path: input.repoPath,
+    runtime_context: input.runtimeContext ? cloneRuntimeContext(input.runtimeContext) : null,
     ...createWorkerExecutionContext(input.task),
   };
 }
@@ -146,12 +219,14 @@ export function createQualityGateWorkerExecutionRequest(input: {
   task: ExecutionNode;
   runtime: RuntimeState;
   repoPath?: string;
+  runtimeContext?: WorkerRuntimeContext | null;
 }): QualityGateWorkerExecutionRequest {
   return {
     roles: deriveQualityGateRoles(input.task),
     task: input.task,
     runtime: input.runtime,
     repo_path: input.repoPath,
+    runtime_context: input.runtimeContext ? cloneRuntimeContext(input.runtimeContext) : null,
     ...createWorkerExecutionContext(input.task),
   };
 }
@@ -165,6 +240,11 @@ export function applyWorkerExecutionContext(
   task.changed_files = normalized.changed_files;
   task.blocker_category = normalized.blocker_category;
   task.blocker_message = normalized.blocker_message;
+  task.failure_category = normalized.failure_category;
+  task.failure_diagnosis = normalized.failure_diagnosis;
+  task.reconsider_instructions = normalized.reconsider_instructions;
+  task.repeated_pattern_summary = normalized.repeated_pattern_summary;
+  task.checklist_feedback = normalized.checklist_feedback;
   task.implementation_evidence = normalized.implementation_evidence;
   task.test_evidence = normalized.test_evidence;
   task.review_feedback = normalized.review_feedback;
@@ -174,6 +254,7 @@ export function applyWorkerExecutionContext(
   task.suggested_status = normalized.suggested_status;
   task.delivery_metadata = normalized.delivery_metadata;
   task.prior_attempt = normalized.prior_attempt;
+  task.attempt_history = normalized.attempt_history;
 }
 
 export function createWorkerRetryHandoff(
@@ -191,6 +272,11 @@ export function createWorkerRetryHandoff(
     changed_files: context.changed_files,
     blocker_category: context.blocker_category,
     blocker_message: context.blocker_message,
+    failure_category: context.failure_category,
+    failure_diagnosis: context.failure_diagnosis,
+    reconsider_instructions: context.reconsider_instructions,
+    repeated_pattern_summary: context.repeated_pattern_summary,
+    checklist_feedback: context.checklist_feedback,
     implementation_evidence: context.implementation_evidence,
     test_evidence: context.test_evidence,
     review_feedback: context.review_feedback,
@@ -200,6 +286,31 @@ export function createWorkerRetryHandoff(
     suggested_status: context.suggested_status,
     delivery_metadata: context.delivery_metadata,
   };
+}
+
+export function recordWorkerRetryHandoff(
+  target: Pick<WorkerExecutionContext, 'prior_attempt' | 'attempt_history'>,
+  handoff: WorkerRetryHandoff,
+): void {
+  const history = normalizeRetryHistory([
+    ...(target.attempt_history ?? []),
+    handoff,
+  ]);
+
+  target.prior_attempt = history.at(-1) ?? null;
+  target.attempt_history = history;
+}
+
+export function getWorkerAttemptNumber(source: {
+  retry_count?: number;
+  prior_attempt?: WorkerRetryHandoff | null;
+  attempt_history?: WorkerRetryHandoff[] | null;
+}): number {
+  const retryBasedAttempt = (source.retry_count ?? 0) + 1;
+  const priorAttemptBased = (source.prior_attempt?.attempt ?? 0) + 1;
+  const historyBasedAttempt = ((source.attempt_history ?? []).at(-1)?.attempt ?? 0) + 1;
+
+  return Math.max(retryBasedAttempt, priorAttemptBased, historyBasedAttempt);
 }
 
 function deriveQualityGateRoles(task: Pick<ExecutionNode, 'quality_gate'>): Array<'test-agent' | 'review-agent'> {
@@ -213,19 +324,24 @@ function deriveQualityGateRoles(task: Pick<ExecutionNode, 'quality_gate'>): Arra
 
 function cloneRetryHandoff(handoff: WorkerRetryHandoff): WorkerRetryHandoff {
   return {
-    attempt: handoff.attempt,
+    attempt: Number.isInteger(handoff.attempt) ? handoff.attempt : 0,
     status: handoff.status,
     summary: handoff.summary,
-    changed_files: [...handoff.changed_files],
-    blocker_category: handoff.blocker_category,
-    blocker_message: handoff.blocker_message,
-    implementation_evidence: [...handoff.implementation_evidence],
-    test_evidence: [...handoff.test_evidence],
-    review_feedback: [...handoff.review_feedback],
-    commands_run: [...handoff.commands_run],
-    test_results: handoff.test_results.map(cloneTestResult),
-    risk_notes: [...handoff.risk_notes],
-    suggested_status: handoff.suggested_status,
+    changed_files: [...(handoff.changed_files ?? [])],
+    blocker_category: handoff.blocker_category ?? null,
+    blocker_message: handoff.blocker_message ?? null,
+    failure_category: handoff.failure_category ?? null,
+    failure_diagnosis: handoff.failure_diagnosis ?? null,
+    reconsider_instructions: [...(handoff.reconsider_instructions ?? [])],
+    repeated_pattern_summary: handoff.repeated_pattern_summary ?? null,
+    checklist_feedback: [...(handoff.checklist_feedback ?? [])],
+    implementation_evidence: [...(handoff.implementation_evidence ?? [])],
+    test_evidence: [...(handoff.test_evidence ?? [])],
+    review_feedback: [...(handoff.review_feedback ?? [])],
+    commands_run: [...(handoff.commands_run ?? [])],
+    test_results: (handoff.test_results ?? []).map(cloneTestResult),
+    risk_notes: [...(handoff.risk_notes ?? [])],
+    suggested_status: handoff.suggested_status ?? null,
     delivery_metadata: handoff.delivery_metadata ? cloneDeliveryMetadata(handoff.delivery_metadata) : null,
   };
 }
@@ -249,4 +365,63 @@ function cloneDeliveryMetadata(metadata: WorkerDeliveryMetadata): WorkerDelivery
     commit_sha: metadata.commit_sha,
     pr_url: metadata.pr_url,
   };
+}
+
+function cloneRuntimeContext(runtimeContext: WorkerRuntimeContext): WorkerRuntimeContext {
+  return {
+    repo_context_summary: [...runtimeContext.repo_context_summary],
+    environment_snapshot: {
+      package_manager: runtimeContext.environment_snapshot.package_manager,
+      package_manifest_path: runtimeContext.environment_snapshot.package_manifest_path,
+      lockfile_path: runtimeContext.environment_snapshot.lockfile_path,
+      build_command: runtimeContext.environment_snapshot.build_command,
+      test_commands: [...runtimeContext.environment_snapshot.test_commands],
+    },
+    task_context_files: [...runtimeContext.task_context_files],
+    verification_plan: {
+      commands: [...runtimeContext.verification_plan.commands],
+      environment_checks: [...runtimeContext.verification_plan.environment_checks],
+      definition_of_done: [...runtimeContext.verification_plan.definition_of_done],
+      reconsider_signals: [...runtimeContext.verification_plan.reconsider_signals],
+      retry_handoff: runtimeContext.verification_plan.retry_handoff
+        ? {
+            attempt: runtimeContext.verification_plan.retry_handoff.attempt,
+            status: runtimeContext.verification_plan.retry_handoff.status,
+            summary: runtimeContext.verification_plan.retry_handoff.summary,
+            blocker_category: runtimeContext.verification_plan.retry_handoff.blocker_category,
+            blocker_message: runtimeContext.verification_plan.retry_handoff.blocker_message,
+            failure_category: runtimeContext.verification_plan.retry_handoff.failure_category,
+            failure_diagnosis: runtimeContext.verification_plan.retry_handoff.failure_diagnosis,
+            reconsider_instructions: [
+              ...runtimeContext.verification_plan.retry_handoff.reconsider_instructions,
+            ],
+            repeated_pattern_summary: runtimeContext.verification_plan.retry_handoff.repeated_pattern_summary,
+            checklist_feedback: [...runtimeContext.verification_plan.retry_handoff.checklist_feedback],
+            commands_run: [...runtimeContext.verification_plan.retry_handoff.commands_run],
+            review_feedback: [...runtimeContext.verification_plan.retry_handoff.review_feedback],
+          }
+        : null,
+    },
+    time_budget_hint: runtimeContext.time_budget_hint,
+  };
+}
+
+const MAX_WORKER_ATTEMPT_HISTORY = 3;
+
+function normalizeRetryHistory(history: WorkerRetryHandoff[]): WorkerRetryHandoff[] {
+  const byAttempt = new Map<number, WorkerRetryHandoff>();
+
+  for (const handoff of history) {
+    const normalized = cloneRetryHandoff(handoff);
+
+    if (normalized.attempt <= 0 || typeof normalized.summary !== 'string') {
+      continue;
+    }
+
+    byAttempt.set(normalized.attempt, normalized);
+  }
+
+  return [...byAttempt.values()]
+    .sort((left, right) => left.attempt - right.attempt)
+    .slice(-MAX_WORKER_ATTEMPT_HISTORY);
 }

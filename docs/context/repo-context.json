@@ -1,16 +1,19 @@
 {
   "artifact_type": "repo-context",
-  "version": "1.6.0",
+  "version": "1.7.1",
   "status": "refreshed",
   "repo_name": "multi-agent-coding-assistant",
   "repo_path": ".",
-  "refreshed_on": "2026-03-17",
+  "refreshed_on": "2026-03-23",
   "generated_from": [
     "README.md",
     "PRODUCT.md",
     "ARCHITECTURE.md",
     "AGENTS.md",
-    "docs/plans/2026-03-16-goose-integration-post-pr5.md",
+    "docs/roadmap/2026-03-22-runtime-success-roadmap.md",
+    "docs/plans/2026-03-22-runtime-success-harness-design.md",
+    "docs/plans/2026-03-22-pr10-rich-context-injection.md",
+    "docs/plans/2026-03-23-runtime-success-breakdown.md",
     "docs/templates/task-template.md",
     "docs/reviews/recurring-issues.md",
     "src/",
@@ -22,7 +25,10 @@
     "PRODUCT.md",
     "ARCHITECTURE.md",
     "AGENTS.md",
-    "docs/plans/2026-03-16-goose-integration-post-pr5.md",
+    "docs/roadmap/2026-03-22-runtime-success-roadmap.md",
+    "docs/plans/2026-03-22-runtime-success-harness-design.md",
+    "docs/plans/2026-03-22-pr10-rich-context-injection.md",
+    "docs/plans/2026-03-23-runtime-success-breakdown.md",
     "docs/templates/task-template.md",
     "docs/reviews/recurring-issues.md",
     "relevant source and tests"
@@ -57,48 +63,54 @@
     ]
   },
   "active_plan": {
-    "path": "docs/plans/2026-03-16-goose-integration-post-pr5.md",
+    "path": "docs/plans/2026-03-23-runtime-success-breakdown.md",
     "execution_mode": "one_task_slice_per_pr",
+    "roadmap_reference": "docs/roadmap/2026-03-22-runtime-success-roadmap.md",
     "tasks": [
       {
-        "id": 1,
-        "title": "Add structured goose worker-result contracts",
-        "status": "completed"
+        "id": "PR10a",
+        "title": "Execution guidance contracts and DAG propagation",
+        "status": "next"
       },
       {
-        "id": 2,
-        "title": "Add goose recipe assets and task-to-recipe mapping",
-        "status": "completed"
+        "id": "PR10b",
+        "title": "Runtime context builder and local discovery",
+        "status": "planned"
       },
       {
-        "id": 3,
-        "title": "Implement the goose worker adapter",
-        "status": "completed"
+        "id": "PR10c",
+        "title": "Worker payload threading and prompt uptake",
+        "status": "planned"
       },
       {
-        "id": 4,
-        "title": "Route implementation work through goose while keeping quality gates external",
-        "status": "completed"
+        "id": "PR11a",
+        "title": "Runtime middleware seam",
+        "status": "planned"
       },
       {
-        "id": 5,
-        "title": "Implement PR6 human approval and orchestration controls",
-        "status": "completed"
+        "id": "PR11b",
+        "title": "Pre-completion checklist and continuation",
+        "status": "planned"
       },
       {
-        "id": 6,
-        "title": "Implement PR7 budget, policy, and safety controls",
-        "status": "completed"
+        "id": "PR12a",
+        "title": "Retry diagnosis contracts",
+        "status": "planned"
       },
       {
-        "id": 7,
-        "title": "Implement PR8 evaluation suite and golden scenarios",
-        "status": "completed"
+        "id": "PR12b",
+        "title": "Loop detection and retry guidance propagation",
+        "status": "planned"
       },
       {
-        "id": 8,
-        "title": "Implement PR9 CLI entry points and goose delivery workflow",
-        "status": "completed"
+        "id": "PR13a",
+        "title": "Structured runtime-event schema",
+        "status": "planned"
+      },
+      {
+        "id": "PR13b",
+        "title": "Trace analyzer and script",
+        "status": "planned"
       }
     ]
   },
@@ -120,7 +132,7 @@
     ]
   },
   "workflow": {
-    "branch_strategy": "one roadmap slice per branch",
+    "branch_strategy": "one execution slice per branch",
     "pr_strategy": "one slice-sized PR",
     "review_trigger": "automatic Codex review workflow on PR creation or update",
     "merge_gate": "required local validation passes"

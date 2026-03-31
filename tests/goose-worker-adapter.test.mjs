@@ -75,6 +75,7 @@ test('goose worker adapter builds invocation from worker request and parses stru
   assert.equal(receivedInvocation.recipe_path, '.goose/recipes/backend-implementation.yaml');
   assert.equal(receivedInvocation.inputs.task.task_id, request.payload.task.task_id);
   assert.equal(receivedInvocation.inputs.repo_path, request.payload.repo_path);
+  assert.deepEqual(receivedInvocation.inputs.runtime_context, request.payload.runtime_context);
 
   assert.equal(result.ok, true);
   assert.equal(result.output.status, 'implementation_done');
@@ -224,6 +225,25 @@ test('buildGooseProcessArgs serializes recipe inputs as goose params', () => {
         acceptance_criteria: ['Ship typed API contract'],
       },
       retry_context: null,
+      runtime_context: {
+        repo_context_summary: ['Read the repo context before editing.'],
+        environment_snapshot: {
+          package_manager: 'npm',
+          package_manifest_path: 'package.json',
+          lockfile_path: 'package-lock.json',
+          build_command: 'npm run build',
+          test_commands: ['npm run test:runtime'],
+        },
+        task_context_files: ['docs/context/repo-context.md', 'README.md'],
+        verification_plan: {
+          commands: ['npm run build'],
+          environment_checks: ['git status --short'],
+          definition_of_done: ['Implementation uses injected guidance.'],
+          reconsider_signals: ['Runtime context was dropped before goose execution.'],
+          retry_handoff: null,
+        },
+        time_budget_hint: 'Attempt 1 of 3; 2 retries remain after this pass.',
+      },
     },
   });
 
@@ -241,5 +261,7 @@ test('buildGooseProcessArgs serializes recipe inputs as goose params', () => {
     'task={"task_id":"task-api-contract","acceptance_criteria":["Ship typed API contract"]}',
     '--params',
     'retry_context=null',
+    '--params',
+    'runtime_context={"repo_context_summary":["Read the repo context before editing."],"environment_snapshot":{"package_manager":"npm","package_manifest_path":"package.json","lockfile_path":"package-lock.json","build_command":"npm run build","test_commands":["npm run test:runtime"]},"task_context_files":["docs/context/repo-context.md","README.md"],"verification_plan":{"commands":["npm run build"],"environment_checks":["git status --short"],"definition_of_done":["Implementation uses injected guidance."],"reconsider_signals":["Runtime context was dropped before goose execution."],"retry_handoff":null},"time_budget_hint":"Attempt 1 of 3; 2 retries remain after this pass."}',
   ]);
 });

@@ -1,0 +1,50 @@
+name: CI Lint
+
+on:
+  pull_request:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+
+jobs:
+  local-lint:
+    name: local-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run repository lint
+        uses: ./.github/actions/run-npm-check
+        with:
+          node-version: "20"
+          command: |
+            npm run lint
+
+  super-linter:
+    name: super-linter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+      statuses: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Super-linter
+        uses: super-linter/super-linter@v8.5.0
+        env:
+          # Keep repo-local npm/ESLint validation in local-lint.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LINTER_RULES_PATH: .
+          VALIDATE_ALL_CODEBASE: false
+          VALIDATE_GITHUB_ACTIONS: true
+          VALIDATE_MARKDOWN: true

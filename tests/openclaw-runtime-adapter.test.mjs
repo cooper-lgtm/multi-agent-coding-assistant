@@ -12,7 +12,7 @@ import {
   createOpenClawRoleSuccess,
 } from '../dist/index.js';
 
-test('planning role request envelope standardizes planning payloads and model metadata', () => {
+test('planning role request envelope standardizes planning payloads and model metadata', { concurrency: false }, () => {
   const resolver = new OpenClawModelResolver();
   const planningRequest = buildDirectPlanningFixtureRequest();
 
@@ -37,20 +37,32 @@ test('planning role request envelope standardizes planning payloads and model me
   assert.equal(envelope.prompt.prompt_path, 'prompts/planning-agent.system.md');
 });
 
-test('worker role envelopes standardize task payloads plus success and error responses', () => {
+test(
+  'worker role envelopes standardize task payloads plus success and error responses',
+  { concurrency: false },
+  () => {
   const fixture = buildDemoPlanningFixture();
   const { runtime } = buildExecutionDag(fixture, {
     runId: 'run-openclaw-adapter-test',
     availableModels: ['openai-codex/gpt-5.4'],
   });
   const task = runtime.tasks['task-api-contract'];
+  const repoPath = process.cwd();
+
+  task.execution_guidance = {
+    must_read_files: ['README.md', 'src/adapters/goose-recipe-builder.ts'],
+    verification_commands: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+    environment_checks: ['git status --short'],
+    definition_of_done: ['Worker payload includes compact runtime context for implementation.'],
+    reconsider_signals: ['Verification plan is missing from the worker payload.'],
+  };
 
   assert.equal(task.model_metadata?.exact_model_id, 'openai-codex/gpt-5.4');
 
   const envelope = createOpenClawWorkerRoleRequest({
     task,
     runtime,
-    repoPath: '/tmp/example-repo',
+    repoPath,
     prompt: {
       prompt_id: 'backend-agent',
       prompt_path: 'prompts/backend-agent.md',
@@ -63,10 +75,14 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.equal(envelope.model.exact_model_id, 'openai-codex/gpt-5.4');
   assert.equal(envelope.payload.task.task_id, 'task-api-contract');
   assert.equal(envelope.payload.runtime.run_id, 'run-openclaw-adapter-test');
-  assert.equal(envelope.payload.repo_path, '/tmp/example-repo');
+  assert.equal(envelope.payload.repo_path, repoPath);
   assert.deepEqual(envelope.payload.changed_files, []);
   assert.equal(envelope.payload.blocker_category, null);
   assert.equal(envelope.payload.blocker_message, null);
+  assert.equal(envelope.payload.failure_category, null);
+  assert.equal(envelope.payload.failure_diagnosis, null);
+  assert.deepEqual(envelope.payload.reconsider_instructions, []);
+  assert.equal(envelope.payload.repeated_pattern_summary, null);
   assert.deepEqual(envelope.payload.implementation_evidence, []);
   assert.deepEqual(envelope.payload.test_evidence, []);
   assert.deepEqual(envelope.payload.review_feedback, []);
@@ -76,6 +92,32 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.equal(envelope.payload.suggested_status, null);
   assert.equal(envelope.payload.delivery_metadata, null);
   assert.equal(envelope.payload.prior_attempt, null);
+  assert.deepEqual(envelope.payload.attempt_history, []);
+  assert.ok(envelope.payload.runtime_context);
+  assert.ok(envelope.payload.runtime_context.repo_context_summary.length > 0);
+  assert.equal(envelope.payload.runtime_context.environment_snapshot.package_manager, 'npm');
+  assert.equal(envelope.payload.runtime_context.environment_snapshot.package_manifest_path, 'package.json');
+  assert.equal(envelope.payload.runtime_context.environment_snapshot.lockfile_path, 'package-lock.json');
+  assert.deepEqual(envelope.payload.runtime_context.task_context_files, [
+    'docs/context/repo-context.md',
+    'README.md',
+    'src/adapters/goose-recipe-builder.ts',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.commands, [
+    'npm run build',
+    'node --test tests/openclaw-runtime-adapter.test.mjs',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.environment_checks, [
+    'git status --short',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.definition_of_done, [
+    'Worker payload includes compact runtime context for implementation.',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.reconsider_signals, [
+    'Verification plan is missing from the worker payload.',
+  ]);
+  assert.equal(envelope.payload.runtime_context.verification_plan.retry_handoff, null);
+  assert.match(envelope.payload.runtime_context.time_budget_hint, /Attempt 1 of 3/u);
 
   const success = createOpenClawRoleSuccess({
     request: envelope,
@@ -130,19 +172,36 @@ test('worker role envelopes standardize task payloads plus success and error res
   assert.equal(error.ok, false);
   assert.equal(error.error.code, 'adapter_unavailable');
   assert.equal(error.error.retryable, true);
-});
+  },
+);
 
-test('worker role envelopes preserve retry handoff context for quality gate roles', () => {
+test('worker role envelopes preserve retry handoff context for quality gate roles', { concurrency: false }, () => {
   const fixture = buildDemoPlanningFixture();
   const { runtime } = buildExecutionDag(fixture, {
     runId: 'run-openclaw-quality-gate-test',
     availableModels: ['openai-codex/gpt-5.4', 'anthropic/claude-opus-4-6'],
   });
   const task = runtime.tasks['task-api-contract'];
+  const repoPath = process.cwd();
 
+  task.execution_guidance = {
+    must_read_files: ['README.md', 'ARCHITECTURE.md'],
+    verification_commands: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+    environment_checks: ['git status --short'],
+    definition_of_done: ['Quality gate worker can inspect compact retry handoff context.'],
+    reconsider_signals: ['Review feedback is not visible to the next attempt.'],
+  };
   task.changed_files = ['src/api/contract.ts'];
   task.blocker_category = 'quality';
   task.blocker_message = 'Previous review requested changes before approval.';
+  task.failure_category = 'quality_needs_fix';
+  task.failure_diagnosis = 'Previous review feedback still requires broader edge-case coverage.';
+  task.reconsider_instructions = [
+    'Read the review feedback before editing the same contract again.',
+    'Add the missing edge-case coverage before requesting another review.',
+  ];
+  task.repeated_pattern_summary =
+    'Attempts 1 and 2 repeated the same review blocker on unchanged files.';
   task.implementation_evidence = ['Contract types now compile for downstream callers.'];
   task.test_evidence = ['npm run test:adapter passed locally on the previous attempt.'];
   task.review_feedback = ['Review flagged missing edge-case coverage.'];
@@ -162,6 +221,15 @@ test('worker role envelopes preserve retry handoff context for quality gate role
     changed_files: ['src/api/contract.ts'],
     blocker_category: 'quality',
     blocker_message: 'Previous review requested changes before approval.',
+    failure_category: 'quality_needs_fix',
+    failure_diagnosis: 'Previous review feedback still requires broader edge-case coverage.',
+    reconsider_instructions: [
+      'Read the review feedback before editing the same contract again.',
+      'Add the missing edge-case coverage before requesting another review.',
+    ],
+    repeated_pattern_summary:
+      'Attempts 1 and 2 repeated the same review blocker on unchanged files.',
+    checklist_feedback: ['Missing verification evidence for required command: npm run test:adapter'],
     implementation_evidence: ['Contract types now compile for downstream callers.'],
     test_evidence: ['npm run test:adapter passed locally on the previous attempt.'],
     review_feedback: ['Review flagged missing edge-case coverage.'],
@@ -175,13 +243,14 @@ test('worker role envelopes preserve retry handoff context for quality gate role
       pr_url: 'https://github.com/example/repo/pull/123',
     },
   };
+  task.attempt_history = [structuredClone(task.prior_attempt)];
 
   const envelope = createOpenClawWorkerRoleRequest({
     task,
     runtime,
     role: 'test-agent',
     model: 'codex',
-    repoPath: '/tmp/example-repo',
+    repoPath,
     prompt: {
       prompt_id: 'test-agent',
       prompt_path: 'prompts/test-agent.md',
@@ -192,6 +261,19 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   assert.deepEqual(envelope.payload.changed_files, ['src/api/contract.ts']);
   assert.equal(envelope.payload.blocker_category, 'quality');
   assert.equal(envelope.payload.blocker_message, 'Previous review requested changes before approval.');
+  assert.equal(envelope.payload.failure_category, 'quality_needs_fix');
+  assert.equal(
+    envelope.payload.failure_diagnosis,
+    'Previous review feedback still requires broader edge-case coverage.',
+  );
+  assert.deepEqual(envelope.payload.reconsider_instructions, [
+    'Read the review feedback before editing the same contract again.',
+    'Add the missing edge-case coverage before requesting another review.',
+  ]);
+  assert.equal(
+    envelope.payload.repeated_pattern_summary,
+    'Attempts 1 and 2 repeated the same review blocker on unchanged files.',
+  );
   assert.deepEqual(envelope.payload.implementation_evidence, [
     'Contract types now compile for downstream callers.',
   ]);
@@ -215,4 +297,47 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   assert.equal(envelope.payload.delivery_metadata?.branch_name, 'feat/goose-worker-contracts');
   assert.equal(envelope.payload.prior_attempt?.attempt, 1);
   assert.equal(envelope.payload.prior_attempt?.status, 'needs_fix');
+  assert.equal(envelope.payload.attempt_history.length, 1);
+  assert.deepEqual(envelope.payload.prior_attempt?.checklist_feedback, [
+    'Missing verification evidence for required command: npm run test:adapter',
+  ]);
+  assert.ok(envelope.payload.runtime_context);
+  assert.deepEqual(envelope.payload.runtime_context.task_context_files, [
+    'docs/context/repo-context.md',
+    'README.md',
+    'ARCHITECTURE.md',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.commands, [
+    'npm run build',
+    'node --test tests/openclaw-runtime-adapter.test.mjs',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.reconsider_signals, [
+    'Review feedback is not visible to the next attempt.',
+    'Read the review feedback before editing the same contract again.',
+    'Add the missing edge-case coverage before requesting another review.',
+    'Attempts 1 and 2 repeated the same review blocker on unchanged files.',
+    'Prior attempt 1 ended as needs_fix: Review requested changes after the first quality-gate pass.',
+    'Previous blocker: Previous review requested changes before approval.',
+    'Previous diagnosis: Previous review feedback still requires broader edge-case coverage.',
+  ]);
+  assert.deepEqual(envelope.payload.runtime_context.verification_plan.retry_handoff, {
+    attempt: 1,
+    status: 'needs_fix',
+    summary: 'Review requested changes after the first quality-gate pass.',
+    blocker_category: 'quality',
+    blocker_message: 'Previous review requested changes before approval.',
+    failure_category: 'quality_needs_fix',
+    failure_diagnosis: 'Previous review feedback still requires broader edge-case coverage.',
+    reconsider_instructions: [
+      'Read the review feedback before editing the same contract again.',
+      'Add the missing edge-case coverage before requesting another review.',
+    ],
+    repeated_pattern_summary:
+      'Attempts 1 and 2 repeated the same review blocker on unchanged files.',
+    checklist_feedback: ['Missing verification evidence for required command: npm run test:adapter'],
+    commands_run: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
+    review_feedback: ['Review flagged missing edge-case coverage.'],
+  });
+  assert.equal(envelope.payload.runtime.retry_count, 1);
+  assert.equal(envelope.metadata.attempt, 2);
 });

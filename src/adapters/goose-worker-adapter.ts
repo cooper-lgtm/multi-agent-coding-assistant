@@ -32,6 +32,11 @@ interface GooseStructuredWorkerOutput {
   changed_files?: string[];
   blocker_category?: WorkerBlockerCategory | null;
   blocker_message?: string | null;
+  failure_category?: ImplementationWorkerExecutionResult['failure_category'];
+  failure_diagnosis?: string | null;
+  reconsider_instructions?: string[];
+  repeated_pattern_summary?: string | null;
+  checklist_feedback?: string[];
   implementation_evidence?: string[];
   test_evidence?: string[];
   review_feedback?: string[];
@@ -41,6 +46,7 @@ interface GooseStructuredWorkerOutput {
   suggested_status?: WorkerSuggestedStatus | null;
   delivery_metadata?: WorkerDeliveryMetadata | null;
   prior_attempt?: WorkerRetryHandoff | null;
+  attempt_history?: WorkerRetryHandoff[];
 }
 
 export class GooseWorkerAdapter implements OpenClawWorkerRoleAdapter {
@@ -84,6 +90,7 @@ export class GooseWorkerAdapter implements OpenClawWorkerRoleAdapter {
       runtimeRunId: request.payload.runtime.run_id,
       repoPath: request.payload.repo_path,
       retryContext: request.payload.prior_attempt,
+      runtimeContext: request.payload.runtime_context,
     });
 
     const gooseResult = await this.runGoose({ ...spec, cwd: this.cwd });
@@ -195,6 +202,11 @@ export class GooseWorkerAdapter implements OpenClawWorkerRoleAdapter {
       changed_files: output.changed_files,
       blocker_category: output.blocker_category,
       blocker_message: output.blocker_message,
+      failure_category: output.failure_category,
+      failure_diagnosis: output.failure_diagnosis,
+      reconsider_instructions: output.reconsider_instructions,
+      repeated_pattern_summary: output.repeated_pattern_summary,
+      checklist_feedback: output.checklist_feedback,
       implementation_evidence: output.implementation_evidence,
       test_evidence: output.test_evidence,
       review_feedback: output.review_feedback,
@@ -204,6 +216,7 @@ export class GooseWorkerAdapter implements OpenClawWorkerRoleAdapter {
       suggested_status: output.suggested_status,
       delivery_metadata: output.delivery_metadata,
       prior_attempt: output.prior_attempt,
+      attempt_history: output.attempt_history,
     };
   }
 }
@@ -228,6 +241,11 @@ function parseStructuredWorkerPayload(raw: unknown): GooseStructuredWorkerOutput
   if (!copyOptionalStringArray(raw, normalized, 'changed_files')) return null;
   if (!copyOptionalNullableBlockerCategory(raw, normalized, 'blocker_category')) return null;
   if (!copyOptionalNullableString(raw, normalized, 'blocker_message')) return null;
+  if (!copyOptionalNullableFailureCategory(raw, normalized, 'failure_category')) return null;
+  if (!copyOptionalNullableString(raw, normalized, 'failure_diagnosis')) return null;
+  if (!copyOptionalStringArray(raw, normalized, 'reconsider_instructions')) return null;
+  if (!copyOptionalNullableString(raw, normalized, 'repeated_pattern_summary')) return null;
+  if (!copyOptionalStringArray(raw, normalized, 'checklist_feedback')) return null;
   if (!copyOptionalStringArray(raw, normalized, 'implementation_evidence')) return null;
   if (!copyOptionalStringArray(raw, normalized, 'test_evidence')) return null;
   if (!copyOptionalStringArray(raw, normalized, 'review_feedback')) return null;
@@ -237,6 +255,7 @@ function parseStructuredWorkerPayload(raw: unknown): GooseStructuredWorkerOutput
   if (!copyOptionalNullableSuggestedStatus(raw, normalized, 'suggested_status')) return null;
   if (!copyOptionalDeliveryMetadata(raw, normalized, 'delivery_metadata')) return null;
   if (!copyOptionalRetryHandoff(raw, normalized, 'prior_attempt')) return null;
+  if (!copyOptionalRetryHistory(raw, normalized, 'attempt_history')) return null;
 
   return normalized;
 }
@@ -304,6 +323,11 @@ function isWorkerRetryHandoff(value: unknown): value is WorkerRetryHandoff {
     typeof value.summary === 'string' &&
     isNullableBlockerCategory(value.blocker_category) &&
     isNullableString(value.blocker_message) &&
+    isNullableFailureCategory(value.failure_category) &&
+    isNullableString(value.failure_diagnosis) &&
+    isStringArray(value.reconsider_instructions ?? []) &&
+    isNullableString(value.repeated_pattern_summary) &&
+    isStringArray(value.checklist_feedback ?? []) &&
     isStringArray(value.changed_files) &&
     isStringArray(value.implementation_evidence) &&
     isStringArray(value.test_evidence) &&
@@ -325,6 +349,23 @@ function isNullableBlockerCategory(value: unknown): value is WorkerBlockerCatego
   return value === null || isBlockerCategory(value);
 }
 
+function isFailureCategory(value: unknown): value is ImplementationWorkerExecutionResult['failure_category'] {
+  return (
+    value === 'implementation_failed' ||
+    value === 'implementation_blocked' ||
+    value === 'quality_failed' ||
+    value === 'quality_needs_fix' ||
+    value === 'verification_incomplete' ||
+    value === 'unknown'
+  );
+}
+
+function isNullableFailureCategory(
+  value: unknown,
+): value is ImplementationWorkerExecutionResult['failure_category'] {
+  return value === null || value === undefined || isFailureCategory(value);
+}
+
 function isNullableSuggestedStatus(value: unknown): value is WorkerSuggestedStatus | null {
   return value === null || isSuggestedStatus(value);
 }
@@ -336,7 +377,15 @@ function isNullableDeliveryMetadata(value: unknown): value is WorkerDeliveryMeta
 function copyOptionalStringArray(
   source: Record<string, unknown>,
   target: GooseStructuredWorkerOutput,
-  key: 'changed_files' | 'implementation_evidence' | 'test_evidence' | 'review_feedback' | 'commands_run' | 'risk_notes',
+  key:
+    | 'changed_files'
+    | 'reconsider_instructions'
+    | 'checklist_feedback'
+    | 'implementation_evidence'
+    | 'test_evidence'
+    | 'review_feedback'
+    | 'commands_run'
+    | 'risk_notes',
 ): boolean {
   if (!Object.prototype.hasOwnProperty.call(source, key)) {
     return true;
@@ -354,7 +403,7 @@ function copyOptionalStringArray(
 function copyOptionalNullableString(
   source: Record<string, unknown>,
   target: GooseStructuredWorkerOutput,
-  key: 'blocker_message',
+  key: 'blocker_message' | 'failure_diagnosis' | 'repeated_pattern_summary',
 ): boolean {
   if (!Object.prototype.hasOwnProperty.call(source, key)) {
     return true;
@@ -366,6 +415,24 @@ function copyOptionalNullableString(
   }
 
   target[key] = value;
+  return true;
+}
+
+function copyOptionalNullableFailureCategory(
+  source: Record<string, unknown>,
+  target: GooseStructuredWorkerOutput,
+  key: 'failure_category',
+): boolean {
+  if (!Object.prototype.hasOwnProperty.call(source, key)) {
+    return true;
+  }
+
+  const value = source[key];
+  if (!isNullableFailureCategory(value)) {
+    return false;
+  }
+
+  target[key] = value ?? null;
   return true;
 }
 
@@ -473,6 +540,11 @@ function copyOptionalRetryHandoff(
         changed_files: [...value.changed_files],
         blocker_category: value.blocker_category,
         blocker_message: value.blocker_message,
+        failure_category: value.failure_category ?? null,
+        failure_diagnosis: value.failure_diagnosis ?? null,
+        reconsider_instructions: [...(value.reconsider_instructions ?? [])],
+        repeated_pattern_summary: value.repeated_pattern_summary ?? null,
+        checklist_feedback: [...(value.checklist_feedback ?? [])],
         implementation_evidence: [...value.implementation_evidence],
         test_evidence: [...value.test_evidence],
         review_feedback: [...value.review_feedback],
@@ -493,5 +565,53 @@ function copyOptionalRetryHandoff(
           : null,
       }
     : null;
+  return true;
+}
+
+function copyOptionalRetryHistory(
+  source: Record<string, unknown>,
+  target: GooseStructuredWorkerOutput,
+  key: 'attempt_history',
+): boolean {
+  if (!Object.prototype.hasOwnProperty.call(source, key)) {
+    return true;
+  }
+
+  const value = source[key];
+  if (!Array.isArray(value) || !value.every(isWorkerRetryHandoff)) {
+    return false;
+  }
+
+  target[key] = value.map((entry) => ({
+    attempt: entry.attempt,
+    status: entry.status,
+    summary: entry.summary,
+    changed_files: [...entry.changed_files],
+    blocker_category: entry.blocker_category,
+    blocker_message: entry.blocker_message,
+    failure_category: entry.failure_category ?? null,
+    failure_diagnosis: entry.failure_diagnosis ?? null,
+    reconsider_instructions: [...(entry.reconsider_instructions ?? [])],
+    repeated_pattern_summary: entry.repeated_pattern_summary ?? null,
+    checklist_feedback: [...(entry.checklist_feedback ?? [])],
+    implementation_evidence: [...entry.implementation_evidence],
+    test_evidence: [...entry.test_evidence],
+    review_feedback: [...entry.review_feedback],
+    commands_run: [...entry.commands_run],
+    test_results: entry.test_results.map((result) => ({
+      name: result.name,
+      status: result.status,
+      details: result.details,
+    })),
+    risk_notes: [...entry.risk_notes],
+    suggested_status: entry.suggested_status,
+    delivery_metadata: entry.delivery_metadata
+      ? {
+          branch_name: entry.delivery_metadata.branch_name,
+          commit_sha: entry.delivery_metadata.commit_sha,
+          pr_url: entry.delivery_metadata.pr_url,
+        }
+      : null,
+  }));
   return true;
 }

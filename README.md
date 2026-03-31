@@ -4,6 +4,7 @@ A TypeScript implementation of an OpenClaw-native orchestrator system for:
 - planning user requests into structured implementation tasks,
 - converting planning output into an execution DAG,
 - dispatching ready tasks to implementation workers,
+- enforcing a pre-completion verification checklist before external handoff,
 - running post-implementation quality gates,
 - handling retry, escalation, and reporting.
 
@@ -13,6 +14,7 @@ Start here before non-trivial changes:
 - `PRODUCT.md`: current goals, priorities, and non-goals
 - `ARCHITECTURE.md`: end-to-end system flow, role boundaries, and invariants
 - `AGENTS.md`: contributor workflow, repo map, and validation expectations
+- `docs/roadmap/2026-03-22-runtime-success-roadmap.md`: next planned runtime-first harness upgrades for real-task success
 - `docs/templates/task-template.md`: standard task input for non-trivial work
 - `docs/reviews/recurring-issues.md`: repeated review failures worth preventing
 
@@ -28,15 +30,17 @@ Core flow:
 5. Validate `planning result`
 6. Convert to execution DAG
 7. Dispatch ready implementation tasks
-8. Run `test-agent` and `review-agent` as quality gates
-9. Re-route `needs_fix`, escalate failures, and summarize results
+8. Enforce the pre-completion checklist and continue unfinished work when verification is missing
+9. Run `test-agent` and `review-agent` as quality gates
+10. Re-route `needs_fix`, escalate failures, and summarize results
 
 This MVP now includes both:
 - a coherent planning pipeline with typed contracts, normalization, synthesis, and mock planners/analyzers
-- a coherent runtime loop with mockable adapters for implementation dispatch, quality gates, retry/escalation, persistence, and reporting
+- a coherent runtime loop with mockable adapters for implementation dispatch, pre-completion checklist continuations, quality gates, retry/escalation, persistence, and reporting
 - a goose-backed implementation dispatch path that keeps `frontend-agent` / `backend-agent` work at the worker seam while preserving external quality gates
 - an OpenClaw-facing adapter layer with typed planning/worker envelopes, alias-to-exact-model resolution, and mock runtime adapter stubs
-- a richer worker execution bridge MVP that carries changed files, blocker metadata, evidence, and retry handoff context through runtime reporting
+- a richer worker execution bridge MVP that carries changed files, blocker metadata, bounded attempt history, structured failure diagnosis, evidence, and retry handoff context through runtime reporting
+- compact runtime context injection that threads repo summaries, environment snapshots, task-context files, verification plans, reconsideration signals, and repeated-pattern summaries into worker payloads and goose recipe inputs
 - approval controls that can pause after planning until a human explicitly approves execution
 - a policy engine that keeps max parallelism, retry budgets, role-specific fallback chains, and high-risk manual-review guardrails in the orchestrator layer
 - durable file-backed run persistence with manifest, snapshot, and event-log artifacts plus checkpoint resume and cooperative pause/cancel control
@@ -83,12 +87,14 @@ This MVP now includes both:
 ## Runtime Modules
 
 - `implementation-dispatcher`: dispatches ready implementation tasks to `frontend-agent` or `backend-agent`, including a goose-backed dispatcher option
+- `runtime-middleware`: keeps pre-dispatch guardrails in the orchestrator layer instead of pushing them into worker adapters
+- `loop-detection-middleware`: detects repeated low-yield retries and injects reconsideration guidance before the next dispatch
 - `approval-manager`: keeps confirm-before-run approval as an orchestrator concern instead of pushing it into worker adapters
 - `policy-engine`: applies runtime budget and safety rules before dispatch without pushing orchestration policy into goose recipes
 - `quality-gate-runner`: runs `test-agent` and `review-agent` after implementation completes
-- `retry-escalation-manager`: applies the runtime retry policy and explicit per-role model fallback
-- `reporting-manager`: records runtime events and builds concise run summaries
-- runtime task records now persist changed files, blocker category/message, implementation evidence, test evidence, review feedback, and the latest retry handoff
+- `retry-escalation-manager`: applies the runtime retry policy, explicit per-role model fallback, and diagnosis-aware retry messaging
+- `reporting-manager`: records runtime events and builds concise run summaries, including retry-loop detection and richer retry handoff detail
+- runtime task records now persist changed files, blocker category/message, structured failure diagnosis, reconsideration guidance, implementation evidence, test evidence, review feedback, bounded attempt history, and the latest retry handoff
 
 ## Persistence and Resume
 
@@ -108,7 +114,7 @@ This MVP now includes both:
 - `goose-worker-adapter`: shells out to goose implementation recipes and normalizes structured worker output
 - `goose-process-runner`: serializes recipe params into non-interactive goose CLI invocations
 - `openclaw-model-resolver`: maps logical labels and exact ids to provider-aware model metadata
-- `openclaw-runtime-adapter`: standardizes planning and worker request/result/error envelopes for OpenClaw-facing execution
+- `openclaw-runtime-adapter`: standardizes planning and worker request/result/error envelopes for OpenClaw-facing execution, including compact runtime-context threading and retry-diagnosis payloads for workers
 - `model-router`: keeps role-based fallback ordering while attaching exact-model metadata when available
 
 ## Demo
@@ -130,14 +136,17 @@ Example artifacts included in this MVP:
 - `tests/file-backed-run-store.test.mjs`: compiled-output checks for manifest/runtime/event-log persistence and inspection helpers
 - `tests/openclaw-model-resolution.test.mjs`: compiled-output checks for alias resolution and exact-model metadata
 - `tests/openclaw-runtime-adapter.test.mjs`: compiled-output checks for planning/worker envelope shaping
+- `tests/goose-recipe-builder.test.mjs`: compiled-output checks for compact runtime-context propagation into goose recipe inputs
 - `tests/orchestrator-persistence.test.mjs`: compiled-output checks for checkpoint resume plus cooperative pause/cancel behavior
 - `tests/planning-mode-resolution.test.mjs`: compiled-output checks for `auto`/`direct`/`debate` resolution
 - `tests/planning-pipeline.test.mjs`: compiled-output checks for direct planning, debate synthesis, and DAG conversion
 - `tests/orchestrator-runtime.test.mjs`: compiled-output runtime checks for success, retry escalation, and dependency blocking
+- `tests/orchestrator-goose-runtime.test.mjs`: compiled-output runtime checks for goose-backed implementation dispatch plus runtime-context propagation
 
 Useful commands:
 
 ```bash
+npm run lint
 npm run typecheck
 npm run build
 npm run test:e2e
@@ -154,6 +163,15 @@ npm run review:local
 npm run verify:local-review-gate
 npm run build && node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
 ```
+
+Lint notes:
+- `npm run lint` is the repository-standard local lint entry point
+- `npm run lint:js` covers TypeScript, JavaScript, and `.mjs` scripts/tests through ESLint
+- `npm run lint:md` covers Markdown docs and prompt assets
+- `npm run lint:yml` covers GitHub Actions and repository YAML config through ESLint
+- pull requests also run a dedicated `CI Lint` workflow that executes `npm run lint` as the repo-local lint source of truth
+- the same workflow keeps `super-linter`, but only for Markdown and GitHub Actions checks that do not depend on the repository's npm-installed ESLint stack
+- future `test-agent` lint execution should call the local lint commands above rather than invoking the GitHub Action container directly
 
 Local strict review gate:
 

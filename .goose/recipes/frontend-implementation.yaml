@@ -12,15 +12,23 @@ instructions: |
   - docs/goose/task-contract.md
 
   Then:
-  1. inspect the repository before making changes
-  2. complete only the assigned task scope
-  3. run the local verification commands required for the task
-  4. return only candidate implementation evidence
+  1. start with the injected runtime context before broad repository exploration
+  2. inspect the repository before making changes
+  3. complete only the assigned task scope
+  4. run the local verification commands required for the task
+  5. treat missing verification evidence as unfinished work
+  6. return explicit verification evidence with the candidate implementation result
 
   Rules:
   - Do not claim final orchestrator approval
   - Keep `test-agent` and `review-agent` as external quality gates
   - Preserve `needs_fix`, `blocked`, and `failed` as distinct states
+  - Use `runtime_context.task_context_files` and `runtime_context.verification_plan` before guessing
+  - Inspect `failure_diagnosis`, `reconsider_instructions`, `repeated_pattern_summary`, and `attempt_history` before choosing a retry strategy
+  - If the injected diagnosis conflicts with the live repository state, call that out explicitly in the worker result
+  - Verification is part of task completion, not optional follow-up work
+  - Missing verification evidence is unfinished work, not a valid `implementation_done` handoff
+  - Return explicit verification evidence in `commands_run`, `test_evidence`, and `test_results`
 prompt: |
   Execute the assigned frontend implementation task for run {{ run_id }} in repository {{ repo_path }}.
 
@@ -29,6 +37,24 @@ prompt: |
 
   Retry context JSON:
   {{ retry_context }}
+
+  Attempt history JSON:
+  {{ attempt_history }}
+
+  Failure category:
+  {{ failure_category }}
+
+  Failure diagnosis:
+  {{ failure_diagnosis }}
+
+  Reconsideration instructions JSON:
+  {{ reconsider_instructions }}
+
+  Repeated-pattern summary:
+  {{ repeated_pattern_summary }}
+
+  Runtime context JSON:
+  {{ runtime_context }}
 
   Return only the structured worker result defined by the response schema.
 parameters:
@@ -48,6 +74,30 @@ parameters:
     input_type: string
     requirement: required
     description: "JSON-encoded retry handoff context or null"
+  - key: attempt_history
+    input_type: string
+    requirement: required
+    description: "JSON-encoded bounded attempt history"
+  - key: failure_category
+    input_type: string
+    requirement: required
+    description: "The current retry failure category or null"
+  - key: failure_diagnosis
+    input_type: string
+    requirement: required
+    description: "Compact current retry diagnosis or null"
+  - key: reconsider_instructions
+    input_type: string
+    requirement: required
+    description: "JSON-encoded reconsideration instructions for the next implementation pass"
+  - key: repeated_pattern_summary
+    input_type: string
+    requirement: required
+    description: "Compact repeated-pattern summary or null"
+  - key: runtime_context
+    input_type: string
+    requirement: required
+    description: "JSON-encoded compact runtime context with repo, environment, and verification guidance"
 extensions:
   - type: builtin
     name: developer

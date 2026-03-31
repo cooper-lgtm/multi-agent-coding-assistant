@@ -48,7 +48,10 @@ export class RetryEscalationManager implements RetryManager {
 
   decide(task: ExecutionNode, cause: RetryCause): RetryDecision {
     if (cause === 'implementation_blocked') {
-      return this.keepTerminalStatus(task, cause, 'blocked', `Task ${task.task_id} is blocked.`);
+      return this.keepTerminalStatus(task, cause, 'blocked', this.withDiagnosis(
+        task,
+        `Task ${task.task_id} is blocked.`,
+      ));
     }
 
     if (task.retry_count >= task.max_retries) {
@@ -57,7 +60,10 @@ export class RetryEscalationManager implements RetryManager {
         task,
         cause,
         terminalStatus,
-        `Retry budget exhausted for ${task.task_id}; keeping ${terminalStatus}.`,
+        this.withDiagnosis(
+          task,
+          `Retry budget exhausted for ${task.task_id}; keeping ${terminalStatus}.`,
+        ),
       );
     }
 
@@ -70,7 +76,10 @@ export class RetryEscalationManager implements RetryManager {
         next_model: task.model,
         next_model_metadata: task.model_metadata,
         retry_count: task.retry_count + 1,
-        reason: `Retrying ${task.task_id} on ${task.model} after ${cause}.`,
+        reason: this.withDiagnosis(
+          task,
+          `Retrying ${task.task_id} on ${task.model} after ${cause}.`,
+        ),
       };
     }
 
@@ -88,7 +97,10 @@ export class RetryEscalationManager implements RetryManager {
         next_model: upgradedRoute.selectedModel,
         next_model_metadata: upgradedRoute.selectedModelMetadata,
         retry_count: task.retry_count + 1,
-        reason: `Retry escalation for ${task.task_id}: switching from ${task.model} to ${upgradedRoute.selectedModel}.`,
+        reason: this.withDiagnosis(
+          task,
+          `Retry escalation for ${task.task_id}: switching from ${task.model} to ${upgradedRoute.selectedModel}.`,
+        ),
       };
     }
 
@@ -97,7 +109,10 @@ export class RetryEscalationManager implements RetryManager {
       task,
       cause,
       terminalStatus,
-      `No explicit fallback model remains for ${task.task_id}; keeping ${terminalStatus}.`,
+      this.withDiagnosis(
+        task,
+        `No explicit fallback model remains for ${task.task_id}; keeping ${terminalStatus}.`,
+      ),
     );
   }
 
@@ -146,5 +161,23 @@ export class RetryEscalationManager implements RetryManager {
       case 'implementation_failed':
         return 'failed';
     }
+  }
+
+  private withDiagnosis(task: ExecutionNode, reason: string): string {
+    const details: string[] = [];
+
+    if (task.failure_diagnosis) {
+      details.push(`Diagnosis: ${task.failure_diagnosis}`);
+    }
+
+    if (task.repeated_pattern_summary) {
+      details.push(task.repeated_pattern_summary);
+    }
+
+    if (task.reconsider_instructions.length > 0) {
+      details.push(`Reconsider: ${task.reconsider_instructions.join(' ')}`);
+    }
+
+    return details.length > 0 ? `${reason} ${details.join(' ')}` : reason;
   }
 }

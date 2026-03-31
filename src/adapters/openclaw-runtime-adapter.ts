@@ -7,7 +7,13 @@ import type {
   AssignedAgent,
 } from '../schemas/planning.js';
 import type { ExecutionNode, RuntimeState } from '../schemas/runtime.js';
-import { createWorkerExecutionContext, type WorkerExecutionContext } from '../workers/contracts.js';
+import {
+  createWorkerExecutionContext,
+  getWorkerAttemptNumber,
+  type WorkerExecutionContext,
+  type WorkerRuntimeContext,
+} from '../workers/contracts.js';
+import { buildRuntimeContextPackage } from '../orchestrator/runtime-context-builder.js';
 import { DEFAULT_OPENCLAW_AVAILABLE_MODELS, OpenClawModelResolver } from './openclaw-model-resolver.js';
 
 export type OpenClawWorkerRoleName = AssignedAgent | 'test-agent' | 'review-agent';
@@ -30,6 +36,7 @@ export interface OpenClawPlanningTaskPayload {
 
 export interface OpenClawWorkerTaskPayload extends WorkerExecutionContext {
   repo_path: string;
+  runtime_context: WorkerRuntimeContext | null;
   task: {
     task_id: string;
     title: string;
@@ -192,6 +199,12 @@ export function createOpenClawPlanningRoleRequest(
 export function createOpenClawWorkerRoleRequest(
   input: CreateOpenClawWorkerRoleRequestInput,
 ): OpenClawWorkerRoleRequest {
+  const runtimeContext = buildRuntimeContextPackage({
+    repoPath: input.repoPath,
+    task: input.task,
+  });
+  const attempt = input.attempt ?? getWorkerAttemptNumber(input.task);
+
   return {
     envelope_version: 'openclaw.role-exec.v1',
     role_type: 'worker',
@@ -200,6 +213,7 @@ export function createOpenClawWorkerRoleRequest(
     prompt: input.prompt,
     payload: {
       repo_path: input.repoPath,
+      runtime_context: runtimeContext,
       task: {
         task_id: input.task.task_id,
         title: input.task.title,
@@ -214,7 +228,7 @@ export function createOpenClawWorkerRoleRequest(
         run_id: input.runtime.run_id,
         epic: input.runtime.epic,
         planning_mode: input.runtime.graph.planning_mode,
-        retry_count: input.task.retry_count,
+        retry_count: attempt - 1,
         max_retries: input.task.max_retries,
       },
       ...createWorkerExecutionContext(input.task),
@@ -223,7 +237,7 @@ export function createOpenClawWorkerRoleRequest(
     metadata: {
       run_id: input.runtime.run_id,
       task_id: input.task.task_id,
-      attempt: input.attempt ?? input.task.retry_count + 1,
+      attempt,
       prompt_language: 'en',
     },
   };

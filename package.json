@@ -15,11 +15,16 @@
     "demo:persistence": "npm run build && node dist/examples/run-persistence-demo.js",
     "demo:planning": "npm run build && node dist/examples/run-planning-demo.js",
     "demo:orchestrator": "npm run build && node dist/examples/run-orchestration-demo.js",
+    "lint": "npm run lint:js && npm run lint:md && npm run lint:yml",
+    "lint:js": "eslint eslint.config.mjs src scripts tests --no-error-on-unmatched-pattern",
+    "lint:md": "markdownlint \"**/*.md\" --config .markdown-lint.yml --ignore node_modules --ignore dist --ignore state",
+    "lint:yml": "eslint .github .markdown-lint.yml --no-error-on-unmatched-pattern",
     "review:local": "node scripts/run-local-codex-review.mjs",
     "verify:local-review-gate": "node scripts/verify-local-review-gate.mjs",
     "test:e2e": "npm run build && node --test tests/orchestrator-e2e.test.mjs",
     "test:adapter": "npm run build && node --test tests/openclaw-runtime-adapter.test.mjs tests/openclaw-model-resolution.test.mjs",
     "test:planning": "npm run build && node --test tests/planning-mode-resolution.test.mjs tests/planning-pipeline.test.mjs",
+    "test:repo": "npm run lint && npm run build && node --test tests/lint-contract.test.mjs",
     "test:runtime": "npm run build && node --test tests/orchestrator-runtime.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
@@ -35,7 +40,14 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.5.0",
-    "typescript": "^5.9.3"
+    "eslint": "^10.1.0",
+    "eslint-plugin-yml": "^3.3.1",
+    "globals": "^17.4.0",
+    "markdownlint-cli": "^0.48.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.1",
+    "yaml-eslint-parser": "^2.0.0"
   }
 }

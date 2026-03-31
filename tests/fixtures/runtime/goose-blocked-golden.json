@@ -71,7 +71,7 @@
     "Starting orchestration run run-1700000000000 for epic Demo orchestrator runtime.",
     "Applied runtime policy: unbounded ready-task dispatch, default retry budget 2, risk threshold none.",
     "Dispatching task-api-contract to backend-agent on codex.",
-    "Task task-api-contract is blocked.",
+    "Task task-api-contract is blocked. Diagnosis: Required repository prerequisites are missing for goose execution. Reconsider: Resolve the blocking prerequisite before retrying implementation.",
     "Task task-ui-shell is blocked by dependency task-api-contract.",
     "Task task-integration-wireup is blocked by dependency task-api-contract."
   ]
