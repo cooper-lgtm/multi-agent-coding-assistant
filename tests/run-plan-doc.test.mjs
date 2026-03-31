@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { execFileSync, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -142,8 +142,6 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after req
         '1',
         '--max-check-polls',
         '5',
-        '--max-review-polls',
-        '5',
       ],
       {
         cwd: projectRoot,
@@ -179,6 +177,152 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after req
         'gh pr checks https://github.com/example/repo/pull/102 --required --json bucket',
         'gh pr merge https://github.com/example/repo/pull/102 --merge --delete-branch',
       ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc passes review-timeout-ms to goose so the pre-push local review gate can inherit it', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-review-timeout-env-'));
+  const fakeBinRoot = path.join(tempRoot, 'fake-bin');
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+  const fakeGhPath = path.join(fakeBinRoot, 'gh');
+  const fakeGoosePath = path.join(fakeBinRoot, 'goose');
+
+  try {
+    await mkdir(fakeBinRoot, { recursive: true });
+    await writeFile(path.join(planPath), ['# Example Plan', '', '### Task 1: Timeout task', ''].join('\n'), 'utf8');
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Timeout task',
+              branch_name: 'codex/task-timeout',
+              pr_url: 'https://github.com/example/repo/pull/901',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/timeout.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '901': ['pass'],
+          },
+          headShas: {
+            '901': ['sha-901'],
+          },
+          localReviews: {
+            '901': {
+              'sha-901': [{ status: 'clean', findings: [] }],
+            },
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    await writeFile(fakeGhPath, await readFile(path.join(fakeBinPath, 'gh'), 'utf8'), 'utf8');
+    await chmod(fakeGhPath, 0o755);
+    await writeFile(
+      fakeGoosePath,
+      [
+        '#!/usr/bin/env node',
+        "import fs from 'node:fs';",
+        "const statePath = process.env.PLAN_RUNNER_FAKE_STATE;",
+        'if (!statePath) {',
+        "  process.stderr.write('PLAN_RUNNER_FAKE_STATE is required\\n');",
+        '  process.exit(1);',
+        '}',
+        "const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));",
+        "state.commands.push({ bin: 'goose', argv: process.argv.slice(2), reviewTimeoutMs: process.env.LOCAL_CODEX_REVIEW_TIMEOUT_MS ?? null });",
+        'const next = state.gooseRuns.shift();',
+        'if (!next) {',
+        "  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));",
+        "  process.stderr.write('No goose run fixture remaining\\n');",
+        '  process.exit(1);',
+        '}',
+        "fs.writeFileSync(statePath, JSON.stringify(state, null, 2));",
+        'process.stdout.write(JSON.stringify(next));',
+      ].join('\n'),
+      'utf8',
+    );
+    await chmod(fakeGoosePath, 0o755);
+
+    const output = execFileSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-check-polls',
+        '1',
+        '--review-timeout-ms',
+        '1234',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinRoot}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
+
+    const result = JSON.parse(output);
+    assert.equal(result.status, 'completed');
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.equal(finalState.commands[0].bin, 'goose');
+    assert.equal(finalState.commands[0].reviewTimeoutMs, '1234');
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc rejects max-review-polls because review polling no longer exists in the pre-push gate flow', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-max-review-polls-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+
+  try {
+    await writeFile(path.join(planPath), ['# Example Plan', '', '### Task 1: Legacy flag task', ''].join('\n'), 'utf8');
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--max-review-polls',
+        '5',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+      },
+    );
+
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /--max-review-polls is no longer supported because local review is now a synchronous pre-push gate\./,
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
@@ -1097,8 +1241,6 @@ test.skip('run-plan-doc reruns the same task after Codex inline findings and mer
         '1',
         '--max-check-polls',
         '5',
-        '--max-review-polls',
-        '5',
       ],
       {
         cwd: projectRoot,
@@ -1272,8 +1414,6 @@ test.skip('run-plan-doc keeps polling when a current-head review exists before i
         '--poll-interval-ms',
         '1',
         '--max-check-polls',
-        '5',
-        '--max-review-polls',
         '5',
       ],
       {
@@ -4362,8 +4502,6 @@ test('run-plan-doc treats skipped required checks as pass-equivalent', async () 
         'main',
         '--poll-interval-ms',
         '1',
-        '--max-review-polls',
-        '5',
       ],
       {
         cwd: projectRoot,
@@ -4485,8 +4623,6 @@ test('run-plan-doc treats skipped required checks as pass-equivalent even when m
         'main',
         '--poll-interval-ms',
         '1',
-        '--max-review-polls',
-        '5',
       ],
       {
         cwd: projectRoot,
@@ -4597,8 +4733,6 @@ test('run-plan-doc keeps waiting when required checks are still pending', async 
         '1',
         '--max-check-polls',
         '2',
-        '--max-review-polls',
-        '1',
       ],
       {
         cwd: projectRoot,
@@ -4830,9 +4964,7 @@ test.skip('run-plan-doc advances skipped required checks to the Codex review gat
         '--base-branch',
         'main',
         '--poll-interval-ms',
-        '1',
-        '--max-review-polls',
-        '1',
+        '2',
         '--review-timeout-ms',
         '2',
         '--max-check-polls',
@@ -4952,7 +5084,6 @@ test.skip('run-plan-doc confirms a clean local review when max review polls is 1
         'main',
         '--poll-interval-ms',
         '1',
-        '--max-review-polls',
         '1',
       ],
       {
@@ -5067,9 +5198,8 @@ test.skip('run-plan-doc treats max review polls as a no-op for synchronous local
         '--base-branch',
         'main',
         '--poll-interval-ms',
-        '1',
-        '--max-review-polls',
         '2',
+        '1',
       ],
       {
         cwd: projectRoot,

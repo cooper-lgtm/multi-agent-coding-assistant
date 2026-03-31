@@ -36,7 +36,10 @@ async function main() {
       checksTimeoutMs: options.checksTimeoutMs,
       maxCheckPolls: options.maxCheckPolls,
     },
-    createShellDependencies({ cwd: options.repoPath }),
+    createShellDependencies({
+      cwd: options.repoPath,
+      reviewTimeoutMs: options.reviewTimeoutMs,
+    }),
   );
 
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -93,9 +96,7 @@ function parseArgs(args) {
         index += 1;
         break;
       case '--max-review-polls':
-        options.maxReviewPolls = Number(next);
-        index += 1;
-        break;
+        throw new Error('--max-review-polls is no longer supported because local review is now a synchronous pre-push gate.');
       case '--task':
         options.tasks.push(next);
         index += 1;
@@ -116,7 +117,7 @@ function extractPlanTaskHints(markdown) {
   return [...markdown.matchAll(/^### (Task \d+: .+)$/gm)].map((match) => match[1]);
 }
 
-function createShellDependencies({ cwd }) {
+function createShellDependencies({ cwd, reviewTimeoutMs }) {
   const consecutiveCancelledCheckObservationsByPr = new Map();
 
   return {
@@ -146,7 +147,10 @@ function createShellDependencies({ cwd }) {
       const stdout = await runCommand(
         'goose',
         gooseArgs,
-        { cwd },
+        {
+          cwd,
+          env: buildLocalReviewEnv(reviewTimeoutMs),
+        },
       );
 
       return JSON.parse(stdout);
