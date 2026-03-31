@@ -34,9 +34,7 @@ async function main() {
       taskHints,
       pollIntervalMs: options.pollIntervalMs,
       checksTimeoutMs: options.checksTimeoutMs,
-      reviewTimeoutMs: options.reviewTimeoutMs,
       maxCheckPolls: options.maxCheckPolls,
-      maxReviewPolls: options.maxReviewPolls,
     },
     createShellDependencies({ cwd: options.repoPath }),
   );
@@ -122,7 +120,7 @@ function createShellDependencies({ cwd }) {
   const consecutiveCancelledCheckObservationsByPr = new Map();
 
   return {
-    executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch, priorReview }) => {
+    executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch }) => {
       await ensureGitHooksInstalled(repoPath);
 
       const gooseArgs = [
@@ -144,10 +142,6 @@ function createShellDependencies({ cwd }) {
         '--params',
         `task_hint=${taskHint}`,
       ];
-
-      if (priorReview && priorReview.findings.length > 0) {
-        gooseArgs.push('--params', `prior_review=${JSON.stringify(priorReview.findings)}`);
-      }
 
       const stdout = await runCommand(
         'goose',

@@ -25,7 +25,7 @@
     "test:e2e": "npm run build && node --test tests/orchestrator-e2e.test.mjs",
     "test:adapter": "npm run build && node --test tests/openclaw-runtime-adapter.test.mjs tests/openclaw-model-resolution.test.mjs",
     "test:planning": "npm run build && node --test tests/planning-mode-resolution.test.mjs tests/planning-pipeline.test.mjs",
-    "test:repo": "npm run lint && npm run build && node --test tests/lint-contract.test.mjs",
+    "test:repo": "npm run lint && npm run build && node --test tests/lint-contract.test.mjs tests/install-git-hooks.test.mjs tests/pre-push-hook.test.mjs",
     "test:runtime": "npm run build && node --test tests/orchestrator-runtime.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",

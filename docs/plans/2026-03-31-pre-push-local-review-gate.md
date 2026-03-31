@@ -4,7 +4,7 @@
 
 **Goal:** Move the blocking Codex review gate to the local pre-push stage so branch pushes only happen after a clean local review, while remote automation waits only on required GitHub checks before auto-merge.
 
-**Architecture:** Reuse the existing local review runner as the single review authority and call it before every branch push in both human and automated flows. `src/automation/plan-runner.ts` should stop treating review as a post-checks gate; instead it should execute the same local review before push/open-or-update-PR, keep `prior_review` retries for findings, then wait only on required checks before merge.
+**Architecture:** Reuse the existing local review runner as the single review authority and call it before every branch push in both human and automated flows. `src/automation/plan-runner.ts` should stop treating review as a post-checks gate; the repo-managed pre-push hook becomes the only blocking review gate, Goose repairs pre-push findings inside the same task run, and the outer runner waits only on required checks before merge.
 
 **Tech Stack:** TypeScript, Node.js scripts, Git hooks, `gh`, `goose`, local `codex exec`, repository docs/tests.
 
@@ -39,7 +39,7 @@ Make local review the single blocking review gate by moving it to pre-push for b
 
 ## Constraints
 
-- Review findings must stay machine-readable so Goose reruns can consume `prior_review`
+- Review findings must stay actionable in the same Goose run before a push can proceed
 - Local review infrastructure failures must remain fail-closed
 - `manual_review_required`, `failed`, and `blocked` semantics must stay distinct
 - Human and automation push paths must use the same local review entry point
@@ -59,7 +59,7 @@ Make local review the single blocking review gate by moving it to pre-push for b
 - [ ] automation runs the same local review before push/open-or-update-PR instead of after required checks
 - [ ] plan-runner waits only on required GitHub checks after a successful push
 - [ ] plan-runner auto-merges after checks pass without a second review gate
-- [ ] review findings still rerun the same task via `prior_review`
+- [ ] automation repairs pre-push local review findings before retrying the same push
 - [ ] local review infrastructure failures still stop fail-closed
 - [ ] `--task-hint` bootstrap capability mismatch is covered and fixed
 - [ ] markdown lint passes for the updated workflow docs
@@ -124,7 +124,7 @@ Steps:
 - Modify: `scripts/lib/local-codex-review-adapter.mjs`
 
 Steps:
-1. Update the plan-runner sequencing so the local review runs before the push/open-or-update-PR step and findings continue through `prior_review`.
+1. Update the plan-runner sequencing so the repo-managed pre-push review is the only blocking review gate before push/open-or-update-PR.
 2. Remove the post-checks review wait from the plan-runner path so required checks become the only remote merge gate.
 3. Fix trusted bootstrap capability detection so `--task-hint` is only used when the frozen trusted runner supports it, or omitted safely.
 4. Run the focused tests and make them pass.
