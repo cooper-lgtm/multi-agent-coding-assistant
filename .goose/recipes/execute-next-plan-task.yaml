@@ -1,6 +1,6 @@
 version: "1.0.0"
 title: "Execute Next Plan Task"
-description: "Read the active goose integration plan, refresh repository context, select exactly one next task-sized slice, and deliver one validated PR from branch creation through PR open or update."
+description: "Read the active goose integration plan, refresh repository context, select exactly one next task-sized slice, and deliver one validated PR from branch creation through PR open or update after a clean local pre-push review."
 instructions: |
   You are the execution recipe for this repository's goose-driven delivery workflow.
 
@@ -22,15 +22,16 @@ instructions: |
   4. complete only that task's scope
   5. refresh the repository context artifacts on the task branch when this workflow requires checked-in context updates
   6. run the task's required validation commands
-  7. create or update the task PR
-  8. stop after the PR is ready for the outer plan runner to wait on required checks and the blocking local Codex review gate
+  7. install the repository git hooks if needed and do not bypass the local pre-push Codex review gate
+  8. create or update the task PR only after the local pre-push review is clean
+  9. stop after the PR is ready for the outer plan runner to wait on required checks
 
   Rules:
   - Do not start a second major task in the same run
   - Keep `test-agent` and `review-agent` under orchestrator ownership
   - Do not collapse `needs_fix`, `blocked`, and `failed`
   - Do not invent completion if verification failed
-  - Do not merge the PR in this recipe; required-check polling, local review, and merge decisions belong to the outer plan runner
+  - Do not merge the PR in this recipe; required-check polling and merge decisions belong to the outer plan runner
   - GitHub-hosted Codex review may still run asynchronously; do not add a manual PR comment
   - If refreshing repository context artifacts changes checked-in files, include those updates in the same PR before merge
   - Use `task_hint` only if it is non-empty; otherwise choose the next unfinished task from the plan
@@ -48,8 +49,9 @@ prompt: |
   Prior Codex review findings JSON for this run: {{ prior_review }}
 
   Before editing, confirm the selected task and affected modules from the plan.
-  If `prior_review` is non-empty, treat it as machine-readable feedback from the previous blocking local Codex review on this task and address it before continuing.
-  Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, and been opened or updated for outer-loop review. Do not merge. The outer plan runner will wait for required checks, run the blocking local Codex review, and decide whether to merge or rerun with `prior_review`.
+  If `prior_review` is non-empty, treat it as machine-readable feedback from the previous local review attempt on this task and address it before continuing.
+  Before `git push` or any PR create/update step, make sure the repository-managed pre-push hook is active and the local Codex review gate is clean.
+  Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, and been opened or updated for outer-loop checks. Do not merge. The outer plan runner will wait only on required GitHub checks before merging.
 parameters:
   - key: repo_path
     input_type: string

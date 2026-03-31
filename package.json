@@ -19,6 +19,7 @@
     "lint:js": "eslint eslint.config.mjs src scripts tests --no-error-on-unmatched-pattern",
     "lint:md": "markdownlint \"**/*.md\" --config .markdown-lint.yml --ignore node_modules --ignore dist --ignore state",
     "lint:yml": "eslint .github .markdown-lint.yml --no-error-on-unmatched-pattern",
+    "hooks:install": "node scripts/install-git-hooks.mjs",
     "review:local": "node scripts/run-local-codex-review.mjs",
     "verify:local-review-gate": "node scripts/verify-local-review-gate.mjs",
     "test:e2e": "npm run build && node --test tests/orchestrator-e2e.test.mjs",

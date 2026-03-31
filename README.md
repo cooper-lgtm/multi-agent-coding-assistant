@@ -159,6 +159,7 @@ npm run demo:orchestrator
 npm run demo:adapter
 npm run demo:planning
 npm run cli -- --help
+npm run hooks:install
 npm run review:local
 npm run verify:local-review-gate
 npm run build && node scripts/run-plan-doc.mjs --repo-path "$(pwd)" --plan-path docs/plans/<plan>.md --base-branch main
@@ -176,12 +177,14 @@ Lint notes:
 Local strict review gate:
 
 ```bash
+npm run hooks:install
 npm run review:local
 npm run review:local -- --base origin/main
 npm run verify:local-review-gate
 ```
 
 Behavior:
+- `npm run hooks:install` installs the repo-managed `.githooks/pre-push` hook and points `core.hooksPath` at it
 - exits `0` only when the structured local review is clean
 - exits `1` when structured findings are returned
 - exits `2` when the local review process fails or the structured payload is invalid
@@ -204,23 +207,24 @@ Run `npm run build` before invoking it so `dist/index.js` matches the current ch
 It is aimed at the workflow where one plan document should execute as a sequence of:
 - one task-sized branch
 - one PR
-- required checks
-- one blocking local `codex exec` review on the current head SHA
-- merge only after the local review is clean
+- one blocking local `codex exec` review before each push
+- required checks after push
+- merge only after the required checks pass
 
 Important behavior:
-- the review gate is local and PR-scoped: it reviews the merge-base-to-head diff for the current task branch and does not silently pull in unrelated untracked worktree files
-- required GitHub checks still run before the local review gate
-- local review findings are passed back into goose as `prior_review` for the next attempt on the same task
-- when a task reports `changed_files` and a `task_hint`, the blocking local review narrows its diff/prompt to that task slice instead of reviewing unrelated tracked files on the branch
+- `scripts/run-plan-doc.mjs` installs the repo-managed pre-push hook in the target repository before goose starts working
+- the local pre-push hook is the only blocking review gate; if it returns findings or infrastructure errors, `git push` does not proceed
+- because the workflow uses one task-sized branch per run, the pre-push review covers the branch delta against the trusted base ref instead of adding a second post-push review pass
+- after a successful push, the outer plan runner waits only on required GitHub checks before merge
 - GitHub-hosted Codex review is now optional comparison/signal, not the blocking repair-loop source of truth
-- `--checks-timeout-ms` and `--review-timeout-ms` are available for explicit gate timeouts
-- both gates default to a 30 minute timeout when flags are omitted
-- local review timeout or execution failure does not report `failed`; it returns `manual_review_required` so a human can inspect the PR and decide how to proceed
+- `--checks-timeout-ms` is available for an explicit required-check timeout
+- the required-check gate defaults to a 30 minute timeout when the flag is omitted
+- if required checks never finish, the runner returns `manual_review_required` so a human can inspect the PR and decide how to proceed
 
 The first implementation focuses on control-flow correctness and testability.
 Its regression surface lives in:
 - `tests/local-codex-review-adapter.test.mjs`
+- `tests/local-codex-review.test.mjs`
 - `tests/plan-runner.test.mjs`
 - `tests/run-plan-doc.test.mjs`
 - `tests/fixtures/fake-bin/`

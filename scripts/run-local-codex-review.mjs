@@ -132,6 +132,14 @@ function runnerSourceSupportsRequestedOptions(source, options) {
     return false;
   }
 
+  if (Array.isArray(options.changedFiles) && options.changedFiles.length > 0 && !parseArgsSource.includes("if (arg === '--changed-file')")) {
+    return false;
+  }
+
+  if (options.taskHint && !parseArgsSource.includes("if (arg === '--task-hint')")) {
+    return false;
+  }
+
   return true;
 }
 

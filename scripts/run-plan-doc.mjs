@@ -10,7 +10,8 @@ import { runPlanTaskSequence } from '../dist/index.js';
 
 const execFileAsync = promisify(execFile);
 const NO_MERGE_SYSTEM_PROMPT =
-  'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks and Codex review before merging.';
+  'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging.';
+const DEFAULT_INSTALL_GIT_HOOKS_SCRIPT_PATH = fileURLToPath(new URL('./install-git-hooks.mjs', import.meta.url));
 const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
 const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
@@ -122,6 +123,8 @@ function createShellDependencies({ cwd }) {
 
   return {
     executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch, priorReview }) => {
+      await ensureGitHooksInstalled(repoPath);
+
       const gooseArgs = [
         'run',
         '--recipe',
@@ -255,43 +258,6 @@ function createShellDependencies({ cwd }) {
       consecutiveCancelledCheckObservationsByPr.delete(prUrl);
       return 'pending';
     },
-    getPullRequestHeadSha: async ({ prUrl }) => {
-      return runCommand(
-        'gh',
-        ['pr', 'view', prUrl, '--json', 'headRefOid', '--jq', '.headRefOid'],
-        { cwd },
-      );
-    },
-    runCodexReview: async ({ prUrl, headSha, repoPath, changedFiles, taskHint, reviewTimeoutMs }) => {
-      if (process.env.PLAN_RUNNER_FAKE_STATE && process.env.PLAN_RUNNER_FORCE_LOCAL_REVIEW_CLI !== '1') {
-        return runFakeLocalReview({
-          statePath: process.env.PLAN_RUNNER_FAKE_STATE,
-          prUrl,
-          headSha,
-          repoPath,
-          changedFiles,
-          taskHint,
-          reviewTimeoutMs,
-        });
-      }
-
-      const baseRef = await resolveLocalReviewBaseRef({
-        prUrl,
-        cwd,
-      });
-
-      return runLocalReviewCli({
-        repoPath,
-        baseRef,
-        headSha,
-        changedFiles,
-        taskHint,
-        reviewTimeoutMs,
-      });
-    },
-    getCodexReviewState: async ({ prUrl, headSha }) => {
-      throw new Error(`GitHub review polling is no longer supported for ${prUrl} at ${headSha}.`);
-    },
     mergePullRequest: async ({ prUrl }) => {
       await runCommand(
         'gh',
@@ -303,6 +269,14 @@ function createShellDependencies({ cwd }) {
       await new Promise((resolve) => setTimeout(resolve, ms));
     },
   };
+}
+
+async function ensureGitHooksInstalled(repoPath) {
+  await runCommand(
+    process.execPath,
+    [process.env.PLAN_RUNNER_INSTALL_HOOKS_SCRIPT_PATH?.trim() || DEFAULT_INSTALL_GIT_HOOKS_SCRIPT_PATH, '--repo-path', repoPath],
+    { cwd: repoPath },
+  );
 }
 
 async function readDetailedChecks({ prUrl, cwd }) {

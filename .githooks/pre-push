@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+set -eu
+
+resolve_base_ref() {
+  for candidate in "${LOCAL_CODEX_REVIEW_BASE_REF:-}" origin/main main origin/master master; do
+    if [ -n "$candidate" ] && git rev-parse --verify "${candidate}^{commit}" >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+BASE_REF="$(resolve_base_ref || true)"
+
+if [ -z "$BASE_REF" ]; then
+  printf '%s\n' 'Could not resolve a trusted base ref for the local pre-push Codex review. Set LOCAL_CODEX_REVIEW_BASE_REF or fetch origin/main.' >&2
+  exit 2
+fi
+
+exec node scripts/run-local-codex-review.mjs --base "$BASE_REF"

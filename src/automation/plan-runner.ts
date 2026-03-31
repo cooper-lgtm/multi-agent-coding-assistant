@@ -71,16 +71,6 @@ export interface PlanTaskSequenceDependencies {
     priorReview: CodexReviewState | null;
   }): Promise<ExecutedTaskSlice>;
   getRequiredCheckStatus(input: { prUrl: string }): Promise<RequiredCheckStatus>;
-  getPullRequestHeadSha(input: { prUrl: string }): Promise<string>;
-  runCodexReview(input: {
-    prUrl: string;
-    headSha: string;
-    repoPath: string;
-    changedFiles: string[];
-    taskHint: string;
-    priorReview: CodexReviewState | null;
-    reviewTimeoutMs: number;
-  }): Promise<CodexReviewState>;
   mergePullRequest(input: { prUrl: string }): Promise<void>;
   sleep(ms: number): Promise<void>;
 }
@@ -96,19 +86,11 @@ export async function runPlanTaskSequence(
 ): Promise<RunPlanTaskSequenceResult> {
   const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const maxCheckPolls = resolveMaxPolls(input.maxCheckPolls, input.checksTimeoutMs ?? DEFAULT_TIMEOUT_MS, pollIntervalMs);
-  const reviewTimeoutMs = (
-    typeof input.reviewTimeoutMs === 'number' &&
-    Number.isFinite(input.reviewTimeoutMs) &&
-    input.reviewTimeoutMs > 0
-  )
-    ? input.reviewTimeoutMs
-    : DEFAULT_TIMEOUT_MS;
   const maxTaskAttempts = input.maxTaskAttempts ?? DEFAULT_MAX_TASK_ATTEMPTS;
 
   const tasks: RunPlanTaskSequenceTaskResult[] = [];
 
   for (const taskHint of input.taskHints) {
-    let priorReview: CodexReviewState | null = null;
     let lastSelectedTask = taskHint;
     let lastBranchName: string | undefined;
     let lastPrUrl: string | undefined;
@@ -120,7 +102,7 @@ export async function runPlanTaskSequence(
         repoPath: input.repoPath,
         planPath: input.planPath,
         baseBranch: input.baseBranch,
-        priorReview,
+        priorReview: null,
       });
 
       lastSelectedTask = execution.selected_task;
@@ -137,7 +119,6 @@ export async function runPlanTaskSequence(
           repaired: attempt > 1,
           branch_name: execution.branch_name,
           pr_url: execution.pr_url,
-          findings: priorReview?.findings,
         });
 
         return { status, tasks };
@@ -152,7 +133,6 @@ export async function runPlanTaskSequence(
           repaired: attempt > 1,
           branch_name: execution.branch_name,
           pr_url: execution.pr_url,
-          findings: priorReview?.findings,
         });
 
         return { status: 'failed', tasks };
@@ -175,7 +155,6 @@ export async function runPlanTaskSequence(
             repaired: attempt > 1,
             branch_name: execution.branch_name,
             pr_url: execution.pr_url,
-            findings: priorReview?.findings,
             pending_gate: 'required_checks',
           });
 
@@ -190,69 +169,22 @@ export async function runPlanTaskSequence(
           repaired: attempt > 1,
           branch_name: execution.branch_name,
           pr_url: execution.pr_url,
-          findings: priorReview?.findings,
         });
 
         return { status: 'failed', tasks };
       }
 
-      const headSha = await deps.getPullRequestHeadSha({ prUrl: execution.pr_url });
-      let review: CodexReviewState;
-      try {
-        review = await deps.runCodexReview({
-          prUrl: execution.pr_url,
-          headSha,
-          repoPath: input.repoPath,
-          changedFiles: execution.changed_files,
-          taskHint: execution.selected_task,
-          priorReview,
-          reviewTimeoutMs,
-        });
-      } catch (error) {
-        review = {
-          status: 'manual_review_required',
-          findings: priorReview?.findings ?? [],
-          risk_notes: [String((error as Error)?.message ?? error)],
-        };
-      }
-
-      if (review.status === 'clean') {
-        await deps.mergePullRequest({ prUrl: execution.pr_url });
-        tasks.push({
-          task_hint: taskHint,
-          selected_task: execution.selected_task,
-          status: 'merged',
-          attempts: attempt,
-          repaired: attempt > 1,
-          branch_name: execution.branch_name,
-          pr_url: execution.pr_url,
-          ...(review.review_id ? { review_id: review.review_id } : {}),
-        });
-        priorReview = null;
-        break;
-      }
-
-      if (review.status === 'findings') {
-        priorReview = review;
-        continue;
-      }
-
+      await deps.mergePullRequest({ prUrl: execution.pr_url });
       tasks.push({
         task_hint: taskHint,
         selected_task: execution.selected_task,
-        status: 'manual_review_required',
+        status: 'merged',
         attempts: attempt,
         repaired: attempt > 1,
         branch_name: execution.branch_name,
         pr_url: execution.pr_url,
-        findings: review.findings.length > 0 ? review.findings : priorReview?.findings ?? [],
-        ...(Array.isArray(review.risk_notes) && review.risk_notes.length > 0
-          ? { risk_notes: review.risk_notes }
-          : {}),
-        pending_gate: 'codex_review',
       });
-
-      return { status: 'manual_review_required', tasks };
+      break;
     }
 
     const finalTask = tasks.at(-1);
@@ -269,7 +201,6 @@ export async function runPlanTaskSequence(
         repaired: maxTaskAttempts > 1,
         branch_name: lastBranchName,
         pr_url: lastPrUrl,
-        findings: priorReview?.findings,
       });
 
       return { status: 'failed', tasks };
