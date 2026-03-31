@@ -1,10 +1,10 @@
 {
   "artifact_type": "repo-context",
-  "version": "1.7.1",
+  "version": "1.9.0",
   "status": "refreshed",
   "repo_name": "multi-agent-coding-assistant",
   "repo_path": ".",
-  "refreshed_on": "2026-03-23",
+  "refreshed_on": "2026-03-30",
   "generated_from": [
     "README.md",
     "PRODUCT.md",
@@ -70,47 +70,47 @@
       {
         "id": "PR10a",
         "title": "Execution guidance contracts and DAG propagation",
-        "status": "next"
+        "status": "complete"
       },
       {
         "id": "PR10b",
         "title": "Runtime context builder and local discovery",
-        "status": "planned"
+        "status": "complete"
       },
       {
         "id": "PR10c",
         "title": "Worker payload threading and prompt uptake",
-        "status": "planned"
+        "status": "complete"
       },
       {
         "id": "PR11a",
         "title": "Runtime middleware seam",
-        "status": "planned"
+        "status": "complete"
       },
       {
         "id": "PR11b",
         "title": "Pre-completion checklist and continuation",
-        "status": "planned"
+        "status": "complete"
       },
       {
         "id": "PR12a",
         "title": "Retry diagnosis contracts",
-        "status": "planned"
+        "status": "complete"
       },
       {
         "id": "PR12b",
         "title": "Loop detection and retry guidance propagation",
-        "status": "planned"
+        "status": "complete"
       },
       {
         "id": "PR13a",
         "title": "Structured runtime-event schema",
-        "status": "planned"
+        "status": "complete"
       },
       {
         "id": "PR13b",
         "title": "Trace analyzer and script",
-        "status": "planned"
+        "status": "complete"
       }
     ]
   },
@@ -121,6 +121,9 @@
       "npm run test:adapter",
       "npm run test:planning",
       "npm run test:runtime",
+      "node --test tests/runtime-event-schema.test.mjs",
+      "node --test tests/run-trace-analyzer.test.mjs",
+      "node --test tests/analyze-run-traces.test.mjs",
       "node --test tests/goose-worker-contract.test.mjs",
       "node --test tests/goose-recipe-builder.test.mjs",
       "node --test tests/goose-worker-adapter.test.mjs",

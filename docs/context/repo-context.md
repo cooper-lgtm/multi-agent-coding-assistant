@@ -16,9 +16,10 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
 10. `docs/reviews/recurring-issues.md`
 11. relevant `src/` modules and `tests/`
 
-## Current Baseline (2026-03-23)
+## Current Baseline (2026-03-30)
 - TypeScript orchestration kernel is active for planning, DAG execution, implementation dispatch, quality gates, retry/escalation, reporting, and file-backed persistence/resume.
 - Planning/runtime tasks now preserve compact `execution_guidance` fields through normalization, validation, and DAG/runtime task creation.
+- Runtime middleware, pre-completion checklist continuation, retry diagnosis, loop-detection guidance, structured runtime events, and repo-local trace analysis are all present in the current baseline.
 - Planning/runtime invariants remain enforced in root docs and tests:
   - `main-orchestrator` is sole global controller
   - planning outputs implementation tasks only
@@ -26,11 +27,11 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
   - `test-agent` / `review-agent` are post-implementation quality gates
   - `needs_fix`, `blocked`, `failed` remain distinct
   - model routing should preserve logical labels plus exact-model metadata
-- The next planned delivery phase is a runtime-first harness program aimed at improving real task success rate:
-  - PR10 rich context injection
-  - PR11 self-verification guardrails
-  - PR12 retry diagnosis and loop detection
-  - PR13 structured trace analysis and feedback loop
+- The runtime-first harness program described by PR10 through PR13 has landed in the repository baseline:
+  - rich context injection
+  - self-verification guardrails
+  - retry diagnosis and loop detection
+  - structured trace analysis and repo-local feedback workflow
 - Goose integration baseline advanced through the prior active plan:
   - structured goose worker-result contracts are present
   - goose recipe assets and role-to-recipe mapping are present
@@ -42,26 +43,28 @@ If this artifact conflicts with current code or root docs, prefer `README.md`, `
   - CLI entry surface now exposes `plan`, `run`, and `resume` commands with stable runtime/planning flags
   - goose delivery workflow documentation exists under `docs/goose/pr-workflow.md`
 - Runtime evidence now carries implementation execution context (commands, tests, risk notes, suggested status, delivery metadata, retry handoff) through dispatch, reporting, and persisted runtime state.
+- Persisted runs now expose a deterministic analyzer entry point through `src/analysis/run-trace-analyzer.ts` and `scripts/analyze-run-traces.mjs`.
 
 ## Active Plan and Task Slices
 Primary execution plan: `docs/plans/2026-03-23-runtime-success-breakdown.md`
 
 Roadmap reference: `docs/roadmap/2026-03-22-runtime-success-roadmap.md`
 
-Planned slices (status inferred from repository state):
+Runtime-success slices (status inferred from repository state):
 1. PR10a execution-guidance contracts and DAG propagation — **complete**
 2. PR10b runtime context builder and local discovery — **complete**
-3. PR10c worker payload threading and prompt uptake — **next**
-4. PR11a runtime middleware seam — **planned**
-5. PR11b pre-completion checklist and continuation — **planned**
-6. PR12a retry diagnosis contracts — **planned**
-7. PR12b loop detection and retry guidance propagation — **planned**
-8. PR13a structured runtime-event schema — **planned**
-9. PR13b trace analyzer and script — **planned**
+3. PR10c worker payload threading and prompt uptake — **complete**
+4. PR11a runtime middleware seam — **complete**
+5. PR11b pre-completion checklist and continuation — **complete**
+6. PR12a retry diagnosis contracts — **complete**
+7. PR12b loop detection and retry guidance propagation — **complete**
+8. PR13a structured runtime-event schema — **complete**
+9. PR13b trace analyzer and script — **complete**
 
 ## Module Map
 - `src/schemas/`: shared planning/runtime/model contracts
 - `src/planning/`: mode resolution, direct/debate flows, normalization/synthesis
+- `src/analysis/`: run-trace analysis helpers and summary rendering
 - `src/orchestrator/`: DAG builder, runtime loop, dispatcher, quality gates, retry, reporting
 - `src/adapters/`: OpenClaw request/result shaping, model routing/resolution, goose recipe packaging, goose process/worker adapter
 - `src/workers/`: worker contracts and retry-handoff context
@@ -87,6 +90,9 @@ npm run build
 npm run test:adapter
 npm run test:planning
 npm run test:runtime
+node --test tests/runtime-event-schema.test.mjs
+node --test tests/run-trace-analyzer.test.mjs
+node --test tests/analyze-run-traces.test.mjs
 node --test tests/goose-worker-contract.test.mjs
 node --test tests/goose-recipe-builder.test.mjs
 node --test tests/goose-worker-adapter.test.mjs
@@ -106,6 +112,6 @@ node --test tests/cli-smoke.test.mjs
 
 ## Artifact Metadata
 - artifact_type: `repo-context`
-- version: `1.8.0`
+- version: `1.9.0`
 - status: `refreshed`
-- refreshed_on: `2026-03-23`
+- refreshed_on: `2026-03-30`
