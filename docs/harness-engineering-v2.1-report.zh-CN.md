@@ -6,12 +6,13 @@
 
 ## 1. 这份报告讲什么
 
-这份报告的目标，不是重复单个 PR 的改动说明，而是把当前项目里的 Harness Engineering 框架系统化讲清楚：
+这份报告的目标，不是简单把 PR 描述原样搬过来，而是把当前项目里的 Harness Engineering 框架系统化讲清楚，并把版本迭代账本整理出来：
 
 - 这个框架为什么存在
 - 它当前由哪些部分组成
 - 每一层分别承担什么职责
 - `V1.0`、`V2.0`、`V2.1` 是怎么演进出来的
+- 每个版本、每个关键 PR 分别补了什么能力
 - 截止目前它已经能实现什么效果
 - 哪些能力已经在 `main` 上落地，哪些仍处于开放 PR 的设计或补充阶段
 
@@ -85,6 +86,78 @@
 - `V2.0 core`：运行时成功率主线的大部分关键能力已在 `main`
 - `V2.0 extended`：阶段纪律、任务运营视角、trace analyzer 等补充面已经形成文档化方向，其中一部分仍在开放 PR
 - `V2.1`：更偏“下一代 Harness”设计层，已形成明确设计稿，但尚不是 `main` 已实现基线
+
+### 2.5 版本迭代总账：每个版本到底做了什么
+
+如果你最关心的是“我在每个版本里到底加了哪些东西”，优先看这一节。
+
+#### V1.0：先把 Harness 的仓库内骨架搭起来
+
+`V1.0` 对应 `PR #6`。这一版最重要的事，不是继续堆 runtime 功能，而是先把“协作规则、产品目标、架构边界、任务定义、复发问题沉淀”固化到仓库里。
+
+| 文件 / 动作 | 做了什么 | 解决的问题 | 带来的结果 |
+| --- | --- | --- | --- |
+| `AGENTS.md` | 定义项目目标、阅读顺序、repo map、golden rules、验证要求、收尾与 PR 规则 | 后续 agent 很容易只靠聊天上下文开工，导致边界、优先级、验证要求不稳定 | 仓库有了正式的协作操作手册，后来的 Harness 演进有统一入口 |
+| `PRODUCT.md` | 定义产品目标、核心用户、优先级、non-goals、success criteria、product rules | 容易把项目做成“什么都想加”的多 agent 试玩场，而不是聚焦 orchestrator kernel | 后续改动都能回到 `correctness > recoverability > traceability > contract clarity > breadth` 这个产品优先级上 |
+| `ARCHITECTURE.md` | 把 request -> planning -> validation -> DAG -> runtime -> quality gate -> retry/reporting 的整条链路、层边界、角色边界、不变量写成正式架构文档 | 旧的 `docs/architecture.md` 只是一份过时且局部的快照，无法作为统一架构入口 | 仓库从“代码里能看出架构”变成“文档里先讲清架构，代码和测试再落地” |
+| `docs/templates/task-template.md` | 规定非 trivial 任务必须写背景、目标、非目标、约束、合同检查、验收、风险、验证步骤 | 任务输入太模糊时，很容易出现越改越大、边写边改目标、没有验证闭环 | Harness 从一开始就把任务 framing 也纳入工程纪律 |
+| `docs/reviews/recurring-issues.md` | 把高频 review 问题整理成“可沉淀、可复用”的仓库记忆 | 重要经验只留在 review comment 或聊天里，下一次还会重复犯错 | 复发问题可以被提升为 docs、tests、template 或 automation，而不是反复口头提醒 |
+| `README.md` 更新 + 删除 `docs/architecture.md` | 把根文档入口统一到新的 Harness 骨架上，移除旧架构入口 | 仓库里存在多个架构入口时，后续一定会漂移 | `README -> PRODUCT/ARCHITECTURE/AGENTS` 的阅读顺序被固定下来 |
+
+这一版的本质是：
+
+> 先把 Harness 从“代码里隐含存在的规则”变成“仓库里显式存在的工作系统”。
+
+所以如果你问 `V1` 时新增的 `PRODUCT.md` 和 `ARCHITECTURE.md` 分别有什么作用，可以直接记成：
+
+- `PRODUCT.md` 负责回答“这个仓库现在到底要成为什么，以及什么暂时不做”
+- `ARCHITECTURE.md` 负责回答“这套系统现在按什么边界和不变量运行”
+
+#### V2.0：把骨架推进成一套以运行时成功率为中心的 Harness
+
+`V2.0` 不是一个 PR，而是一串连续迭代。它的共同主题是：让 worker 在更好的上下文里执行、在更严格的检查下交付、在失败时以更聪明的方式恢复，并把运行证据沉淀出来。
+
+| PR | 做了什么 | 解决的问题 | 带来的结果 |
+| --- | --- | --- | --- |
+| `PR #31` | 在 planning/runtime contract 里加入 `execution_guidance`，并打通 normalizer、validator、DAG propagation | 规划结果只有“谁做什么”，但缺少“执行时该怎么看代码、怎么验证、什么算完成” | Harness 开始携带执行指导，而不只是任务标题和 owner |
+| `PR #33` | 新增 `runtime-context-builder` 和 `local-context-discovery`，把 repo context、环境发现、重试信息组合成运行时上下文 | worker 常常得从零重新摸索当前仓库状态，浪费轮次 | dispatch 前能生成更接近“开工就绪”的 task context |
+| `PR #34` | 把 runtime context 真正穿到 OpenClaw / goose worker payload、recipe 和 implementation prompts | 上下文如果只停留在 orchestrator 内部，就不会改善真实执行 | `frontend-agent` / `backend-agent` 真正能收到 Harness 注入的上下文与指导 |
+| `PR #35` | 建立 orchestrator-owned `runtime middleware` seam | pre-dispatch 注入、checklist、loop detection 这类逻辑如果没有正式挂点，就会散落在各层 | 后续运行时增强有了统一扩展面，且控制权仍在 `main-orchestrator` |
+| `PR #36` | 引入 pre-completion checklist continuation，把“先自验证，再交给外部质量门”做成正式运行时行为 | worker 容易在没有 build/verify 证据时就宣称完成，导致外部质量门承担本该更早暴露的问题 | Harness 增加了一层内部自验证闭环，减少“看似完成、实际未验”的交付 |
+| `PR #37` + `PR #41` | `#37` 把 PR12 重试诊断/循环检测从 roadmap 细化成可执行计划；`#41` 实现 bounded attempt history、failure diagnosis、reconsideration guidance、loop detection | retry 之前更像“带一点摘要重放”，无法识别是不是在重复同一种失败路径 | 重试开始带着诊断和历史重新开工，而不是机械地再来一次 |
+| `PR #38` | 建立 structured runtime event schema，并同步 reporting / persistence / tests | 运行痕迹如果主要是自然语言日志，就很难做稳定分析 | run trace 从“人能读”提升到“机器也能分析、对比、统计” |
+| `PR #39` | 在 `PR #38` 基础上继续补 repo-local run trace analyzer、CLI script、fixture 和文档流程 | 即使 event 结构化了，如果没有分析器，仍然很难把历史运行变成稳定反馈 | Harness 开始具备面向证据的 trace analysis 工作流；这一项属于 `V2.0 extended`，当前仍在开放 PR |
+| `PR #28` | 吸收 Copilot Orchestra 的 workflow discipline 思路，设计阶段边界、暂停点、阶段级审计与交付纪律 | 当前 kernel 很强，但“大任务如何分阶段推进、何时暂停、如何审计阶段完成”还不够明确 | 为后续把 Harness 扩展成“更有节奏的交付系统”打了设计底稿；当前仍是开放设计 PR |
+| `PR #29` | 吸收 systemprompt-code-orchestrator 的 task operations 思路，设计 task lifecycle、task/session、task-level report/operator surface | 当前系统偏 run-centric，任务本身还不是足够强的一等运营对象 | 为未来的 task registry、task report、task-centric inspection/cleanup/control surface 提供设计方向；当前仍是开放设计 PR |
+
+如果把 `V2.0` 再压缩成一句话，它做的事就是：
+
+> 让 Harness 不只会“把任务派出去”，而是会在派发前准备上下文、在交付前做自验证、在失败后做诊断恢复、并把整条运行轨迹沉淀成后续可分析的证据。
+
+其中可以再拆成两层理解：
+
+- `V2.0 core`：`PR #31/#33/#34/#35/#36/#37/#38/#41`，已经把 runtime-success 主链路的大部分关键能力落到了 `main`
+- `V2.0 extended`：`PR #39/#28/#29`，把 trace analysis workflow、workflow discipline、task operations plane 继续外扩到更完整的 Harness 版图
+
+#### V2.1：从“强运行时控制”继续推进到“合同感知 + 能力感知”
+
+`V2.1` 对应 `PR #40`。这一版不是在 `V2.0` 上继续堆更多 guardrail，而是开始回答另一个问题：
+
+> 当任务更长、模型能力更不稳定、交付链路更复杂时，Harness 该如何按任务风险和模型能力自适应地调整自身深度？
+
+`PR #40` 的几个关键推进点是：
+
+| 设计点 | 含义 | 想解决什么问题 |
+| --- | --- | --- |
+| `TaskExecutionContract` | 在真正 dispatch 之前，把某次 attempt 要交付什么、什么不做、怎么验收、风险看哪里，物化成一个运行时合同工件 | planning task 仍然偏高层，缺少“这一次尝试具体要交付什么”的 attempt-level contract |
+| pre-dispatch contract check | 对高风险任务在开工前做一次受限合同检查 | 避免 worker 一开始就带着模糊、重复或不可验证的 scope 进入长执行链路 |
+| capability-aware harness policy | Harness 深度不再默认固定，而是按模型能力、任务风险、任务类型决定要不要更重的 scaffold | 不是所有任务都值得同样重的流程，也不是所有模型都需要同样多的保护壳 |
+| artifact-first handoff | 把 `task_execution_contract`、`implementation_attempt_report`、`qa_report`、`retry_diagnosis_report` 变成一等工件 | 长链路任务如果没有显式工件，很难稳定恢复、交接、比较和分析 |
+| harness ablation workflow | 不只想着继续加 harness，还要验证哪些 scaffold 未来可以删掉 | 避免 Harness 只增长不收敛，始终维持最高复杂度 |
+
+所以 `V2.1` 的本质不是“再多几条规则”，而是：
+
+> 把 Harness 从一套固定流程，推进成一套能根据任务和模型能力动态调节深度、并以显式合同和工件驱动长链路执行的系统。
 
 ---
 
