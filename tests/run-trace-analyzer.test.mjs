@@ -73,6 +73,14 @@ test('run trace analyzer summarizes blocker categories, continuation signals, re
       exact_model_id: 'openai-codex/gpt-5.4',
       provider: 'openai-codex',
       failure_category: 'repository',
+      count: 3,
+    },
+    {
+      selected_model: 'claude',
+      logical_model: 'claude',
+      exact_model_id: 'anthropic/claude-opus-4-6',
+      provider: 'anthropic',
+      failure_category: 'quality_needs_fix',
       count: 2,
     },
     {
@@ -81,14 +89,6 @@ test('run trace analyzer summarizes blocker categories, continuation signals, re
       exact_model_id: 'anthropic/claude-opus-4-6',
       provider: 'anthropic',
       failure_category: 'quality',
-      count: 1,
-    },
-    {
-      selected_model: 'claude',
-      logical_model: 'claude',
-      exact_model_id: 'anthropic/claude-opus-4-6',
-      provider: 'anthropic',
-      failure_category: 'quality_needs_fix',
       count: 1,
     },
     {
@@ -123,6 +123,7 @@ test('run trace analyzer does not attribute retry_scheduled failures to the next
             provider: 'google-gemini-cli',
           },
           metadata: {
+            retry_action: 'retry_with_upgraded_model',
             next_model: 'gemini',
           },
         },
@@ -143,6 +144,47 @@ test('run trace analyzer does not attribute retry_scheduled failures to the next
           },
           metadata: {
             loop_detected: true,
+          },
+        },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(analysis.model_failure_hotspots, [
+    {
+      selected_model: 'claude',
+      logical_model: 'claude',
+      exact_model_id: 'anthropic/claude-opus-4-6',
+      provider: 'anthropic',
+      failure_category: 'quality_needs_fix',
+      count: 1,
+    },
+  ]);
+});
+
+test('run trace analyzer keeps same-model retries in model hotspot attribution', () => {
+  const analysis = library.analyzeRunTraces([
+    {
+      source_id: 'retry-same-model-attribution',
+      events: [
+        {
+          timestamp: '2026-03-31T00:00:00.000Z',
+          task_id: 'task-api-contract',
+          type: 'retry_scheduled',
+          message: 'Retry scheduled for task-api-contract: retry 2 will reuse claude.',
+          phase: 'retry',
+          attempt: 2,
+          task_status: 'pending',
+          failure_category: 'quality_needs_fix',
+          model: {
+            selected_model: 'claude',
+            logical_model: 'claude',
+            exact_model_id: 'anthropic/claude-opus-4-6',
+            provider: 'anthropic',
+          },
+          metadata: {
+            retry_action: 'retry_same_model',
+            next_model: 'claude',
           },
         },
       ],
@@ -215,5 +257,6 @@ test('run trace analyzer renders a stable markdown summary for CLI output', () =
   assert.match(markdown, /## Retry Hotspots/);
   assert.match(markdown, /\| task-api-contract \| 2 \| claude, gemini \| quality_needs_fix \|/);
   assert.match(markdown, /## Model-Linked Failure Hotspots/);
-  assert.match(markdown, /\| codex \| repository \| 2 \| openai-codex\/gpt-5\.4 \|/);
+  assert.match(markdown, /\| codex \| repository \| 3 \| openai-codex\/gpt-5\.4 \|/);
+  assert.match(markdown, /\| claude \| quality_needs_fix \| 2 \| anthropic\/claude-opus-4-6 \|/);
 });

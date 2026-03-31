@@ -21,5 +21,6 @@ test('analyze-run-traces script renders the expected markdown summary for fixtur
   assert.match(output, /## Retry Hotspots/);
   assert.match(output, /\| task-api-contract \| 2 \| claude, gemini \| quality_needs_fix \|/);
   assert.match(output, /## Model-Linked Failure Hotspots/);
-  assert.match(output, /\| claude \| quality_needs_fix \| 1 \| anthropic\/claude-opus-4-6 \|/);
+  assert.match(output, /\| codex \| repository \| 3 \| openai-codex\/gpt-5\.4 \|/);
+  assert.match(output, /\| claude \| quality_needs_fix \| 2 \| anthropic\/claude-opus-4-6 \|/);
 });

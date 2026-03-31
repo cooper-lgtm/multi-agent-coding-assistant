@@ -289,7 +289,11 @@ function shouldAttributeFailureToModel(
     return false;
   }
 
-  return event.type !== 'retry_scheduled';
+  if (event.type !== 'retry_scheduled') {
+    return true;
+  }
+
+  return event.metadata.retry_action === 'retry_same_model';
 }
 
 function getBlockerCategory(event: RuntimeEvent): WorkerBlockerCategory | null {

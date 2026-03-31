@@ -47,6 +47,7 @@
       "provider": "anthropic"
     },
     "metadata": {
+      "retry_action": "retry_same_model",
       "next_model": "claude",
       "review_gate": "review-agent",
       "repeated_feedback": true
@@ -88,6 +89,7 @@
       "provider": "google-gemini-cli"
     },
     "metadata": {
+      "retry_action": "retry_with_upgraded_model",
       "next_model": "gemini",
       "upgrade_reason": "Repeated review feedback"
     }
@@ -128,6 +130,7 @@
       "provider": "openai-codex"
     },
     "metadata": {
+      "retry_action": "retry_same_model",
       "next_model": "codex",
       "blocker_category": "repository"
     }
