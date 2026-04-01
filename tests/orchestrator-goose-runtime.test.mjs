@@ -15,7 +15,12 @@ import {
 function addExecutionGuidance(fixture) {
   for (const task of fixture.tasks) {
     task.execution_guidance = {
-      must_read_files: ['README.md', `prompts/${task.assigned_agent}.md`],
+      must_read_files: [
+        'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+        'docs/plans/2026-04-01-goose-plan-linked-docs.md',
+        'README.md',
+        `prompts/${task.assigned_agent}.md`,
+      ],
       verification_commands: ['npm run build', 'npm run test:runtime'],
       environment_checks: ['git status --short'],
       definition_of_done: [`${task.id} uses injected runtime context before handoff.`],
@@ -134,6 +139,8 @@ test(
   assert.ok(firstRequest.payload.runtime_context.repo_context_summary.length > 0);
   assert.deepEqual(firstRequest.payload.runtime_context.task_context_files, [
     'docs/context/repo-context.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs.md',
     'README.md',
     'prompts/backend-agent.md',
   ]);

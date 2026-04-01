@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runPlanTaskSequence } from '../dist/index.js';
+import { parsePlanDocument, runPlanTaskSequence } from '../dist/index.js';
 
 function buildTaskSliceResult(taskHint, overrides = {}) {
   return {
@@ -17,6 +17,43 @@ function buildTaskSliceResult(taskHint, overrides = {}) {
     ...overrides,
   };
 }
+
+test('parsePlanDocument extracts linked design docs and task docs from the implementation plan format', () => {
+  const markdown = [
+    '# Example Implementation Plan',
+    '',
+    '**Design Doc:** `docs/plans/2026-04-01-example-design.md`',
+    '',
+    '### Task 1: First task',
+    '',
+    '**Task docs:**',
+    '- `docs/goose/pr-workflow.md`',
+    '- `src/automation/plan-runner.ts`',
+    '',
+    '### Task 2: Second task',
+    '',
+    '**Task docs:**',
+    '- `docs/goose/task-contract.md`',
+    '',
+  ].join('\n');
+
+  assert.deepEqual(parsePlanDocument(markdown), {
+    task_hints: [
+      'Task 1: First task',
+      'Task 2: Second task',
+    ],
+    design_doc_path: 'docs/plans/2026-04-01-example-design.md',
+    task_docs_by_hint: {
+      'Task 1: First task': [
+        'docs/goose/pr-workflow.md',
+        'src/automation/plan-runner.ts',
+      ],
+      'Task 2: Second task': [
+        'docs/goose/task-contract.md',
+      ],
+    },
+  });
+});
 
 test('runPlanTaskSequence waits for required checks before merging', async () => {
   const events = [];
@@ -74,6 +111,53 @@ test('runPlanTaskSequence waits for required checks before merging', async () =>
     ['sleep', 1],
     ['getRequiredCheckStatus', 'https://github.com/example/repo/pull/1', 'pass'],
     ['mergePullRequest', 'https://github.com/example/repo/pull/1'],
+  ]);
+});
+
+test('runPlanTaskSequence forwards linked design and task docs to task execution', async () => {
+  const received = [];
+
+  const result = await runPlanTaskSequence(
+    {
+      repoPath: '/tmp/repo',
+      planPath: '/tmp/plan.md',
+      baseBranch: 'main',
+      taskHints: ['Task 1: Example'],
+      planDesignDocPath: 'docs/plans/2026-04-01-example-design.md',
+      taskDocsByHint: {
+        'Task 1: Example': [
+          'docs/goose/pr-workflow.md',
+          'src/automation/plan-runner.ts',
+        ],
+      },
+      pollIntervalMs: 1,
+      maxCheckPolls: 1,
+    },
+    {
+      executeTaskSlice: async (input) => {
+        received.push(input);
+        return buildTaskSliceResult(input.taskHint);
+      },
+      getRequiredCheckStatus: async () => 'pass',
+      mergePullRequest: async () => {},
+      sleep: async () => {},
+    },
+  );
+
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(received, [
+    {
+      taskHint: 'Task 1: Example',
+      repoPath: '/tmp/repo',
+      planPath: '/tmp/plan.md',
+      baseBranch: 'main',
+      attempt: 1,
+      designDocPath: 'docs/plans/2026-04-01-example-design.md',
+      taskDocPaths: [
+        'docs/goose/pr-workflow.md',
+        'src/automation/plan-runner.ts',
+      ],
+    },
   ]);
 });
 

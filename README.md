@@ -226,6 +226,14 @@ It is aimed at the workflow where one plan document should execute as a sequence
 - merge only after the required checks pass
 
 Important behavior:
+- non-trivial feature work should use one stage design doc and one
+  implementation plan doc
+- the implementation plan can link Goose-readable planning artifacts with one
+  top-level `**Design Doc:**` entry plus per-task `**Task docs:**` lists
+- planning may happen outside Goose as long as the checked-in plan/design/task
+  docs follow that convention for later automation
+- each task-sized PR must include at least one docs update, but it does not
+  need a separate standalone task doc file
 - `scripts/run-plan-doc.mjs` installs the repo-managed pre-push hook in the target repository before goose starts working
 - the local pre-push hook is the only blocking review gate; if it returns findings or infrastructure errors, `git push` does not proceed
 - because the workflow uses one task-sized branch per run, the pre-push review covers the branch delta against the trusted base ref instead of adding a second post-push review pass

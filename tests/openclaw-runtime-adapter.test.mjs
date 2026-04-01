@@ -50,7 +50,11 @@ test(
   const repoPath = process.cwd();
 
   task.execution_guidance = {
-    must_read_files: ['README.md', 'src/adapters/goose-recipe-builder.ts'],
+    must_read_files: [
+      'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+      'docs/plans/2026-04-01-goose-plan-linked-docs.md',
+      'README.md',
+    ],
     verification_commands: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
     environment_checks: ['git status --short'],
     definition_of_done: ['Worker payload includes compact runtime context for implementation.'],
@@ -100,8 +104,9 @@ test(
   assert.equal(envelope.payload.runtime_context.environment_snapshot.lockfile_path, 'package-lock.json');
   assert.deepEqual(envelope.payload.runtime_context.task_context_files, [
     'docs/context/repo-context.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs.md',
     'README.md',
-    'src/adapters/goose-recipe-builder.ts',
   ]);
   assert.deepEqual(envelope.payload.runtime_context.verification_plan.commands, [
     'npm run build',
@@ -185,7 +190,11 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   const repoPath = process.cwd();
 
   task.execution_guidance = {
-    must_read_files: ['README.md', 'ARCHITECTURE.md'],
+    must_read_files: [
+      'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+      'docs/plans/2026-04-01-goose-plan-linked-docs.md',
+      'README.md',
+    ],
     verification_commands: ['npm run build', 'node --test tests/openclaw-runtime-adapter.test.mjs'],
     environment_checks: ['git status --short'],
     definition_of_done: ['Quality gate worker can inspect compact retry handoff context.'],
@@ -304,8 +313,9 @@ test('worker role envelopes preserve retry handoff context for quality gate role
   assert.ok(envelope.payload.runtime_context);
   assert.deepEqual(envelope.payload.runtime_context.task_context_files, [
     'docs/context/repo-context.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs.md',
     'README.md',
-    'ARCHITECTURE.md',
   ]);
   assert.deepEqual(envelope.payload.runtime_context.verification_plan.commands, [
     'npm run build',

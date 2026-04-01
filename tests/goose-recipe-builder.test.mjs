@@ -304,10 +304,20 @@ test('execute-next-plan-task relies on automatic codex review workflow', () => {
   assert.match(recipe, /automatic Codex review/i);
 });
 
+test('execute-next-plan-task declares linked design and task doc inputs for plan-linked docs flows', () => {
+  const recipe = fs.readFileSync('.goose/recipes/execute-next-plan-task.yaml', 'utf8');
+
+  assert.match(recipe, /- key: design_doc_path\b/);
+  assert.match(recipe, /- key: task_doc_paths_json\b/);
+  assert.match(recipe, /linked design doc path/i);
+  assert.match(recipe, /linked task docs json/i);
+  assert.match(recipe, /each task-sized PR must include at least one docs update/i);
+});
+
 test('execute-next-plan-task refreshes checked-in context before merge', () => {
   const recipe = fs.readFileSync('.goose/recipes/execute-next-plan-task.yaml', 'utf8');
   const refreshIndex = recipe.indexOf('refresh the repository context artifacts on the task branch');
-  const mergeIndex = recipe.indexOf('merge without waiting for the automatic Codex review workflow to finish');
+  const mergeIndex = recipe.indexOf('Do not merge the PR in this recipe');
 
   assert.notEqual(refreshIndex, -1);
   assert.notEqual(mergeIndex, -1);
@@ -336,6 +346,7 @@ test('implementation recipes declare and reference runtime_context so goose-back
     assert.match(recipe, /- key: runtime_context\b/);
     assert.match(recipe, /Runtime context JSON:\s*\n\s*\{\{ runtime_context \}\}/);
     assert.match(recipe, /start with the injected runtime context/i);
+    assert.match(recipe, /plan-linked design\/task docs/i);
   }
 });
 

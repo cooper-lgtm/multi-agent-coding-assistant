@@ -15,16 +15,29 @@ instructions: |
   - docs/templates/task-template.md
   - docs/reviews/recurring-issues.md
 
+  Then read the linked planning artifacts for this run:
+  - linked design doc path: {{ design_doc_path }}
+  - linked task docs JSON: {{ task_doc_paths_json }}
+  If `design_doc_path` is non-empty, read that file before source exploration.
+  If `task_doc_paths_json` is not `[]`, read each listed file before broad
+  repository exploration or edits.
+
   Then:
   1. identify exactly one next unfinished major task from the active plan
-  2. refresh your understanding of the affected source files and tests
-  3. create a branch for that task-sized slice from {{ base_branch }}
-  4. complete only that task's scope
-  5. refresh the repository context artifacts on the task branch when this workflow requires checked-in context updates
-  6. run the task's required validation commands
-  7. install the repository git hooks if needed and do not bypass the local pre-push Codex review gate
-  8. create or update the task PR only after the local pre-push review is clean
-  9. stop after the PR is ready for the outer plan runner to wait on required checks
+  2. refresh your understanding of the linked design/task docs for that slice
+  3. refresh your understanding of the affected source files and tests
+  4. create a branch for that task-sized slice from {{ base_branch }}
+  5. complete only that task's scope
+  6. make sure the slice includes at least one docs update, but do not create a
+     separate standalone task doc file unless the task itself requires one
+  7. refresh the repository context artifacts on the task branch when this
+     workflow requires checked-in context updates
+  8. run the task's required validation commands
+  9. install the repository git hooks if needed and do not bypass the local
+     pre-push Codex review gate
+  10. create or update the task PR only after the local pre-push review is clean
+  11. stop after the PR is ready for the outer plan runner to wait on required
+      checks
 
   Rules:
   - Do not start a second major task in the same run
@@ -32,9 +45,12 @@ instructions: |
   - Do not collapse `needs_fix`, `blocked`, and `failed`
   - Do not invent completion if verification failed
   - Do not merge the PR in this recipe; required-check polling and merge decisions belong to the outer plan runner
-  - GitHub-hosted Codex review may still run asynchronously; do not add a manual PR comment
+  - GitHub-hosted automatic Codex review may still run asynchronously; do not
+    add a manual PR comment
   - If refreshing repository context artifacts changes checked-in files, include those updates in the same PR before merge
   - Use `task_hint` only if it is non-empty; otherwise choose the next unfinished task from the plan
+  - Each task-sized PR must include at least one docs update, but it does not
+    need a separate standalone task doc file
   - For successful runs that opened or updated a PR, return `merge_status` as `opened_not_merged`
   - For blocked or failed runs before branch or PR creation, omit `branch_name` and `pr_url`, and set `merge_status` to `not_opened`
   - If task scope is ambiguous, stop and return blocked
@@ -46,7 +62,10 @@ prompt: |
 
   Base branch for this run: {{ base_branch }}
   Task hint for this run: {{ task_hint }}
-  Before editing, confirm the selected task and affected modules from the plan.
+  Linked design doc path for this run: {{ design_doc_path }}
+  Linked task docs JSON for this run: {{ task_doc_paths_json }}
+  Before editing, confirm the selected task, linked planning docs, and affected
+  modules from the plan.
   Before `git push` or any PR create/update step, make sure the repository-managed pre-push hook is active and the local Codex review gate is clean.
   If the pre-push local review gate returns findings during `git push`, treat that feedback as part of this same Goose run: fix the findings, rerun any needed validation, and retry the push before returning.
   Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, and been opened or updated for outer-loop checks. Do not merge. The outer plan runner will wait only on required GitHub checks before merging.
@@ -74,6 +93,16 @@ parameters:
     requirement: optional
     default: "main"
     description: "Default base branch for task-sized PR work"
+  - key: design_doc_path
+    input_type: string
+    requirement: optional
+    default: ""
+    description: "Optional linked design doc path extracted from the active implementation plan"
+  - key: task_doc_paths_json
+    input_type: string
+    requirement: optional
+    default: "[]"
+    description: "Optional JSON array of task-specific read-first doc paths extracted from the active implementation plan"
   - key: task_hint
     input_type: string
     requirement: optional

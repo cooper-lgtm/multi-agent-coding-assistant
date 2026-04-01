@@ -20,6 +20,8 @@ export interface RunPlanTaskSequenceInput {
   planPath: string;
   baseBranch: string;
   taskHints: string[];
+  planDesignDocPath?: string | null;
+  taskDocsByHint?: Record<string, string[]>;
   pollIntervalMs?: number;
   checksTimeoutMs?: number;
   maxCheckPolls?: number;
@@ -47,6 +49,9 @@ export interface PlanTaskSequenceDependencies {
     repoPath: string;
     planPath: string;
     baseBranch: string;
+    attempt: number;
+    designDocPath?: string | null;
+    taskDocPaths?: string[];
   }): Promise<ExecutedTaskSlice>;
   getRequiredCheckStatus(input: { prUrl: string }): Promise<RequiredCheckStatus>;
   mergePullRequest(input: { prUrl: string }): Promise<void>;
@@ -71,6 +76,9 @@ export async function runPlanTaskSequence(
       repoPath: input.repoPath,
       planPath: input.planPath,
       baseBranch: input.baseBranch,
+      attempt: 1,
+      designDocPath: input.planDesignDocPath ?? null,
+      taskDocPaths: [...(input.taskDocsByHint?.[taskHint] ?? [])],
     });
 
     if (execution.status !== 'completed' || execution.merge_status === 'not_opened' || !execution.pr_url) {
