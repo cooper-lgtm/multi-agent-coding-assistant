@@ -76,6 +76,12 @@ Use exact paths when possible:
 - Test: `tests/...`
 - Docs: `docs/...`
 
+### Risks
+
+List risks and edge cases worth checking.
+
+If the task is low-risk, say so explicitly instead of omitting the section.
+
 ### Validation Plan
 
 List the validation you expect to run, for example:
@@ -130,10 +136,6 @@ Add these only when they materially help execution.
 ### Preconditions And Shared Contracts
 
 Use when the task depends on prior work, shared harnesses, migrations, auth contracts, or architectural invariants that must not drift.
-
-### Risks
-
-Use when there are edge cases, rollout risks, or likely drift areas worth making explicit up front.
 
 ### Out Of Scope Follow-ups
 
