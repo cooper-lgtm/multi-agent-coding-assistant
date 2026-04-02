@@ -64,6 +64,10 @@ export function parsePlanDocument(markdown: string): ParsedPlanDocument {
       continue;
     }
 
+    if (!line) {
+      continue;
+    }
+
     collectingTaskDocsFor = null;
   }
 
@@ -80,9 +84,9 @@ function normalizePathReference(value: string): string | null {
     return null;
   }
 
-  const markdownLinkMatch = /\[[^\]]+\]\(([^)]+)\)/u.exec(trimmed);
-  if (markdownLinkMatch?.[1]) {
-    return markdownLinkMatch[1].trim() || null;
+  const markdownLinkDestination = extractMarkdownLinkDestination(trimmed);
+  if (markdownLinkDestination) {
+    return markdownLinkDestination;
   }
 
   const backtickMatch = /`([^`]+)`/u.exec(trimmed);
@@ -91,6 +95,27 @@ function normalizePathReference(value: string): string | null {
   }
 
   return trimmed;
+}
+
+function extractMarkdownLinkDestination(value: string): string | null {
+  const markdownLinkMatch = /\[[^\]]+\]\((.+)\)/u.exec(value);
+  const destinationAndTitle = markdownLinkMatch?.[1]?.trim();
+
+  if (!destinationAndTitle) {
+    return null;
+  }
+
+  const angleBracketDestinationMatch = /^<([^>]+)>/u.exec(destinationAndTitle);
+  if (angleBracketDestinationMatch?.[1]) {
+    return angleBracketDestinationMatch[1].trim() || null;
+  }
+
+  const plainDestinationMatch = /^([^\s]+)(?:\s+.+)?$/u.exec(destinationAndTitle);
+  if (plainDestinationMatch?.[1]) {
+    return plainDestinationMatch[1].trim() || null;
+  }
+
+  return null;
 }
 
 function pushUnique(values: string[], value: string): void {

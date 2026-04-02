@@ -65,6 +65,7 @@ test('parsePlanDocument stops task-doc collection before unrelated prose and bul
     '',
     '**Task docs:**',
     '- `docs/goose/pr-workflow.md`',
+    '',
     '- `src/automation/plan-runner.ts`',
     '',
     'This task also needs ordinary narrative context.',
@@ -84,6 +85,30 @@ test('parsePlanDocument stops task-doc collection before unrelated prose and bul
       'Task 1: First task': [
         'docs/goose/pr-workflow.md',
         'src/automation/plan-runner.ts',
+      ],
+    },
+  });
+});
+
+test('parsePlanDocument normalizes markdown links with optional titles', () => {
+  const markdown = [
+    '# Example Implementation Plan',
+    '',
+    '**Design Doc:** [Design](docs/plans/2026-04-01-example-design.md "Design doc")',
+    '',
+    '### Task 1: First task',
+    '',
+    '**Task docs:**',
+    '- [Workflow](docs/goose/pr-workflow.md "Workflow guidance")',
+    '',
+  ].join('\n');
+
+  assert.deepEqual(parsePlanDocument(markdown), {
+    task_hints: ['Task 1: First task'],
+    design_doc_path: 'docs/plans/2026-04-01-example-design.md',
+    task_docs_by_hint: {
+      'Task 1: First task': [
+        'docs/goose/pr-workflow.md',
       ],
     },
   });
