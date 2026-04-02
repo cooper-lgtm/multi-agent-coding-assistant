@@ -87,6 +87,22 @@ The repository docs are the working source of truth.
 - Avoid opportunistic refactors outside the stated task.
 - If you spot adjacent issues, record them in docs or follow-up notes rather than silently expanding scope.
 
+### Implementation rules
+- Use TDD by default for features, bug fixes, behavior-changing refactors, and behavior-changing contract work.
+- The rule is: no behavior-changing production code without a failing automated test first.
+- Follow the red-green-refactor loop explicitly:
+  - write the smallest failing test that demonstrates the intended behavior
+  - run the narrowest useful test command and confirm the failure is the expected one
+  - write the minimal implementation needed to pass
+  - rerun the same test, then the next broader relevant checks
+  - refactor only while keeping tests green
+- For pure behavior-preserving refactors, verify the relevant existing automated coverage before and after the change. Add or tighten focused coverage first only when the current tests do not credibly protect the refactor.
+- Do not treat tests written after implementation as equivalent to TDD. If new behavior was implemented before the test was added, rewrite the change from the test-first flow before landing it.
+- Narrow exceptions are allowed, but they should be stated explicitly in task notes:
+  - doc-only changes
+  - config-only changes with no behavior impact
+  - throwaway prototypes that are not intended to ship
+
 ### Compatibility rules
 - This repository is still a pre-release MVP. Backward compatibility for unpublished runtime snapshots, worker payloads, event records, or other in-flight artifacts is not a default requirement.
 - When review feedback asks for compatibility with historical formats that have never shipped, treat it as optional design input unless the task explicitly calls for migration or legacy support.
@@ -107,6 +123,14 @@ A proper task should define:
 - affected modules
 - risks
 - validation steps
+
+For multi-step implementation plans, prefer concise execution-ready task blocks that include:
+- files
+- test-first target when behavior changes
+- implementation notes
+- validation commands
+
+Use explicit step-by-step RED/GREEN sequencing only when task-specific ordering is critical, risky, or intended for low-context handoff. Do not restate the full repository TDD doctrine in every task plan.
 
 If those are missing, narrow the scope before making broad edits.
 

@@ -91,7 +91,22 @@ Suggested actions:
 
 ---
 
-## 8. Premature backward-compatibility pressure
+## 8. Behavior changes bypass test-first flow
+Common symptoms:
+- implementation starts before a narrow failing test exists
+- plans describe broad code edits but do not name the first failing test target
+- validation jumps straight to broad suites without confirming the intended red-to-green behavior first
+- exceptions such as doc-only work are implied but never stated
+
+Suggested actions:
+- name the first failing test target and narrow command in the task plan when behavior changes
+- confirm the first failure is the expected one before implementing the fix or feature
+- implement the smallest change that turns that test green before running broader validation
+- state explicit exceptions when the task is doc-only, config-only with no behavior impact, or another narrow non-TDD case
+
+---
+
+## 9. Premature backward-compatibility pressure
 Common symptoms:
 - review feedback asks for compatibility with runtime snapshots, worker payloads, or event records that have never shipped
 - a PR starts adding fallback parsing for hypothetical older formats without a stated migration requirement
@@ -104,7 +119,7 @@ Suggested actions:
 
 ---
 
-## 9. Trace findings stay trapped in chat
+## 10. Trace findings stay trapped in chat
 Common symptoms:
 - repeated blocker categories or verification failures show up in persisted runs, but nobody writes them back into docs
 - retry hotspots are only discussed in one review thread instead of becoming reusable repository guidance
