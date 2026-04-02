@@ -55,6 +55,40 @@ test('parsePlanDocument extracts linked design docs and task docs from the imple
   });
 });
 
+test('parsePlanDocument stops task-doc collection before unrelated prose and bullet lists', () => {
+  const markdown = [
+    '# Example Implementation Plan',
+    '',
+    '**Design Doc:** `docs/plans/2026-04-01-example-design.md`',
+    '',
+    '### Task 1: First task',
+    '',
+    '**Task docs:**',
+    '- `docs/goose/pr-workflow.md`',
+    '- `src/automation/plan-runner.ts`',
+    '',
+    'This task also needs ordinary narrative context.',
+    '',
+    '- this bullet is not a file path',
+    '- neither is this one',
+    '',
+    '**Validation:**',
+    '- `npm run build`',
+    '',
+  ].join('\n');
+
+  assert.deepEqual(parsePlanDocument(markdown), {
+    task_hints: ['Task 1: First task'],
+    design_doc_path: 'docs/plans/2026-04-01-example-design.md',
+    task_docs_by_hint: {
+      'Task 1: First task': [
+        'docs/goose/pr-workflow.md',
+        'src/automation/plan-runner.ts',
+      ],
+    },
+  });
+});
+
 test('runPlanTaskSequence waits for required checks before merging', async () => {
   const events = [];
   const checkStates = ['pending', 'pass'];

@@ -64,13 +64,7 @@ export function parsePlanDocument(markdown: string): ParsedPlanDocument {
       continue;
     }
 
-    if (!line) {
-      continue;
-    }
-
-    if (line.startsWith('**') || line.startsWith('##')) {
-      collectingTaskDocsFor = null;
-    }
+    collectingTaskDocsFor = null;
   }
 
   return {
