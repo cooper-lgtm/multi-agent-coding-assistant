@@ -1,6 +1,6 @@
 # TDD Policy And Task Template Alignment Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For Claude:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task.
 
 **Goal:** Promote TDD to a repository-level rule and upgrade the task template into an execution-ready implementation plan format without losing this repo's planning/runtime contract checks.
 
