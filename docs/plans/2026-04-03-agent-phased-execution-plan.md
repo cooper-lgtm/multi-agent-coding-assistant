@@ -6,13 +6,17 @@
 
 **Tech Stack:** TypeScript, Node.js built-in test runner, Goose recipes, OpenClaw adapters, Markdown plans, existing planning/runtime schemas and prompts
 
+**Execution Mode:** Auto merge via `scripts/run-plan-doc.mjs` after required GitHub checks pass. This plan assumes the repository allows checks-driven merge without a separate manual review approval gate.
+
+**Design Doc:** `docs/plans/2026-04-03-agent-capability-phased-design.md`
+
 ---
 
 ## Background
 
 - The repository already has a validated orchestration kernel, runtime context injection, pre-completion checklist continuation, retry diagnostics, loop detection, and run-trace analysis in the current baseline, so the next iteration should expand agent capability instead of rebuilding the kernel from scratch. Evidence: [README.md](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/README.md), [docs/harness-engineering-v2.1-report.zh-CN.md](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/docs/harness-engineering-v2.1-report.zh-CN.md#L122), [docs/context/repo-context.md](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/docs/context/repo-context.md).
 - Debate planning still fans out directly to `architecture-planner`, `engineering-planner`, and `integration-planner` without a real `planning-agent` coordination step, so Phase 1 should align code with the existing coordination design before later workflow layers build on it. Evidence: [src/planning/planning-pipeline.ts:104](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/src/planning/planning-pipeline.ts#L104), [docs/plans/2026-03-17-planning-brief-coordination.md:5](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/docs/plans/2026-03-17-planning-brief-coordination.md#L5).
-- Worker handoff is already richer than a bare prompt, but it is still centered on loose fields such as `runtime_context`, `attempt_history`, `commands_run`, and `review_feedback`; there is no explicit attempt-level `TaskExecutionContract`, `implementation_attempt_report`, `qa_report`, or `retry_diagnosis_report` artifact yet. Evidence: [src/workers/contracts.ts:67](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/src/workers/contracts.ts#L67), [src/workers/contracts.ts:83](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/src/workers/contracts.ts#L83), [docs/harness-engineering-v2.1-report.zh-CN.md:152](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/docs/harness-engineering-v2.1-report.zh-CN.md#L152).
+- Worker handoff is already richer than a bare prompt, but it is still centered on loose fields such as `runtime_context`, `attempt_history`, `commands_run`, and `review_feedback`; there is no explicit attempt-level `TaskExecutionContract`, `implementation_attempt_report`, or `retry_diagnosis_report` artifact yet, and quality-gate QA reporting is still too coarse. Evidence: [src/workers/contracts.ts:67](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/src/workers/contracts.ts#L67), [src/workers/contracts.ts:83](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/src/workers/contracts.ts#L83), [docs/harness-engineering-v2.1-report.zh-CN.md:152](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/docs/harness-engineering-v2.1-report.zh-CN.md#L152).
 - `review-agent` and `test-agent` prompts are intentionally thin today, returning only coarse decisions with concise evidence, so Phase 3 should deepen them only after Phase 2 provides stronger artifact surfaces. Evidence: [prompts/review-agent.md:1](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/prompts/review-agent.md#L1), [prompts/test-agent.md:1](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/prompts/test-agent.md#L1).
 - Task operations and stage discipline are explicitly described as future extensions rather than current code-level capabilities, so Phase 4 should start with a narrow design-to-scaffold path instead of jumping straight to a large task registry. Evidence: [docs/harness-engineering-v2.1-report.zh-CN.md:130](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/docs/harness-engineering-v2.1-report.zh-CN.md#L130), [docs/harness-engineering-v2.1-report.zh-CN.md:152](/Users/openclaw/.codex/worktrees/788b/multi-agent-coding-assistant/docs/harness-engineering-v2.1-report.zh-CN.md#L152).
 
@@ -144,9 +148,10 @@ node --test tests/orchestrator-goose-runtime.test.mjs tests/orchestrator-e2e.tes
 ## Preconditions And Shared Contracts
 
 - Run tasks in order; Phase 2 starts only after Phase 1 is merged.
-- Phase 3 starts only after Phase 2 tasks that define QA artifacts are merged.
+- Phase 3 starts only after Phase 2 tasks that define implementation and retry handoff artifacts are merged.
 - Phase 4 starts only after Phase 3 proves stable structured QA/report surfaces.
 - Goose should execute this file one `### Task N:` slice at a time through the existing PR-sized loop.
+- Each task-sized PR must include at least one docs update. Unless a task names a more specific docs target, update this plan file with validation results, changed docs, and remaining risks or follow-up notes.
 - If any task uncovers a design contradiction, pause after that PR and refresh this plan before continuing.
 
 ## Task Breakdown
@@ -162,6 +167,11 @@ node --test tests/orchestrator-goose-runtime.test.mjs tests/orchestrator-e2e.tes
 - Modify: `src/planning/contracts.ts`
 - Modify: `src/planning/planning-normalizer.ts`
 - Test: `tests/planning-pipeline.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
+
+**Task docs:**
+- `docs/plans/2026-03-17-planning-brief-coordination-design.md`
+- `docs/plans/2026-03-17-planning-brief-coordination.md`
 
 **Phase notes:**
 - This task establishes the data model only.
@@ -203,6 +213,10 @@ npm run test:planning
 
 Expected: PASS for the new schema and trace assertions.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the delivered schema surface, validation results, and any remaining risks before opening or updating the PR.
+
 ### Task 2: Make `planning-agent` the real debate coordinator
 
 **Files:**
@@ -211,6 +225,7 @@ Expected: PASS for the new schema and trace assertions.
 - Modify: `src/planning/planning-normalizer.ts`
 - Modify: `src/examples/planning-fixtures.ts`
 - Test: `tests/planning-pipeline.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - This task should align implementation with the design record rather than invent a new planner topology.
@@ -251,6 +266,10 @@ npm run test:planning
 
 Expected: PASS with coordinator route ordering and clarified brief propagation.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the selected coordinator flow changes, validation results, and any residual coordination risks before opening or updating the PR.
+
 ### Task 3: Add bounded clarification and planner cross-review
 
 **Files:**
@@ -259,6 +278,7 @@ Expected: PASS with coordinator route ordering and clarified brief propagation.
 - Modify: `src/planning/debate-synthesizer.ts`
 - Test: `tests/planning-pipeline.test.mjs`
 - Create: `tests/fixtures/planning/debate-coordination-golden.json`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - Keep the protocol bounded: zero or one clarification round, zero or one cross-review round.
@@ -294,6 +314,10 @@ npm run test:planning
 
 Expected: PASS with the new golden interaction trace.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the bounded protocol delivered, validation results, and any remaining clarification or cross-review edge cases before opening or updating the PR.
+
 ### Task 4: Refresh prompts, demos, and docs for the coordination model
 
 **Files:**
@@ -306,10 +330,17 @@ Expected: PASS with the new golden interaction trace.
 - Modify: `README.md`
 - Modify: `docs/context/repo-context.md`
 - Test: `tests/orchestrator-e2e.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
+
+**Task docs:**
+- `docs/plans/2026-03-17-planning-brief-coordination-design.md`
+- `README.md`
+- `docs/context/repo-context.md`
 
 **Phase notes:**
 - Make the prompt contract and code contract match.
 - Keep quality-gate ownership unchanged.
+- If prompt alignment plus demo/docs refresh no longer fits one reviewable PR, split prompt/contract alignment from demo/docs refresh and land the prompt/contract slice first.
 
 **Step 1: Write the failing golden/demo expectations**
 
@@ -346,13 +377,17 @@ node --test tests/orchestrator-e2e.test.mjs
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the docs and prompt surfaces refreshed, validation results, and any follow-up alignment work before opening or updating the PR.
+
 ---
 
 ## Phase 2: Contract-Aware Artifact-First Handoff
 
 **Objective:** Build attempt-level handoff artifacts on top of the existing worker/request/evidence fields so dispatch, testing, review, and retry become more explicit and analyzable.
 
-### Task 5: Add `TaskExecutionContract` and artifact schemas
+### Task 5: Add `TaskExecutionContract` and implementation/retry artifact schemas
 
 **Files:**
 - Modify: `src/workers/contracts.ts`
@@ -361,17 +396,22 @@ Expected: PASS.
 - Modify: `src/index.ts`
 - Test: `tests/openclaw-runtime-adapter.test.mjs`
 - Test: `tests/orchestrator-runtime.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
+
+**Task docs:**
+- `docs/plans/2026-03-16-worker-execution-bridge-mvp.md`
+- `docs/harness-engineering-v2.1-report.zh-CN.md`
 
 **Phase notes:**
 - Add new artifacts without breaking current status semantics.
 - Start with schema and typed envelopes only.
+- Leave quality-gate `QaReport` contract depth to Phase 3 so Phase 2 stays focused on implementation and retry handoff.
 
 **Step 1: Write the failing tests**
 
 Add assertions for:
 - `TaskExecutionContract`
 - `ImplementationAttemptReport`
-- `QaReport`
 - `RetryDiagnosisReport`
 
 **Step 2: Run focused verification**
@@ -400,6 +440,10 @@ node --test tests/openclaw-runtime-adapter.test.mjs tests/orchestrator-runtime.t
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the contract and envelope surfaces delivered, validation results, and any remaining integration risks before opening or updating the PR.
+
 ### Task 6: Build pre-dispatch contract assembly and validation
 
 **Files:**
@@ -409,6 +453,7 @@ Expected: PASS.
 - Modify: `src/orchestrator/policy-engine.ts`
 - Test: `tests/orchestrator-middleware.test.mjs`
 - Test: `tests/orchestrator-policy-engine.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - Keep checks bounded and orchestration-owned.
@@ -452,6 +497,10 @@ node --test tests/orchestrator-middleware.test.mjs tests/orchestrator-policy-eng
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the pre-dispatch assembly behavior delivered, validation results, and any remaining policy edge cases before opening or updating the PR.
+
 ### Task 7: Thread artifact-first handoff through Goose/OpenClaw workers
 
 **Files:**
@@ -463,6 +512,7 @@ Expected: PASS.
 - Test: `tests/goose-recipe-builder.test.mjs`
 - Test: `tests/goose-worker-adapter.test.mjs`
 - Test: `tests/orchestrator-goose-runtime.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - Keep the worker seam typed and portable.
@@ -501,6 +551,10 @@ node --test tests/goose-recipe-builder.test.mjs tests/goose-worker-adapter.test.
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the worker handoff surfaces delivered, validation results, and any follow-up prompt or adapter risks before opening or updating the PR.
+
 ### Task 8: Persist contract/report artifacts and expose them in summaries
 
 **Files:**
@@ -511,9 +565,15 @@ Expected: PASS.
 - Test: `tests/file-backed-run-store.test.mjs`
 - Test: `tests/runtime-event-schema.test.mjs`
 - Test: `tests/run-trace-analyzer.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
+
+**Task docs:**
+- `docs/plans/2026-03-29-pr13a-structured-runtime-event-schema.md`
+- `docs/plans/2026-03-29-pr13b-run-trace-analyzer.md`
 
 **Phase notes:**
 - Treat these artifacts as first-class run history, not transient prompt baggage.
+- If persistence/reporting work and analyzer surface expansion no longer fit one reviewable PR, land persistence/reporting support first and move analyzer expansion to the follow-up slice.
 
 **Step 1: Write the failing tests**
 
@@ -545,6 +605,10 @@ node --test tests/file-backed-run-store.test.mjs tests/runtime-event-schema.test
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the persistence/reporting surfaces delivered, validation results, and any remaining analyzer follow-up before opening or updating the PR.
+
 ---
 
 ## Phase 3: Quality-Agent Deepening
@@ -560,6 +624,11 @@ Expected: PASS.
 - Modify: `src/adapters/openclaw-runtime-adapter.ts`
 - Test: `tests/openclaw-runtime-adapter.test.mjs`
 - Test: `tests/orchestrator-runtime.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
+
+**Task docs:**
+- `docs/plans/2026-03-19-codex-exec-review-gate-design.md`
+- `docs/plans/2026-03-22-lint-quality-gate-design.md`
 
 **Phase notes:**
 - Keep top-level quality-gate statuses as `completed`, `needs_fix`, or `failed`.
@@ -600,6 +669,10 @@ node --test tests/openclaw-runtime-adapter.test.mjs tests/orchestrator-runtime.t
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the QA contract surface delivered, validation results, and any remaining gate-consumption follow-up before opening or updating the PR.
+
 ### Task 10: Deepen `test-agent` into a structured verification role
 
 **Files:**
@@ -608,6 +681,7 @@ Expected: PASS.
 - Modify: `docs/goose/task-contract.md`
 - Test: `tests/orchestrator-precompletion-checklist.test.mjs`
 - Test: `tests/orchestrator-goose-runtime.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - Preserve the rule that `test-agent` uses the smallest reliable verification scope.
@@ -647,6 +721,10 @@ node --test tests/orchestrator-precompletion-checklist.test.mjs tests/orchestrat
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the verification-role changes delivered, validation results, and any remaining evidence-gap follow-up before opening or updating the PR.
+
 ### Task 11: Deepen `review-agent` into a structured review role
 
 **Files:**
@@ -656,6 +734,7 @@ Expected: PASS.
 - Modify: `src/orchestrator/quality-gate-runner.ts`
 - Test: `tests/local-codex-review.test.mjs`
 - Test: `tests/local-codex-review-adapter.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - Build on the local Codex review path already present in the repo.
@@ -695,6 +774,10 @@ node --test tests/local-codex-review.test.mjs tests/local-codex-review-adapter.t
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the review-role changes delivered, validation results, and any remaining residual-risk follow-up before opening or updating the PR.
+
 ### Task 12: Add bounded internal triad review inside the logical `review-agent`
 
 **Files:**
@@ -703,6 +786,7 @@ Expected: PASS.
 - Modify: `prompts/review-agent.md`
 - Test: `tests/orchestrator-runtime.test.mjs`
 - Test: `tests/orchestrator-e2e.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - This task depends on Tasks 9-11.
@@ -741,6 +825,10 @@ node --test tests/orchestrator-runtime.test.mjs tests/orchestrator-e2e.test.mjs
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the triad-review behavior delivered, validation results, and any remaining review-boundary risks before opening or updating the PR.
+
 ---
 
 ## Phase 4: Task Operations and Stage Discipline
@@ -754,6 +842,11 @@ Expected: PASS.
 - Modify: `src/schemas/runtime.ts`
 - Modify: `src/index.ts`
 - Test: `tests/runtime-event-schema.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
+
+**Task docs:**
+- `docs/plans/2026-03-16-persistence-resume-operational-state-design.md`
+- `docs/plans/2026-03-23-runtime-success-breakdown.md`
 
 **Phase notes:**
 - Start with schema and documentation before runtime control surfaces.
@@ -793,6 +886,10 @@ node --test tests/runtime-event-schema.test.mjs
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the lifecycle baseline delivered, validation results, and any remaining operator-surface follow-up before opening or updating the PR.
+
 ### Task 14: Add stage-discipline checkpoints to the orchestration loop
 
 **Files:**
@@ -802,6 +899,7 @@ Expected: PASS.
 - Modify: `src/storage/file-backed-run-store.ts`
 - Test: `tests/orchestrator-persistence.test.mjs`
 - Test: `tests/orchestrator-approval-controls.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - Focus on phase/stage checkpoint metadata and pause/resume semantics.
@@ -840,6 +938,10 @@ node --test tests/orchestrator-persistence.test.mjs tests/orchestrator-approval-
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the checkpoint behavior delivered, validation results, and any remaining pause/resume risks before opening or updating the PR.
+
 ### Task 15: Add a task-centric operator summary surface
 
 **Files:**
@@ -848,6 +950,7 @@ Expected: PASS.
 - Modify: `src/cli/main.ts`
 - Test: `tests/run-trace-analyzer.test.mjs`
 - Test: `tests/cli-smoke.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - This is an operator-read surface first, not a full interactive task console.
@@ -887,6 +990,10 @@ node --test tests/run-trace-analyzer.test.mjs tests/cli-smoke.test.mjs
 
 Expected: PASS.
 
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the operator-read surface delivered, validation results, and any remaining CLI/reporting follow-up before opening or updating the PR.
+
 ### Task 16: Add a narrow task session / operator control scaffold
 
 **Files:**
@@ -896,6 +1003,7 @@ Expected: PASS.
 - Modify: `src/storage/file-backed-run-store.ts`
 - Test: `tests/orchestrator-persistence.test.mjs`
 - Test: `tests/orchestrator-approval-controls.test.mjs`
+- Docs: `docs/plans/2026-04-03-agent-phased-execution-plan.md`
 
 **Phase notes:**
 - Keep this intentionally narrow: session/control scaffolding, not a full task registry platform.
@@ -933,3 +1041,7 @@ node --test tests/orchestrator-persistence.test.mjs tests/orchestrator-approval-
 ```
 
 Expected: PASS.
+
+**Step 5: Update plan handoff notes**
+
+Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the session/control scaffold delivered, validation results, and any remaining scope limits before opening or updating the PR.
