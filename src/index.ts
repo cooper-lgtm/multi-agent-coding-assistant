@@ -5,6 +5,7 @@ export * from './adapters/goose-recipe-builder.js';
 export * from './adapters/goose-process-runner.js';
 export * from './adapters/goose-worker-adapter.js';
 export * from './analysis/run-trace-analyzer.js';
+export * from './automation/plan-documents.js';
 export * from './automation/plan-runner.js';
 export * from './schemas/models.js';
 export * from './schemas/planning.js';

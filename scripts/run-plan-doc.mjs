@@ -6,7 +6,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runPlanTaskSequence } from '../dist/index.js';
+import { parsePlanDocument, runPlanTaskSequence } from '../dist/index.js';
 
 const execFileAsync = promisify(execFile);
 const NO_MERGE_SYSTEM_PROMPT =
@@ -18,9 +18,10 @@ const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const parsedPlan = parsePlanDocument(await readFile(options.planPath, 'utf8'));
   const taskHints = options.tasks.length > 0
     ? options.tasks
-    : extractPlanTaskHints(await readFile(options.planPath, 'utf8'));
+    : parsedPlan.task_hints;
 
   if (taskHints.length === 0) {
     throw new Error(`No task headings found in ${options.planPath}`);
@@ -32,6 +33,8 @@ async function main() {
       planPath: options.planPath,
       baseBranch: options.baseBranch,
       taskHints,
+      planDesignDocPath: parsedPlan.design_doc_path,
+      taskDocsByHint: parsedPlan.task_docs_by_hint,
       pollIntervalMs: options.pollIntervalMs,
       checksTimeoutMs: options.checksTimeoutMs,
       maxCheckPolls: options.maxCheckPolls,
@@ -113,15 +116,19 @@ function parseArgs(args) {
   return options;
 }
 
-function extractPlanTaskHints(markdown) {
-  return [...markdown.matchAll(/^### (Task \d+: .+)$/gm)].map((match) => match[1]);
-}
-
 function createShellDependencies({ cwd, reviewTimeoutMs }) {
   const consecutiveCancelledCheckObservationsByPr = new Map();
 
   return {
-    executeTaskSlice: async ({ taskHint, repoPath, planPath, baseBranch }) => {
+    executeTaskSlice: async ({
+      taskHint,
+      repoPath,
+      planPath,
+      baseBranch,
+      attempt: _attempt,
+      designDocPath,
+      taskDocPaths = [],
+    }) => {
       await ensureGitHooksInstalled(repoPath);
 
       const gooseArgs = [
@@ -143,6 +150,14 @@ function createShellDependencies({ cwd, reviewTimeoutMs }) {
         '--params',
         `task_hint=${taskHint}`,
       ];
+
+      if (designDocPath) {
+        gooseArgs.push('--params', `design_doc_path=${designDocPath}`);
+      }
+
+      if (taskDocPaths.length > 0) {
+        gooseArgs.push('--params', `task_doc_paths_json=${JSON.stringify(taskDocPaths)}`);
+      }
 
       const stdout = await runCommand(
         'goose',

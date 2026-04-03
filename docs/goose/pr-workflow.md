@@ -2,6 +2,28 @@
 
 This repository uses a branch-per-task goose delivery loop for roadmap execution.
 
+## Plan-Linked Docs Convention
+
+For non-trivial feature work, create one checked-in stage design doc and one
+checked-in implementation plan doc.
+
+The implementation plan is the durable Goose handoff artifact. It should:
+
+- link to the design doc with
+  `**Design Doc:** \`docs/plans/example-design.md\``
+- list task-sized read-first artifacts under `**Task docs:**` inside each
+  `### Task N:` section
+- stay usable even when the original planning happened outside Goose
+
+This keeps the workflow flexible: planning can happen in chat, in another tool,
+or by hand first, then Goose later consumes the linked plan/design/task docs
+directly from the checked-in implementation plan.
+
+Each task-sized PR must include at least one docs update. That update does not
+require a separate standalone task doc file; updating the design doc, the
+implementation plan, or another relevant repository doc is enough when it keeps
+the slice recoverable.
+
 ## Standard Loop
 
 1. Create a branch from `main` for exactly one task-sized slice.
@@ -69,6 +91,8 @@ npm run build && node scripts/run-plan-doc.mjs \
 
 Current behavior:
 - parses `### Task N: ...` headings from the target plan document
+- can also consume one linked design doc plus per-task `Task docs` when those
+  links are present in the implementation plan
 - runs goose once per task-sized slice and stops at `opened_not_merged`
 - installs the repo-managed pre-push hook in the target repository before goose starts work
 - relies on `git push` to trigger the blocking local `codex exec` review gate before any PR create/update succeeds

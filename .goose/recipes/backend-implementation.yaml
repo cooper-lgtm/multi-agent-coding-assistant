@@ -24,6 +24,7 @@ instructions: |
   - Keep `test-agent` and `review-agent` as external quality gates
   - Preserve `needs_fix`, `blocked`, and `failed` as distinct states
   - Use `runtime_context.task_context_files` and `runtime_context.verification_plan` before guessing
+  - Treat plan-linked design/task docs in `runtime_context.task_context_files` as part of the required first reading pass
   - Inspect `failure_diagnosis`, `reconsider_instructions`, `repeated_pattern_summary`, and `attempt_history` before choosing a retry strategy
   - If the injected diagnosis conflicts with the live repository state, call that out explicitly in the worker result
   - Verification is part of task completion, not optional follow-up work

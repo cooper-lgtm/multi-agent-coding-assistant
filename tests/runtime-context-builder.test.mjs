@@ -98,6 +98,11 @@ test('runtime context builder assembles compact worker-facing context from repo 
   const repoPath = process.cwd();
   const task = buildExecutionGuidanceTask();
 
+  task.execution_guidance.must_read_files = [
+    'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs.md',
+    'README.md',
+  ];
   task.retry_count = 1;
   task.max_retries = 2;
   task.prior_attempt = createWorkerRetryHandoff(
@@ -123,8 +128,9 @@ test('runtime context builder assembles compact worker-facing context from repo 
   assert.deepEqual(runtimeContext.environment_snapshot, discovery);
   assert.deepEqual(runtimeContext.task_context_files, [
     'docs/context/repo-context.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs.md',
     'README.md',
-    'src/schemas/planning.ts',
   ]);
   assert.deepEqual(runtimeContext.verification_plan.commands, [
     'npm run build',
@@ -156,6 +162,10 @@ test('runtime context builder derives the visible attempt number from prior_atte
   const repoPath = process.cwd();
   const task = buildExecutionGuidanceTask();
 
+  task.execution_guidance.must_read_files = [
+    'docs/plans/2026-04-01-goose-plan-linked-docs-design.md',
+    'docs/plans/2026-04-01-goose-plan-linked-docs.md',
+  ];
   task.retry_count = 0;
   task.max_retries = 2;
   task.prior_attempt = createWorkerRetryHandoff(

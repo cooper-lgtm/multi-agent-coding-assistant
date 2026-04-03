@@ -183,6 +183,106 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after req
   }
 });
 
+test('run-plan-doc passes linked design and task docs to Goose when the plan declares them', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-linked-docs-'));
+  const planPath = path.join(tempRoot, 'plan.md');
+  const statePath = path.join(tempRoot, 'state.json');
+
+  try {
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '**Design Doc:** `docs/plans/2026-04-01-example-design.md`',
+        '',
+        '### Task 1: Linked docs task',
+        '',
+        '**Task docs:**',
+        '- `docs/goose/pr-workflow.md`',
+        '- `src/automation/plan-runner.ts`',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Linked docs task',
+              branch_name: 'codex/task-linked-docs',
+              pr_url: 'https://github.com/example/repo/pull/301',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/task-linked-docs.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '301': ['pass'],
+          },
+          headShas: {
+            '301': ['sha-301'],
+          },
+          localReviews: {
+            '301': {
+              'sha-301': [
+                { status: 'clean', findings: [] },
+              ],
+            },
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    execFileSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        projectRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+        '--poll-interval-ms',
+        '1',
+        '--max-check-polls',
+        '2',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
+        },
+      },
+    );
+
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.match(
+      finalState.commands[0].argv.join(' '),
+      /--params design_doc_path=docs\/plans\/2026-04-01-example-design\.md/,
+    );
+    assert.match(
+      finalState.commands[0].argv.join(' '),
+      /--params task_doc_paths_json=\["docs\/goose\/pr-workflow\.md","src\/automation\/plan-runner\.ts"\]/,
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('run-plan-doc passes review-timeout-ms to goose so the pre-push local review gate can inherit it', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-review-timeout-env-'));
   const fakeBinRoot = path.join(tempRoot, 'fake-bin');
