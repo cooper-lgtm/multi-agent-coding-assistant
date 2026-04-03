@@ -169,11 +169,11 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after req
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: First task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: First task',
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
         'gh pr merge https://github.com/example/repo/pull/101 --merge --delete-branch',
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 2: Second task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 2: Second task',
         'gh pr checks https://github.com/example/repo/pull/102 --required --json bucket',
         'gh pr merge https://github.com/example/repo/pull/102 --merge --delete-branch',
       ],
@@ -563,7 +563,7 @@ test.skip('run-plan-doc fails closed when only an untrusted local base branch ma
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Untrusted base ref task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Untrusted base ref task',
         'gh pr checks https://github.com/example/repo/pull/403 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/403 --json headRefOid --jq .headRefOid',
         'gh pr view https://github.com/example/repo/pull/403 --json baseRefName --jq .baseRefName',
@@ -710,7 +710,7 @@ test.skip('run-plan-doc fails closed when only a stale remote-tracking base ref 
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Stale remote base ref task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Stale remote base ref task',
         'gh pr checks https://github.com/example/repo/pull/405 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/405 --json headRefOid --jq .headRefOid',
         'gh pr view https://github.com/example/repo/pull/405 --json baseRefName --jq .baseRefName',
@@ -873,7 +873,7 @@ test.skip('run-plan-doc accepts oversized machine-readable local review output w
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=missing-fallback-401 --params task_hint=Task 1: Large local review output task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=missing-fallback-401 --params task_hint=Task 1: Large local review output task',
         'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/401 --json headRefOid --jq .headRefOid',
         'gh pr view https://github.com/example/repo/pull/401 --json baseRefName --jq .baseRefName',
@@ -1379,8 +1379,6 @@ test.skip('run-plan-doc reruns the same task after Codex inline findings and mer
         '--no-session',
         '--output-format',
         'json',
-        '--system',
-        'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging.',
         '--params',
         `repo_path=${projectRoot}`,
         '--params',
@@ -1396,7 +1394,7 @@ test.skip('run-plan-doc reruns the same task after Codex inline findings and mer
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
         localReviewCommand({
@@ -1404,7 +1402,7 @@ test.skip('run-plan-doc reruns the same task after Codex inline findings and mer
           taskHint: 'Task 1: Repair task',
           changedFiles: ['src/repair.ts'],
         }),
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task --params prior_review=[{"path":"src/repair.ts","body":"Please cover the retry edge case."}]',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task --params prior_review=[{"path":"src/repair.ts","body":"Please cover the retry edge case."}]',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/201 --json headRefOid --jq .headRefOid',
         localReviewCommand({
@@ -1547,7 +1545,7 @@ test.skip('run-plan-doc keeps polling when a current-head review exists before i
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task',
         'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/401 --json headRefOid --jq .headRefOid',
         localReviewCommand({
@@ -1555,7 +1553,7 @@ test.skip('run-plan-doc keeps polling when a current-head review exists before i
           taskHint: 'Task 1: Race task',
           changedFiles: ['src/race.ts'],
         }),
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task --params prior_review=[{"path":"src/race.ts","body":"Late finding lands after review object."}]',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task --params prior_review=[{"path":"src/race.ts","body":"Late finding lands after review object."}]',
         'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/401 --json headRefOid --jq .headRefOid',
         localReviewCommand({
@@ -1680,7 +1678,7 @@ test('run-plan-doc keeps waiting when required checks are cancelled and later re
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal check task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal check task',
         'gh pr checks https://github.com/example/repo/pull/501 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/501 --required --json bucket,completedAt,description,event,name,link,startedAt,state,workflow',
         'gh pr view https://github.com/example/repo/pull/501 --json headRefOid --jq .headRefOid',
@@ -1825,7 +1823,7 @@ test('run-plan-doc resets the cancelled-check grace poll when a new workflow gen
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled generation reset task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled generation reset task',
         'gh pr checks https://github.com/example/repo/pull/512 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/512 --required --json bucket,completedAt,description,event,name,link,startedAt,state,workflow',
         'gh pr view https://github.com/example/repo/pull/512 --json headRefOid --jq .headRefOid',
@@ -2108,7 +2106,7 @@ test('run-plan-doc trusts mixed detailed cancelled rows when the latest run for 
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled detail mixed pass task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled detail mixed pass task',
         'gh pr checks https://github.com/example/repo/pull/513 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/513 --required --json bucket,completedAt,description,event,name,link,startedAt,state,workflow',
         'gh pr view https://github.com/example/repo/pull/513 --json headRefOid --jq .headRefOid',
@@ -4098,7 +4096,7 @@ test('run-plan-doc fails fast when required checks stay cancelled across the gra
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal cancelled check task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal cancelled check task',
         'gh pr checks https://github.com/example/repo/pull/508 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/508 --required --json bucket,completedAt,description,event,name,link,startedAt,state,workflow',
         'gh pr view https://github.com/example/repo/pull/508 --json headRefOid --jq .headRefOid',
@@ -4218,7 +4216,7 @@ test('run-plan-doc fails instead of timing out when a cancelled required check i
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Single poll cancelled check task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Single poll cancelled check task',
         'gh pr checks https://github.com/example/repo/pull/510 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/510 --required --json bucket,completedAt,description,event,name,link,startedAt,state,workflow',
         'gh pr view https://github.com/example/repo/pull/510 --json headRefOid --jq .headRefOid',
@@ -4339,7 +4337,7 @@ test('run-plan-doc still fails fast when cancelled required checks persist along
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled and skipped check task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled and skipped check task',
         'gh pr checks https://github.com/example/repo/pull/511 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/511 --required --json bucket,completedAt,description,event,name,link,startedAt,state,workflow',
         'gh pr view https://github.com/example/repo/pull/511 --json headRefOid --jq .headRefOid',
@@ -4514,7 +4512,7 @@ test('run-plan-doc fails fast when the same cancelled required check persists wh
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Persistent cancelled check task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Persistent cancelled check task',
         'gh pr checks https://github.com/example/repo/pull/521 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/521 --required --json bucket,completedAt,description,event,name,link,startedAt,state,workflow',
         'gh pr view https://github.com/example/repo/pull/521 --json headRefOid --jq .headRefOid',
@@ -4635,7 +4633,7 @@ test('run-plan-doc treats skipped required checks as pass-equivalent', async () 
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped check task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped check task',
         'gh pr checks https://github.com/example/repo/pull/502 --required --json bucket',
         'gh pr merge https://github.com/example/repo/pull/502 --merge --delete-branch',
       ],
@@ -4756,7 +4754,7 @@ test('run-plan-doc treats skipped required checks as pass-equivalent even when m
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped unstable task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped unstable task',
         'gh pr checks https://github.com/example/repo/pull/506 --required --json bucket',
         'gh pr merge https://github.com/example/repo/pull/506 --merge --delete-branch',
       ],
@@ -4867,7 +4865,7 @@ test('run-plan-doc keeps waiting when required checks are still pending', async 
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped but unsafe task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped but unsafe task',
         'gh pr checks https://github.com/example/repo/pull/505 --required --json bucket',
         'gh pr checks https://github.com/example/repo/pull/505 --required --json bucket',
       ],
@@ -4984,7 +4982,7 @@ test('run-plan-doc treats skipped required checks as pass-equivalent even when m
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped but unconfirmed task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped but unconfirmed task',
         'gh pr checks https://github.com/example/repo/pull/509 --required --json bucket',
         'gh pr merge https://github.com/example/repo/pull/509 --merge --delete-branch',
       ],
@@ -5105,7 +5103,7 @@ test.skip('run-plan-doc advances skipped required checks to the Codex review gat
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Review blocked but mergeable',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Review blocked but mergeable',
         'gh pr checks https://github.com/example/repo/pull/507 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/507 --json headRefOid --jq .headRefOid',
         localReviewCommand({
@@ -5219,7 +5217,7 @@ test.skip('run-plan-doc confirms a clean local review when max review polls is 1
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: One poll task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: One poll task',
         'gh pr checks https://github.com/example/repo/pull/503 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/503 --json headRefOid --jq .headRefOid',
         localReviewCommand({
@@ -5336,7 +5334,7 @@ test.skip('run-plan-doc treats max review polls as a no-op for synchronous local
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Final poll debounce task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Final poll debounce task',
         'gh pr checks https://github.com/example/repo/pull/504 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/504 --json headRefOid --jq .headRefOid',
         localReviewCommand({
@@ -5459,7 +5457,7 @@ test.skip('run-plan-doc returns manual_review_required when Codex review exceeds
     assert.deepEqual(
       finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
       [
-        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --system Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging. --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Slow review task',
+        'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Slow review task',
         'gh pr checks https://github.com/example/repo/pull/301 --required --json bucket',
         'gh pr view https://github.com/example/repo/pull/301 --json headRefOid --jq .headRefOid',
         localReviewCommand({

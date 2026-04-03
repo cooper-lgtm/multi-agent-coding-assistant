@@ -9,8 +9,6 @@ import { fileURLToPath } from 'node:url';
 import { parsePlanDocument, runPlanTaskSequence } from '../dist/index.js';
 
 const execFileAsync = promisify(execFile);
-const NO_MERGE_SYSTEM_PROMPT =
-  'Do not merge pull requests in this run. Stop after creating or updating the task-sized PR so the outer plan runner can wait for required checks before merging.';
 const DEFAULT_INSTALL_GIT_HOOKS_SCRIPT_PATH = fileURLToPath(new URL('./install-git-hooks.mjs', import.meta.url));
 const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
 const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
@@ -139,8 +137,6 @@ function createShellDependencies({ cwd, reviewTimeoutMs }) {
         '--no-session',
         '--output-format',
         'json',
-        '--system',
-        NO_MERGE_SYSTEM_PROMPT,
         '--params',
         `repo_path=${repoPath}`,
         '--params',
