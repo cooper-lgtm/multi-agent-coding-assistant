@@ -120,6 +120,8 @@ export interface DebateTraceEntry {
   role: DebatePlannerRoleName;
   summary: string;
   recommended_plan: string;
+  clarification_requests?: PlanningClarificationRequest[];
+  cross_review_findings?: PlannerCrossReviewFinding[];
 }
 
 export interface PlanningTrace {

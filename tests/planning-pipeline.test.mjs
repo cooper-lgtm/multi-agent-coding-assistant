@@ -223,6 +223,176 @@ test('planning normalization rejects coordination round counts above the bounded
   );
 });
 
+test('planning normalization rejects malformed coordinator trace booleans and enum values', () => {
+  const normalizer = new DefaultPlanningNormalizer();
+
+  assert.throws(
+    () => normalizer.normalize({
+      request: buildDebatePlanningFixtureRequest(),
+      resolved_mode: 'debate',
+      draft: buildExecutionGuidancePlanningDraft(),
+      planner_routes: [
+        {
+          role: 'planning-agent',
+          selected_model: 'codex',
+          attempted_models: ['codex'],
+        },
+      ],
+      clarified_brief: {
+        version: 1,
+        request_summary: 'Implement the planning workspace with a coordinator-owned brief.',
+        goals: ['Preserve a frozen brief for downstream analyzers.'],
+        non_goals: ['Do not change debate execution order in this task.'],
+        constraints: ['Keep planning outputs implementation-only.'],
+        assumptions: ['The coordinator already resolved the initial user intent.'],
+        known_risks: ['Later debate tasks may need richer analyzer-specific metadata.'],
+        unresolved_questions: ['Should bounded cross-review metadata include per-role findings later?'],
+      },
+    }),
+    /planning_trace\.clarified_brief\.ready_for_planning must be a boolean/,
+  );
+
+  assert.throws(
+    () => normalizer.normalize({
+      request: buildDebatePlanningFixtureRequest(),
+      resolved_mode: 'debate',
+      draft: buildExecutionGuidancePlanningDraft(),
+      planner_routes: [
+        {
+          role: 'planning-agent',
+          selected_model: 'codex',
+          attempted_models: ['codex'],
+        },
+      ],
+      debate: [
+        {
+          role: 'architecture-planner',
+          planner_route: {
+            role: 'architecture-planner',
+            selected_model: 'claude',
+            attempted_models: ['claude'],
+          },
+          epic: 'Lock the planning contract first.',
+          summary: 'Need one clarification before analyzer output is trustworthy.',
+          recommended_plan: 'Clarify contract ownership, then continue.',
+          tasks: buildExecutionGuidancePlanningDraft().tasks,
+          clarification_requests: [
+            {
+              requester: 'engineering-plnner',
+              question: 'Who owns the initial contract boundary?',
+              rationale: 'Sequencing stays ambiguous without a contract owner.',
+              blocking: true,
+            },
+          ],
+        },
+      ],
+    }),
+    /planning_trace\.debate\[0\]\.clarification_requests\.requester must be a valid debate planner role/,
+  );
+
+  assert.throws(
+    () => normalizer.normalize({
+      request: buildDebatePlanningFixtureRequest(),
+      resolved_mode: 'debate',
+      draft: buildExecutionGuidancePlanningDraft(),
+      planner_routes: [
+        {
+          role: 'planning-agent',
+          selected_model: 'codex',
+          attempted_models: ['codex'],
+        },
+      ],
+      debate: [
+        {
+          role: 'architecture-planner',
+          planner_route: {
+            role: 'architecture-planner',
+            selected_model: 'claude',
+            attempted_models: ['claude'],
+          },
+          epic: 'Lock the planning contract first.',
+          summary: 'Need one clarification before analyzer output is trustworthy.',
+          recommended_plan: 'Clarify contract ownership, then continue.',
+          tasks: buildExecutionGuidancePlanningDraft().tasks,
+          cross_review_findings: [
+            {
+              reviewer: 'architecture-planner',
+              target: 'engineering-planner',
+              disposition: 'missing-dependncy',
+              evidence: 'The draft should name the contract task as a prerequisite.',
+            },
+          ],
+        },
+      ],
+    }),
+    /planning_trace\.debate\[0\]\.cross_review_findings\.disposition must be a valid planner cross-review disposition/,
+  );
+});
+
+test('planning normalization preserves analyzer clarification and cross-review artifacts in debate trace', () => {
+  const normalizer = new DefaultPlanningNormalizer();
+
+  const planningResult = normalizer.normalize({
+    request: buildDebatePlanningFixtureRequest(),
+    resolved_mode: 'debate',
+    draft: buildExecutionGuidancePlanningDraft(),
+    planner_routes: [
+      {
+        role: 'planning-agent',
+        selected_model: 'codex',
+        attempted_models: ['codex'],
+      },
+    ],
+    debate: [
+      {
+        role: 'architecture-planner',
+        planner_route: {
+          role: 'architecture-planner',
+          selected_model: 'claude',
+          attempted_models: ['claude'],
+        },
+        epic: 'Lock the planning contract first.',
+        summary: 'Need one clarification before analyzer output is trustworthy.',
+        recommended_plan: 'Clarify contract ownership, then continue.',
+        tasks: buildExecutionGuidancePlanningDraft().tasks,
+        clarification_requests: [
+          {
+            requester: 'architecture-planner',
+            question: 'Who owns the initial contract boundary?',
+            rationale: 'Sequencing stays ambiguous without a contract owner.',
+            blocking: true,
+          },
+        ],
+        cross_review_findings: [
+          {
+            reviewer: 'architecture-planner',
+            target: 'engineering-planner',
+            disposition: 'missing_dependency',
+            evidence: 'The draft should name the contract task as a prerequisite.',
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(planningResult.planning_trace?.debate?.[0]?.clarification_requests, [
+    {
+      requester: 'architecture-planner',
+      question: 'Who owns the initial contract boundary?',
+      rationale: 'Sequencing stays ambiguous without a contract owner.',
+      blocking: true,
+    },
+  ]);
+  assert.deepEqual(planningResult.planning_trace?.debate?.[0]?.cross_review_findings, [
+    {
+      reviewer: 'architecture-planner',
+      target: 'engineering-planner',
+      disposition: 'missing_dependency',
+      evidence: 'The draft should name the contract task as a prerequisite.',
+    },
+  ]);
+});
+
 test('debate synthesis preserves execution guidance introduced by later analyses', async () => {
   const synthesizer = new DefaultDebateSynthesizer();
   const normalizer = new DefaultPlanningNormalizer();
