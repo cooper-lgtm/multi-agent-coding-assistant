@@ -283,6 +283,68 @@ test('run-plan-doc passes linked design and task docs to Goose when the plan dec
   }
 });
 
+test('run-plan-doc fails closed when the recipe loses its required no-merge guards', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-missing-no-merge-guard-'));
+  const repoRoot = path.join(tempRoot, 'repo');
+  const planPath = path.join(repoRoot, 'plan.md');
+  const recipePath = path.join(repoRoot, '.goose', 'recipes', 'execute-next-plan-task.yaml');
+
+  try {
+    await mkdir(path.dirname(recipePath), { recursive: true });
+    await writeFile(
+      recipePath,
+      [
+        'version: "1.0.0"',
+        'title: "Broken recipe"',
+        'instructions: |',
+        '  This recipe forgot the outer-runner no-merge guard.',
+        'prompt: |',
+        '  Execute the requested task.',
+      ].join('\n'),
+      'utf8',
+    );
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Missing guard task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        repoRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+        },
+      },
+    );
+
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /missing a required no-merge guard/,
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('run-plan-doc passes review-timeout-ms to goose so the pre-push local review gate can inherit it', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-review-timeout-env-'));
   const fakeBinRoot = path.join(tempRoot, 'fake-bin');

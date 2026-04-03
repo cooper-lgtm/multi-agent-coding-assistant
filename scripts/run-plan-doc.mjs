@@ -13,6 +13,11 @@ const DEFAULT_INSTALL_GIT_HOOKS_SCRIPT_PATH = fileURLToPath(new URL('./install-g
 const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-codex-review.mjs', import.meta.url));
 const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
+const EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH = '.goose/recipes/execute-next-plan-task.yaml';
+const REQUIRED_RECIPE_NO_MERGE_GUARDS = [
+  'Do not merge the PR in this recipe; required-check polling and merge decisions belong to the outer plan runner',
+  'Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, and been opened or updated for outer-loop checks. Do not merge. The outer plan runner will wait only on required GitHub checks before merging.',
+];
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -127,12 +132,13 @@ function createShellDependencies({ cwd, reviewTimeoutMs }) {
       designDocPath,
       taskDocPaths = [],
     }) => {
+      await ensureRecipeRetainsNoMergeGuards(repoPath);
       await ensureGitHooksInstalled(repoPath);
 
       const gooseArgs = [
         'run',
         '--recipe',
-        '.goose/recipes/execute-next-plan-task.yaml',
+        EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH,
         '--quiet',
         '--no-session',
         '--output-format',
@@ -278,6 +284,19 @@ function createShellDependencies({ cwd, reviewTimeoutMs }) {
       await new Promise((resolve) => setTimeout(resolve, ms));
     },
   };
+}
+
+async function ensureRecipeRetainsNoMergeGuards(repoPath) {
+  const recipePath = path.join(repoPath, EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH);
+  const recipeSource = await readFile(recipePath, 'utf8');
+
+  for (const requiredSnippet of REQUIRED_RECIPE_NO_MERGE_GUARDS) {
+    if (!recipeSource.includes(requiredSnippet)) {
+      throw new Error(
+        `Recipe ${EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH} is missing a required no-merge guard and cannot be used by run-plan-doc.`,
+      );
+    }
+  }
 }
 
 async function ensureGitHooksInstalled(repoPath) {
