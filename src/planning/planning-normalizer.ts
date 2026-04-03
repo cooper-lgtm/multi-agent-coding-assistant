@@ -1,30 +1,12 @@
 import type { PlanningNormalizationInput, PlanningNormalizer } from './contracts.js';
 import type {
   ClarifiedPlanningBrief,
-  DebatePlannerRoleName,
   ExecutionGuidance,
-  PlannerCrossReviewDisposition,
-  PlannerCrossReviewFinding,
-  PlanningClarificationRequest,
   PlanningResult,
   PlanningTask,
   PlannerRouteTrace,
   QualityGate,
 } from '../schemas/planning.js';
-
-const DEBATE_PLANNER_ROLES: DebatePlannerRoleName[] = [
-  'architecture-planner',
-  'engineering-planner',
-  'integration-planner',
-];
-
-const PLANNER_CROSS_REVIEW_DISPOSITIONS: PlannerCrossReviewDisposition[] = [
-  'agree',
-  'disagree',
-  'missing_risk',
-  'missing_dependency',
-  'ownership_concern',
-];
 
 function compactStrings(values: string[] | undefined): string[] | undefined {
   if (!values) return undefined;
@@ -76,25 +58,6 @@ function normalizeRequiredBoolean(fieldName: string, value: unknown): boolean {
   return value;
 }
 
-function normalizeDebatePlannerRole(fieldName: string, value: string): DebatePlannerRoleName {
-  if (!DEBATE_PLANNER_ROLES.includes(value as DebatePlannerRoleName)) {
-    throw new Error(`${fieldName} must be a valid debate planner role`);
-  }
-
-  return value as DebatePlannerRoleName;
-}
-
-function normalizePlannerCrossReviewDisposition(
-  fieldName: string,
-  value: string,
-): PlannerCrossReviewDisposition {
-  if (!PLANNER_CROSS_REVIEW_DISPOSITIONS.includes(value as PlannerCrossReviewDisposition)) {
-    throw new Error(`${fieldName} must be a valid planner cross-review disposition`);
-  }
-
-  return value as PlannerCrossReviewDisposition;
-}
-
 function normalizeClarifiedPlanningBrief(
   clarifiedBrief: ClarifiedPlanningBrief | undefined,
 ): ClarifiedPlanningBrief | undefined {
@@ -127,66 +90,6 @@ function normalizeClarifiedPlanningBrief(
       clarifiedBrief.ready_for_planning,
     ),
   };
-}
-
-function normalizePlanningClarificationRequests(
-  clarificationRequests: PlanningClarificationRequest[] | undefined,
-): PlanningClarificationRequest[] | undefined {
-  if (!clarificationRequests?.length) return undefined;
-
-  return clarificationRequests.map((request, index) => {
-    const question = request.question.trim();
-    if (!question) {
-      throw new Error(`planning_trace.debate[${index}].clarification_requests.question must be non-empty`);
-    }
-
-    const rationale = request.rationale.trim();
-    if (!rationale) {
-      throw new Error(`planning_trace.debate[${index}].clarification_requests.rationale must be non-empty`);
-    }
-
-    return {
-      requester: normalizeDebatePlannerRole(
-        `planning_trace.debate[${index}].clarification_requests.requester`,
-        request.requester,
-      ),
-      question,
-      rationale,
-      blocking: normalizeRequiredBoolean(
-        `planning_trace.debate[${index}].clarification_requests.blocking`,
-        request.blocking,
-      ),
-    };
-  });
-}
-
-function normalizePlannerCrossReviewFindings(
-  crossReviewFindings: PlannerCrossReviewFinding[] | undefined,
-): PlannerCrossReviewFinding[] | undefined {
-  if (!crossReviewFindings?.length) return undefined;
-
-  return crossReviewFindings.map((finding, index) => {
-    const evidence = finding.evidence.trim();
-    if (!evidence) {
-      throw new Error(`planning_trace.debate[${index}].cross_review_findings.evidence must be non-empty`);
-    }
-
-    return {
-      reviewer: normalizeDebatePlannerRole(
-        `planning_trace.debate[${index}].cross_review_findings.reviewer`,
-        finding.reviewer,
-      ),
-      target: normalizeDebatePlannerRole(
-        `planning_trace.debate[${index}].cross_review_findings.target`,
-        finding.target,
-      ),
-      disposition: normalizePlannerCrossReviewDisposition(
-        `planning_trace.debate[${index}].cross_review_findings.disposition`,
-        finding.disposition,
-      ),
-      evidence,
-    };
-  });
 }
 
 function normalizeQualityGate(taskId: string, qualityGate: QualityGate): QualityGate {
@@ -360,12 +263,6 @@ export class DefaultPlanningNormalizer implements PlanningNormalizer {
           role: analysis.role,
           summary: analysis.summary.trim(),
           recommended_plan: analysis.recommended_plan.trim(),
-          clarification_requests: normalizePlanningClarificationRequests(
-            analysis.clarification_requests,
-          ),
-          cross_review_findings: normalizePlannerCrossReviewFindings(
-            analysis.cross_review_findings,
-          ),
         })),
       },
     };

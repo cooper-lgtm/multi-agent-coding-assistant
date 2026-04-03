@@ -1,9 +1,7 @@
 import type {
   ClarifiedPlanningBrief,
   DebatePlannerRoleName,
-  PlannerCrossReviewFinding,
   PlannerRouteTrace,
-  PlanningClarificationRequest,
   PlanningRequest,
   PlanningResult,
   PlanningTask,
@@ -39,8 +37,6 @@ export interface DebateAnalysis extends PlanningDraft {
   role: DebatePlannerRoleName;
   summary: string;
   planner_route: PlannerRouteTrace;
-  clarification_requests?: PlanningClarificationRequest[];
-  cross_review_findings?: PlannerCrossReviewFinding[];
 }
 
 export interface DebateSynthesisInput extends PlanningPipelineContext {
