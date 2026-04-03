@@ -1,8 +1,6 @@
 import type { PlanningNormalizationInput, PlanningNormalizer } from './contracts.js';
 import type {
   ClarifiedPlanningBrief,
-  PlannerCrossReviewFinding,
-  PlanningClarificationRequest,
   ExecutionGuidance,
   PlanningResult,
   PlanningTask,
@@ -81,51 +79,6 @@ function normalizeClarifiedPlanningBrief(
     unresolved_questions: compactStrings(clarifiedBrief.unresolved_questions) ?? [],
     ready_for_planning: Boolean(clarifiedBrief.ready_for_planning),
   };
-}
-
-function normalizePlanningClarificationRequests(
-  clarificationRequests: PlanningClarificationRequest[] | undefined,
-) {
-  if (!clarificationRequests?.length) return undefined;
-
-  return clarificationRequests.map((request, index) => {
-    const question = request.question.trim();
-    if (!question) {
-      throw new Error(`planning_trace.debate[${index}].clarification_requests.question must be non-empty`);
-    }
-
-    const rationale = request.rationale.trim();
-    if (!rationale) {
-      throw new Error(`planning_trace.debate[${index}].clarification_requests.rationale must be non-empty`);
-    }
-
-    return {
-      requester: request.requester,
-      question,
-      rationale,
-      blocking: Boolean(request.blocking),
-    };
-  });
-}
-
-function normalizePlannerCrossReviewFindings(
-  crossReviewFindings: PlannerCrossReviewFinding[] | undefined,
-) {
-  if (!crossReviewFindings?.length) return undefined;
-
-  return crossReviewFindings.map((finding, index) => {
-    const evidence = finding.evidence.trim();
-    if (!evidence) {
-      throw new Error(`planning_trace.debate[${index}].cross_review_findings.evidence must be non-empty`);
-    }
-
-    return {
-      reviewer: finding.reviewer,
-      target: finding.target,
-      disposition: finding.disposition,
-      evidence,
-    };
-  });
 }
 
 function normalizeQualityGate(taskId: string, qualityGate: QualityGate): QualityGate {
@@ -299,12 +252,6 @@ export class DefaultPlanningNormalizer implements PlanningNormalizer {
           role: analysis.role,
           summary: analysis.summary.trim(),
           recommended_plan: analysis.recommended_plan.trim(),
-          clarification_requests: normalizePlanningClarificationRequests(
-            analysis.clarification_requests,
-          ),
-          cross_review_findings: normalizePlannerCrossReviewFindings(
-            analysis.cross_review_findings,
-          ),
         })),
       },
     };
