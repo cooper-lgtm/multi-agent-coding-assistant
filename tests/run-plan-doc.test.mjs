@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 const projectRoot = process.cwd();
 const scriptPath = path.join(projectRoot, 'scripts', 'run-plan-doc.mjs');
 const fakeBinPath = path.join(projectRoot, 'tests', 'fixtures', 'fake-bin');
+const canonicalRecipePath = '.goose/recipes/execute-next-plan-task.yaml';
 
 function localReviewCommand({
   headSha,
@@ -49,6 +50,29 @@ function runGit(cwd, args) {
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return result.stdout;
+}
+
+function normalizeRecipeArg(argv) {
+  const normalized = [...argv];
+  const recipeIndex = normalized.indexOf('--recipe');
+  if (recipeIndex === -1) {
+    return normalized;
+  }
+
+  const recipePath = normalized[recipeIndex + 1];
+  if (typeof recipePath === 'string' && path.basename(recipePath) === 'execute-next-plan-task.yaml') {
+    normalized[recipeIndex + 1] = canonicalRecipePath;
+  }
+
+  return normalized;
+}
+
+function formatArgv(argv) {
+  return normalizeRecipeArg(argv).join(' ');
+}
+
+function formatCommand(entry) {
+  return `${entry.bin} ${formatArgv(entry.argv)}`;
 }
 
 test('verify-local-review-gate includes the adapter regression suite', async () => {
@@ -167,7 +191,7 @@ test('run-plan-doc executes parsed plan tasks in order and merges only after req
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['101', '102']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: First task',
         'gh pr checks https://github.com/example/repo/pull/101 --required --json bucket',
@@ -271,11 +295,11 @@ test('run-plan-doc passes linked design and task docs to Goose when the plan dec
 
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.match(
-      finalState.commands[0].argv.join(' '),
+      formatArgv(finalState.commands[0].argv),
       /--params design_doc_path=docs\/plans\/2026-04-01-example-design\.md/,
     );
     assert.match(
-      finalState.commands[0].argv.join(' '),
+      formatArgv(finalState.commands[0].argv),
       /--params task_doc_paths_json=\["docs\/goose\/pr-workflow\.md","src\/automation\/plan-runner\.ts"\]/,
     );
   } finally {
@@ -283,13 +307,16 @@ test('run-plan-doc passes linked design and task docs to Goose when the plan dec
   }
 });
 
-test('run-plan-doc fails closed when the recipe loses its required no-merge guards', async () => {
+test('run-plan-doc injects runner-owned no-merge guards even when the source recipe omits them', async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-missing-no-merge-guard-'));
   const repoRoot = path.join(tempRoot, 'repo');
   const planPath = path.join(repoRoot, 'plan.md');
   const recipePath = path.join(repoRoot, '.goose', 'recipes', 'execute-next-plan-task.yaml');
+  const statePath = path.join(tempRoot, 'state.json');
 
   try {
+    await mkdir(repoRoot, { recursive: true });
+    runGit(repoRoot, ['init']);
     await mkdir(path.dirname(recipePath), { recursive: true });
     await writeFile(
       recipePath,
@@ -297,7 +324,7 @@ test('run-plan-doc fails closed when the recipe loses its required no-merge guar
         'version: "1.0.0"',
         'title: "Broken recipe"',
         'instructions: |',
-        '  This recipe forgot the outer-runner no-merge guard.',
+        '  Read the plan and implement exactly one task.',
         'prompt: |',
         '  Execute the requested task.',
       ].join('\n'),
@@ -313,8 +340,44 @@ test('run-plan-doc fails closed when the recipe loses its required no-merge guar
       ].join('\n'),
       'utf8',
     );
+    await writeFile(
+      statePath,
+      JSON.stringify(
+        {
+          commands: [],
+          gooseRuns: [
+            {
+              status: 'completed',
+              selected_task: 'Task 1: Missing guard task',
+              branch_name: 'codex/task-missing-guard',
+              pr_url: 'https://github.com/example/repo/pull/401',
+              merge_status: 'opened_not_merged',
+              changed_files: ['src/missing-guard.ts'],
+              validation_commands: ['npm run build'],
+            },
+          ],
+          checks: {
+            '401': ['pass'],
+          },
+          headShas: {
+            '401': ['sha-401'],
+          },
+          localReviews: {
+            '401': {
+              'sha-401': [
+                { status: 'clean', findings: [] },
+              ],
+            },
+          },
+          merged: [],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
 
-    const result = spawnSync(
+    const output = execFileSync(
       'node',
       [
         scriptPath,
@@ -331,39 +394,41 @@ test('run-plan-doc fails closed when the recipe loses its required no-merge guar
         env: {
           ...process.env,
           PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+          PLAN_RUNNER_FAKE_STATE: statePath,
         },
       },
     );
 
-    assert.equal(result.status, 1);
+    const result = JSON.parse(output);
+    assert.equal(result.status, 'completed');
+    const finalState = JSON.parse(await readFile(statePath, 'utf8'));
+    assert.equal(finalState.merged[0], '401');
     assert.match(
-      result.stderr,
-      /missing the required no-merge guard in instructions|missing the required no-merge guard in prompt/,
+      formatArgv(finalState.commands[0].argv),
+      /--recipe \.goose\/recipes\/execute-next-plan-task\.yaml/,
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
 
-test('run-plan-doc ignores no-merge guard text that appears only outside the executable recipe blocks', async () => {
-  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-comment-only-no-merge-guard-'));
+test('run-plan-doc fails closed when the source recipe does not expose literal instructions and prompt blocks', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-non-literal-block-recipe-'));
   const repoRoot = path.join(tempRoot, 'repo');
   const planPath = path.join(repoRoot, 'plan.md');
   const recipePath = path.join(repoRoot, '.goose', 'recipes', 'execute-next-plan-task.yaml');
 
   try {
+    await mkdir(repoRoot, { recursive: true });
+    runGit(repoRoot, ['init']);
     await mkdir(path.dirname(recipePath), { recursive: true });
     await writeFile(
       recipePath,
       [
         'version: "1.0.0"',
-        '# Do not merge the PR in this recipe; required-check polling and merge decisions belong to the outer plan runner',
-        'title: "Comment-only guard recipe"',
-        'instructions: |',
-        '  This block does not contain the runner-owned no-merge guard.',
-        'prompt: |',
-        '  Execute the requested task.',
-        'unused_note: "Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, and been opened or updated for outer-loop checks. Do not merge. The outer plan runner will wait only on required GitHub checks before merging."',
+        'title: "Non-literal recipe"',
+        'instructions: "Inline instructions are not supported by run-plan-doc guard injection."',
+        'prompt: "Inline prompt is not supported either."',
       ].join('\n'),
       'utf8',
     );
@@ -372,7 +437,7 @@ test('run-plan-doc ignores no-merge guard text that appears only outside the exe
       [
         '# Example Plan',
         '',
-        '### Task 1: Comment-only guard task',
+        '### Task 1: Non-literal recipe task',
         '',
       ].join('\n'),
       'utf8',
@@ -402,7 +467,7 @@ test('run-plan-doc ignores no-merge guard text that appears only outside the exe
     assert.equal(result.status, 1);
     assert.match(
       result.stderr,
-      /missing the required no-merge guard in instructions|missing the required no-merge guard in prompt/,
+      /must define instructions as a YAML literal block|must define prompt as a YAML literal block/,
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
@@ -687,7 +752,7 @@ test.skip('run-plan-doc fails closed when only an untrusted local base branch ma
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Untrusted base ref task',
         'gh pr checks https://github.com/example/repo/pull/403 --required --json bucket',
@@ -834,7 +899,7 @@ test.skip('run-plan-doc fails closed when only a stale remote-tracking base ref 
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Stale remote base ref task',
         'gh pr checks https://github.com/example/repo/pull/405 --required --json bucket',
@@ -997,7 +1062,7 @@ test.skip('run-plan-doc accepts oversized machine-readable local review output w
       timeoutMs: '1800000',
     });
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + repoRoot + ' --params plan_path=' + planPath + ' --params base_branch=missing-fallback-401 --params task_hint=Task 1: Large local review output task',
         'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
@@ -1518,7 +1583,7 @@ test.skip('run-plan-doc reruns the same task after Codex inline findings and mer
       ],
     });
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Repair task',
         'gh pr checks https://github.com/example/repo/pull/201 --required --json bucket',
@@ -1669,7 +1734,7 @@ test.skip('run-plan-doc keeps polling when a current-head review exists before i
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['401']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Race task',
         'gh pr checks https://github.com/example/repo/pull/401 --required --json bucket',
@@ -1802,7 +1867,7 @@ test('run-plan-doc keeps waiting when required checks are cancelled and later re
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['501']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal check task',
         'gh pr checks https://github.com/example/repo/pull/501 --required --json bucket',
@@ -1947,7 +2012,7 @@ test('run-plan-doc resets the cancelled-check grace poll when a new workflow gen
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['512']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled generation reset task',
         'gh pr checks https://github.com/example/repo/pull/512 --required --json bucket',
@@ -2230,7 +2295,7 @@ test('run-plan-doc trusts mixed detailed cancelled rows when the latest run for 
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['513']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled detail mixed pass task',
         'gh pr checks https://github.com/example/repo/pull/513 --required --json bucket',
@@ -4220,7 +4285,7 @@ test('run-plan-doc fails fast when required checks stay cancelled across the gra
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Terminal cancelled check task',
         'gh pr checks https://github.com/example/repo/pull/508 --required --json bucket',
@@ -4340,7 +4405,7 @@ test('run-plan-doc fails instead of timing out when a cancelled required check i
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Single poll cancelled check task',
         'gh pr checks https://github.com/example/repo/pull/510 --required --json bucket',
@@ -4461,7 +4526,7 @@ test('run-plan-doc still fails fast when cancelled required checks persist along
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Cancelled and skipped check task',
         'gh pr checks https://github.com/example/repo/pull/511 --required --json bucket',
@@ -4636,7 +4701,7 @@ test('run-plan-doc fails fast when the same cancelled required check persists wh
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Persistent cancelled check task',
         'gh pr checks https://github.com/example/repo/pull/521 --required --json bucket',
@@ -4757,7 +4822,7 @@ test('run-plan-doc treats skipped required checks as pass-equivalent', async () 
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['502']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped check task',
         'gh pr checks https://github.com/example/repo/pull/502 --required --json bucket',
@@ -4878,7 +4943,7 @@ test('run-plan-doc treats skipped required checks as pass-equivalent even when m
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['506']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped unstable task',
         'gh pr checks https://github.com/example/repo/pull/506 --required --json bucket',
@@ -4989,7 +5054,7 @@ test('run-plan-doc keeps waiting when required checks are still pending', async 
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped but unsafe task',
         'gh pr checks https://github.com/example/repo/pull/505 --required --json bucket',
@@ -5106,7 +5171,7 @@ test('run-plan-doc treats skipped required checks as pass-equivalent even when m
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['509']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Skipped but unconfirmed task',
         'gh pr checks https://github.com/example/repo/pull/509 --required --json bucket',
@@ -5227,7 +5292,7 @@ test.skip('run-plan-doc advances skipped required checks to the Codex review gat
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Review blocked but mergeable',
         'gh pr checks https://github.com/example/repo/pull/507 --required --json bucket',
@@ -5341,7 +5406,7 @@ test.skip('run-plan-doc confirms a clean local review when max review polls is 1
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['503']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: One poll task',
         'gh pr checks https://github.com/example/repo/pull/503 --required --json bucket',
@@ -5458,7 +5523,7 @@ test.skip('run-plan-doc treats max review polls as a no-op for synchronous local
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, ['504']);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Final poll debounce task',
         'gh pr checks https://github.com/example/repo/pull/504 --required --json bucket',
@@ -5581,7 +5646,7 @@ test.skip('run-plan-doc returns manual_review_required when Codex review exceeds
     const finalState = JSON.parse(await readFile(statePath, 'utf8'));
     assert.deepEqual(finalState.merged, []);
     assert.deepEqual(
-      finalState.commands.map((entry) => `${entry.bin} ${entry.argv.join(' ')}`),
+      finalState.commands.map((entry) => formatCommand(entry)),
       [
         'goose run --recipe .goose/recipes/execute-next-plan-task.yaml --quiet --no-session --output-format json --params repo_path=' + projectRoot + ' --params plan_path=' + planPath + ' --params base_branch=main --params task_hint=Task 1: Slow review task',
         'gh pr checks https://github.com/example/repo/pull/301 --required --json bucket',

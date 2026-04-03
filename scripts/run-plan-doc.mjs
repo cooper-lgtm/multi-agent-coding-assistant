@@ -2,7 +2,8 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,7 +15,7 @@ const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-code
 const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
 const EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH = '.goose/recipes/execute-next-plan-task.yaml';
-const REQUIRED_RECIPE_NO_MERGE_GUARDS = {
+const RUNNER_OWNED_NO_MERGE_GUARDS = {
   instructions:
     'Do not merge the PR in this recipe; required-check polling and merge decisions belong to the outer plan runner',
   prompt:
@@ -134,45 +135,49 @@ function createShellDependencies({ cwd, reviewTimeoutMs }) {
       designDocPath,
       taskDocPaths = [],
     }) => {
-      await ensureRecipeRetainsNoMergeGuards(repoPath);
       await ensureGitHooksInstalled(repoPath);
+      const guardedRecipe = await materializeRunnerOwnedRecipe(repoPath);
 
-      const gooseArgs = [
-        'run',
-        '--recipe',
-        EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH,
-        '--quiet',
-        '--no-session',
-        '--output-format',
-        'json',
-        '--params',
-        `repo_path=${repoPath}`,
-        '--params',
-        `plan_path=${planPath}`,
-        '--params',
-        `base_branch=${baseBranch}`,
-        '--params',
-        `task_hint=${taskHint}`,
-      ];
+      try {
+        const gooseArgs = [
+          'run',
+          '--recipe',
+          guardedRecipe.path,
+          '--quiet',
+          '--no-session',
+          '--output-format',
+          'json',
+          '--params',
+          `repo_path=${repoPath}`,
+          '--params',
+          `plan_path=${planPath}`,
+          '--params',
+          `base_branch=${baseBranch}`,
+          '--params',
+          `task_hint=${taskHint}`,
+        ];
 
-      if (designDocPath) {
-        gooseArgs.push('--params', `design_doc_path=${designDocPath}`);
+        if (designDocPath) {
+          gooseArgs.push('--params', `design_doc_path=${designDocPath}`);
+        }
+
+        if (taskDocPaths.length > 0) {
+          gooseArgs.push('--params', `task_doc_paths_json=${JSON.stringify(taskDocPaths)}`);
+        }
+
+        const stdout = await runCommand(
+          'goose',
+          gooseArgs,
+          {
+            cwd,
+            env: buildLocalReviewEnv(reviewTimeoutMs),
+          },
+        );
+
+        return JSON.parse(stdout);
+      } finally {
+        await guardedRecipe.cleanup();
       }
-
-      if (taskDocPaths.length > 0) {
-        gooseArgs.push('--params', `task_doc_paths_json=${JSON.stringify(taskDocPaths)}`);
-      }
-
-      const stdout = await runCommand(
-        'goose',
-        gooseArgs,
-        {
-          cwd,
-          env: buildLocalReviewEnv(reviewTimeoutMs),
-        },
-      );
-
-      return JSON.parse(stdout);
     },
     getRequiredCheckStatus: async ({ prUrl }) => {
       const stdout = await runCommand(
@@ -288,51 +293,62 @@ function createShellDependencies({ cwd, reviewTimeoutMs }) {
   };
 }
 
-async function ensureRecipeRetainsNoMergeGuards(repoPath) {
+async function materializeRunnerOwnedRecipe(repoPath) {
   const recipePath = path.join(repoPath, EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH);
   const recipeSource = await readFile(recipePath, 'utf8');
-  const instructionsBlock = extractRecipeLiteralBlock(recipeSource, 'instructions');
-  const promptBlock = extractRecipeLiteralBlock(recipeSource, 'prompt');
+  const guardedRecipeSource = injectLiteralBlockPrelude(
+    injectLiteralBlockPrelude(
+      recipeSource,
+      'instructions',
+      RUNNER_OWNED_NO_MERGE_GUARDS.instructions,
+    ),
+    'prompt',
+    RUNNER_OWNED_NO_MERGE_GUARDS.prompt,
+  );
+  const tempDir = await mkdtemp(path.join(tmpdir(), 'run-plan-doc-recipe-'));
+  const guardedRecipePath = path.join(tempDir, 'execute-next-plan-task.yaml');
+  await writeFile(guardedRecipePath, guardedRecipeSource, 'utf8');
 
-  if (!instructionsBlock.includes(REQUIRED_RECIPE_NO_MERGE_GUARDS.instructions)) {
-    throw new Error(
-      `Recipe ${EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH} is missing the required no-merge guard in instructions and cannot be used by run-plan-doc.`,
-    );
-  }
-
-  if (!promptBlock.includes(REQUIRED_RECIPE_NO_MERGE_GUARDS.prompt)) {
-    throw new Error(
-      `Recipe ${EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH} is missing the required no-merge guard in prompt and cannot be used by run-plan-doc.`,
-    );
-  }
+  return {
+    path: guardedRecipePath,
+    cleanup: async () => {
+      await rm(tempDir, { recursive: true, force: true });
+    },
+  };
 }
 
-function extractRecipeLiteralBlock(recipeSource, key) {
+function injectLiteralBlockPrelude(recipeSource, key, prelude) {
   const lines = recipeSource.split(/\r?\n/u);
-  const marker = `${key}: |`;
-  const startIndex = lines.findIndex((line) => line.trim() === marker);
+  const blockHeaderPattern = new RegExp(`^${key}:\\s*\\|(?:[1-9]\\d*)?(?:[+-])?$|^${key}:\\s*\\|(?:[+-])(?:[1-9]\\d*)?$`, 'u');
+  const startIndex = lines.findIndex((line) => blockHeaderPattern.test(line.trim()));
 
   if (startIndex === -1) {
-    return '';
+    throw new Error(
+      `Recipe ${EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH} must define ${key} as a YAML literal block for run-plan-doc.`,
+    );
   }
 
-  const blockLines = [];
-  for (let index = startIndex + 1; index < lines.length; index += 1) {
+  const contentIndent = detectLiteralBlockIndent(lines, startIndex);
+  lines.splice(startIndex + 1, 0, `${contentIndent}${prelude}`);
+  return lines.join('\n');
+}
+
+function detectLiteralBlockIndent(lines, blockHeaderIndex) {
+  for (let index = blockHeaderIndex + 1; index < lines.length; index += 1) {
     const line = lines[index];
-    if (line.startsWith('  ')) {
-      blockLines.push(line.slice(2));
+    if (!line.trim()) {
       continue;
     }
 
-    if (!line.trim()) {
-      blockLines.push('');
-      continue;
+    const indentMatch = /^(\s+)/u.exec(line);
+    if (indentMatch?.[1]) {
+      return indentMatch[1];
     }
 
     break;
   }
 
-  return blockLines.join('\n');
+  return '  ';
 }
 
 async function ensureGitHooksInstalled(repoPath) {
