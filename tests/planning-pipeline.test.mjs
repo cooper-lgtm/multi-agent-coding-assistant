@@ -251,6 +251,60 @@ test('planning normalization rejects malformed clarified brief booleans', () => 
     }),
     /planning_trace\.clarified_brief\.ready_for_planning must be a boolean/,
   );
+
+  assert.throws(
+    () => normalizer.normalize({
+      request: buildDebatePlanningFixtureRequest(),
+      resolved_mode: 'debate',
+      draft: buildExecutionGuidancePlanningDraft(),
+      planner_routes: [
+        {
+          role: 'planning-agent',
+          selected_model: 'codex',
+          attempted_models: ['codex'],
+        },
+      ],
+      clarified_brief: {
+        version: 1,
+        request_summary: 42,
+        goals: ['Preserve a frozen brief for downstream analyzers.'],
+        non_goals: ['Do not change debate execution order in this task.'],
+        constraints: ['Keep planning outputs implementation-only.'],
+        assumptions: ['The coordinator already resolved the initial user intent.'],
+        known_risks: ['Later debate tasks may need richer analyzer-specific metadata.'],
+        unresolved_questions: ['Should bounded cross-review metadata include per-role findings later?'],
+        ready_for_planning: true,
+      },
+    }),
+    /planning_trace\.clarified_brief\.request_summary must be a string/,
+  );
+
+  assert.throws(
+    () => normalizer.normalize({
+      request: buildDebatePlanningFixtureRequest(),
+      resolved_mode: 'debate',
+      draft: buildExecutionGuidancePlanningDraft(),
+      planner_routes: [
+        {
+          role: 'planning-agent',
+          selected_model: 'codex',
+          attempted_models: ['codex'],
+        },
+      ],
+      clarified_brief: {
+        version: 1,
+        request_summary: 'Implement the planning workspace with a coordinator-owned brief.',
+        goals: null,
+        non_goals: ['Do not change debate execution order in this task.'],
+        constraints: ['Keep planning outputs implementation-only.'],
+        assumptions: ['The coordinator already resolved the initial user intent.'],
+        known_risks: ['Later debate tasks may need richer analyzer-specific metadata.'],
+        unresolved_questions: ['Should bounded cross-review metadata include per-role findings later?'],
+        ready_for_planning: true,
+      },
+    }),
+    /planning_trace\.clarified_brief\.goals must be an array when provided/,
+  );
 });
 
 test('planning result validation rejects invalid planning trace coordination metadata', () => {
@@ -294,6 +348,20 @@ test('planning result validation rejects invalid planning trace coordination met
   assert.throws(
     () => validatePlanningResult(invalidBoolean),
     /planning_trace\.clarified_brief\.ready_for_planning must be a boolean/,
+  );
+
+  const invalidSummary = structuredClone(planningResult);
+  invalidSummary.planning_trace.clarified_brief.request_summary = 42;
+  assert.throws(
+    () => validatePlanningResult(invalidSummary),
+    /planning_trace\.clarified_brief\.request_summary must be a string/,
+  );
+
+  const invalidGoals = structuredClone(planningResult);
+  invalidGoals.planning_trace.clarified_brief.goals = null;
+  assert.throws(
+    () => validatePlanningResult(invalidGoals),
+    /planning_trace\.clarified_brief\.goals must be an array when provided/,
   );
 });
 

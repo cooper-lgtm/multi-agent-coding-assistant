@@ -58,10 +58,32 @@ function normalizeRequiredBoolean(fieldName: string, value: unknown): boolean {
   return value;
 }
 
+function normalizeOptionalStringList(fieldName: string, value: unknown): string[] {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldName} must be an array when provided`);
+  }
+
+  return [...new Set(value.map((entry) => {
+    if (typeof entry !== 'string' || !entry.trim()) {
+      throw new Error(`${fieldName} must include non-empty string entries`);
+    }
+
+    return entry.trim();
+  }))];
+}
+
 function normalizeClarifiedPlanningBrief(
   clarifiedBrief: ClarifiedPlanningBrief | undefined,
 ): ClarifiedPlanningBrief | undefined {
   if (!clarifiedBrief) return undefined;
+
+  if (typeof clarifiedBrief.request_summary !== 'string') {
+    throw new Error('planning_trace.clarified_brief.request_summary must be a string');
+  }
 
   const requestSummary = clarifiedBrief.request_summary.trim();
   if (!requestSummary) {
@@ -79,12 +101,15 @@ function normalizeClarifiedPlanningBrief(
   return {
     version,
     request_summary: requestSummary,
-    goals: compactStrings(clarifiedBrief.goals) ?? [],
-    non_goals: compactStrings(clarifiedBrief.non_goals) ?? [],
-    constraints: compactStrings(clarifiedBrief.constraints) ?? [],
-    assumptions: compactStrings(clarifiedBrief.assumptions) ?? [],
-    known_risks: compactStrings(clarifiedBrief.known_risks) ?? [],
-    unresolved_questions: compactStrings(clarifiedBrief.unresolved_questions) ?? [],
+    goals: normalizeOptionalStringList('planning_trace.clarified_brief.goals', clarifiedBrief.goals),
+    non_goals: normalizeOptionalStringList('planning_trace.clarified_brief.non_goals', clarifiedBrief.non_goals),
+    constraints: normalizeOptionalStringList('planning_trace.clarified_brief.constraints', clarifiedBrief.constraints),
+    assumptions: normalizeOptionalStringList('planning_trace.clarified_brief.assumptions', clarifiedBrief.assumptions),
+    known_risks: normalizeOptionalStringList('planning_trace.clarified_brief.known_risks', clarifiedBrief.known_risks),
+    unresolved_questions: normalizeOptionalStringList(
+      'planning_trace.clarified_brief.unresolved_questions',
+      clarifiedBrief.unresolved_questions,
+    ),
     ready_for_planning: normalizeRequiredBoolean(
       'planning_trace.clarified_brief.ready_for_planning',
       clarifiedBrief.ready_for_planning,

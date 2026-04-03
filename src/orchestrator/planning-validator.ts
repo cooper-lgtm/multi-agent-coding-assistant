@@ -67,7 +67,10 @@ function validatePlanningTrace(planningTrace: PlanningResult['planning_trace']):
     ) {
       throw new Error('planning_trace.clarified_brief.version must be a non-negative integer');
     }
-    if (!planningTrace.clarified_brief.request_summary?.trim()) {
+    if (typeof planningTrace.clarified_brief.request_summary !== 'string') {
+      throw new Error('planning_trace.clarified_brief.request_summary must be a string');
+    }
+    if (!planningTrace.clarified_brief.request_summary.trim()) {
       throw new Error('planning_trace.clarified_brief.request_summary must be non-empty');
     }
     if (typeof planningTrace.clarified_brief.ready_for_planning !== 'boolean') {
