@@ -338,7 +338,71 @@ test('run-plan-doc fails closed when the recipe loses its required no-merge guar
     assert.equal(result.status, 1);
     assert.match(
       result.stderr,
-      /missing a required no-merge guard/,
+      /missing the required no-merge guard in instructions|missing the required no-merge guard in prompt/,
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('run-plan-doc ignores no-merge guard text that appears only outside the executable recipe blocks', async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), 'plan-runner-comment-only-no-merge-guard-'));
+  const repoRoot = path.join(tempRoot, 'repo');
+  const planPath = path.join(repoRoot, 'plan.md');
+  const recipePath = path.join(repoRoot, '.goose', 'recipes', 'execute-next-plan-task.yaml');
+
+  try {
+    await mkdir(path.dirname(recipePath), { recursive: true });
+    await writeFile(
+      recipePath,
+      [
+        'version: "1.0.0"',
+        '# Do not merge the PR in this recipe; required-check polling and merge decisions belong to the outer plan runner',
+        'title: "Comment-only guard recipe"',
+        'instructions: |',
+        '  This block does not contain the runner-owned no-merge guard.',
+        'prompt: |',
+        '  Execute the requested task.',
+        'unused_note: "Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, and been opened or updated for outer-loop checks. Do not merge. The outer plan runner will wait only on required GitHub checks before merging."',
+      ].join('\n'),
+      'utf8',
+    );
+    await writeFile(
+      planPath,
+      [
+        '# Example Plan',
+        '',
+        '### Task 1: Comment-only guard task',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = spawnSync(
+      'node',
+      [
+        scriptPath,
+        '--repo-path',
+        repoRoot,
+        '--plan-path',
+        planPath,
+        '--base-branch',
+        'main',
+      ],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fakeBinPath}${path.delimiter}${process.env.PATH ?? ''}`,
+        },
+      },
+    );
+
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /missing the required no-merge guard in instructions|missing the required no-merge guard in prompt/,
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });

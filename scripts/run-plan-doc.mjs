@@ -14,10 +14,12 @@ const DEFAULT_LOCAL_REVIEW_RUNNER_PATH = fileURLToPath(new URL('./run-local-code
 const LOCAL_REVIEW_OUTPUT_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 const LOCAL_REVIEW_CLI_TIMEOUT_GRACE_MS = 5_000;
 const EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH = '.goose/recipes/execute-next-plan-task.yaml';
-const REQUIRED_RECIPE_NO_MERGE_GUARDS = [
-  'Do not merge the PR in this recipe; required-check polling and merge decisions belong to the outer plan runner',
-  'Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, and been opened or updated for outer-loop checks. Do not merge. The outer plan runner will wait only on required GitHub checks before merging.',
-];
+const REQUIRED_RECIPE_NO_MERGE_GUARDS = {
+  instructions:
+    'Do not merge the PR in this recipe; required-check polling and merge decisions belong to the outer plan runner',
+  prompt:
+    'Finish after one task-sized PR has had any required context artifacts refreshed on-branch, been validated, and been opened or updated for outer-loop checks. Do not merge. The outer plan runner will wait only on required GitHub checks before merging.',
+};
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -289,14 +291,48 @@ function createShellDependencies({ cwd, reviewTimeoutMs }) {
 async function ensureRecipeRetainsNoMergeGuards(repoPath) {
   const recipePath = path.join(repoPath, EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH);
   const recipeSource = await readFile(recipePath, 'utf8');
+  const instructionsBlock = extractRecipeLiteralBlock(recipeSource, 'instructions');
+  const promptBlock = extractRecipeLiteralBlock(recipeSource, 'prompt');
 
-  for (const requiredSnippet of REQUIRED_RECIPE_NO_MERGE_GUARDS) {
-    if (!recipeSource.includes(requiredSnippet)) {
-      throw new Error(
-        `Recipe ${EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH} is missing a required no-merge guard and cannot be used by run-plan-doc.`,
-      );
-    }
+  if (!instructionsBlock.includes(REQUIRED_RECIPE_NO_MERGE_GUARDS.instructions)) {
+    throw new Error(
+      `Recipe ${EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH} is missing the required no-merge guard in instructions and cannot be used by run-plan-doc.`,
+    );
   }
+
+  if (!promptBlock.includes(REQUIRED_RECIPE_NO_MERGE_GUARDS.prompt)) {
+    throw new Error(
+      `Recipe ${EXECUTE_NEXT_PLAN_TASK_RECIPE_PATH} is missing the required no-merge guard in prompt and cannot be used by run-plan-doc.`,
+    );
+  }
+}
+
+function extractRecipeLiteralBlock(recipeSource, key) {
+  const lines = recipeSource.split(/\r?\n/u);
+  const marker = `${key}: |`;
+  const startIndex = lines.findIndex((line) => line.trim() === marker);
+
+  if (startIndex === -1) {
+    return '';
+  }
+
+  const blockLines = [];
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.startsWith('  ')) {
+      blockLines.push(line.slice(2));
+      continue;
+    }
+
+    if (!line.trim()) {
+      blockLines.push('');
+      continue;
+    }
+
+    break;
+  }
+
+  return blockLines.join('\n');
 }
 
 async function ensureGitHooksInstalled(repoPath) {
