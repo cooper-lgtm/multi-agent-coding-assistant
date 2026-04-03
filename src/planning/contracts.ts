@@ -1,6 +1,9 @@
 import type {
+  ClarifiedPlanningBrief,
   DebatePlannerRoleName,
+  PlannerCrossReviewFinding,
   PlannerRouteTrace,
+  PlanningClarificationRequest,
   PlanningRequest,
   PlanningResult,
   PlanningTask,
@@ -20,6 +23,7 @@ export interface PlanningPipelineContext {
   request: PlanningRequest;
   resolved_mode: ResolvedPlanningMode;
   available_models: string[];
+  clarified_brief?: ClarifiedPlanningBrief;
 }
 
 export interface DirectPlanningInput extends PlanningPipelineContext {
@@ -35,6 +39,8 @@ export interface DebateAnalysis extends PlanningDraft {
   role: DebatePlannerRoleName;
   summary: string;
   planner_route: PlannerRouteTrace;
+  clarification_requests?: PlanningClarificationRequest[];
+  cross_review_findings?: PlannerCrossReviewFinding[];
 }
 
 export interface DebateSynthesisInput extends PlanningPipelineContext {
@@ -46,6 +52,9 @@ export interface PlanningNormalizationInput {
   resolved_mode: ResolvedPlanningMode;
   draft: PlanningDraft;
   planner_routes: PlannerRouteTrace[];
+  clarified_brief?: ClarifiedPlanningBrief;
+  clarification_rounds?: number;
+  cross_review_rounds?: number;
   debate?: DebateAnalysis[];
 }
 

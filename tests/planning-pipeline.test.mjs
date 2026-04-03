@@ -139,6 +139,52 @@ test('planning normalization preserves execution guidance through validation and
   assert.deepEqual(dag.runtime.tasks['task-plan-contract'].execution_guidance, planningResult.tasks[0].execution_guidance);
 });
 
+test('planning normalization preserves clarified brief and bounded coordination trace metadata', () => {
+  const normalizer = new DefaultPlanningNormalizer();
+
+  const planningResult = normalizer.normalize({
+    request: buildDebatePlanningFixtureRequest(),
+    resolved_mode: 'debate',
+    draft: buildExecutionGuidancePlanningDraft(),
+    planner_routes: [
+      {
+        role: 'planning-agent',
+        selected_model: 'codex',
+        attempted_models: ['codex'],
+      },
+    ],
+    clarified_brief: {
+      version: 1,
+      request_summary: 'Implement the planning workspace with a coordinator-owned brief.',
+      goals: ['Preserve a frozen brief for downstream analyzers.'],
+      non_goals: ['Do not change debate execution order in this task.'],
+      constraints: ['Keep planning outputs implementation-only.'],
+      assumptions: ['The coordinator already resolved the initial user intent.'],
+      known_risks: ['Later debate tasks may need richer analyzer-specific metadata.'],
+      unresolved_questions: ['Should bounded cross-review metadata include per-role findings later?'],
+      ready_for_planning: true,
+    },
+    clarification_rounds: 1,
+    cross_review_rounds: 1,
+  });
+
+  validatePlanningResult(planningResult);
+
+  assert.deepEqual(planningResult.planning_trace?.clarified_brief, {
+    version: 1,
+    request_summary: 'Implement the planning workspace with a coordinator-owned brief.',
+    goals: ['Preserve a frozen brief for downstream analyzers.'],
+    non_goals: ['Do not change debate execution order in this task.'],
+    constraints: ['Keep planning outputs implementation-only.'],
+    assumptions: ['The coordinator already resolved the initial user intent.'],
+    known_risks: ['Later debate tasks may need richer analyzer-specific metadata.'],
+    unresolved_questions: ['Should bounded cross-review metadata include per-role findings later?'],
+    ready_for_planning: true,
+  });
+  assert.equal(planningResult.planning_trace?.clarification_rounds, 1);
+  assert.equal(planningResult.planning_trace?.cross_review_rounds, 1);
+});
+
 test('debate synthesis preserves execution guidance introduced by later analyses', async () => {
   const synthesizer = new DefaultDebateSynthesizer();
   const normalizer = new DefaultPlanningNormalizer();

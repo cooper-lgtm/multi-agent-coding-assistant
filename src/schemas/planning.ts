@@ -12,6 +12,12 @@ export type DebatePlannerRoleName =
   | 'architecture-planner'
   | 'engineering-planner'
   | 'integration-planner';
+export type PlannerCrossReviewDisposition =
+  | 'agree'
+  | 'disagree'
+  | 'missing_risk'
+  | 'missing_dependency'
+  | 'ownership_concern';
 
 export type AssignedAgent = 'frontend-agent' | 'backend-agent';
 export type QualityStatus = 'pending' | 'pass' | 'fail' | 'skipped';
@@ -84,6 +90,32 @@ export interface PlannerRouteTrace {
   selected_model_metadata?: ModelResolution;
 }
 
+export interface ClarifiedPlanningBrief {
+  version: number;
+  request_summary: string;
+  goals: string[];
+  non_goals: string[];
+  constraints: string[];
+  assumptions: string[];
+  known_risks: string[];
+  unresolved_questions: string[];
+  ready_for_planning: boolean;
+}
+
+export interface PlanningClarificationRequest {
+  requester: DebatePlannerRoleName;
+  question: string;
+  rationale: string;
+  blocking: boolean;
+}
+
+export interface PlannerCrossReviewFinding {
+  reviewer: DebatePlannerRoleName;
+  target: DebatePlannerRoleName;
+  disposition: PlannerCrossReviewDisposition;
+  evidence: string;
+}
+
 export interface DebateTraceEntry {
   role: DebatePlannerRoleName;
   summary: string;
@@ -94,6 +126,9 @@ export interface PlanningTrace {
   requested_mode: RequestedPlanningMode;
   resolved_mode: ResolvedPlanningMode;
   planner_routes: PlannerRouteTrace[];
+  clarified_brief?: ClarifiedPlanningBrief;
+  clarification_rounds?: number;
+  cross_review_rounds?: number;
   debate?: DebateTraceEntry[];
 }
 

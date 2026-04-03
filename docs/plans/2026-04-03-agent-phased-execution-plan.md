@@ -217,6 +217,18 @@ Expected: PASS for the new schema and trace assertions.
 
 Update `docs/plans/2026-04-03-agent-phased-execution-plan.md` with the delivered schema surface, validation results, and any remaining risks before opening or updating the PR.
 
+**Task 1 handoff notes (2026-04-03)**
+
+- Delivered:
+  - added `ClarifiedPlanningBrief`, `PlanningClarificationRequest`, and `PlannerCrossReviewFinding` schema types
+  - extended planning contracts and normalization input to carry `clarified_brief`, `clarification_rounds`, and `cross_review_rounds`
+  - updated planning trace normalization so clarified brief metadata and bounded coordination round counts survive into the final `planning_result`
+- Validation:
+  - `npm run test:planning`
+- Remaining risks:
+  - debate execution order and real coordinator routing are still unchanged in this slice and remain Task 2 work
+  - planner-specific clarification requests and cross-review findings are typed now, but runtime production of those artifacts remains future work
+
 ### Task 2: Make `planning-agent` the real debate coordinator
 
 **Files:**

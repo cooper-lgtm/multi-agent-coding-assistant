@@ -1,5 +1,6 @@
 import type { PlanningNormalizationInput, PlanningNormalizer } from './contracts.js';
 import type {
+  ClarifiedPlanningBrief,
   ExecutionGuidance,
   PlanningResult,
   PlanningTask,
@@ -21,6 +22,44 @@ function compactRequiredStrings(taskId: string, fieldName: string, values: strin
   }
 
   return normalized;
+}
+
+function normalizeRoundCount(fieldName: string, value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${fieldName} must be a non-negative integer when provided`);
+  }
+
+  return value;
+}
+
+function normalizeClarifiedPlanningBrief(
+  clarifiedBrief: ClarifiedPlanningBrief | undefined,
+): ClarifiedPlanningBrief | undefined {
+  if (!clarifiedBrief) return undefined;
+
+  const requestSummary = clarifiedBrief.request_summary.trim();
+  if (!requestSummary) {
+    throw new Error('planning_trace.clarified_brief.request_summary must be non-empty');
+  }
+
+  const version = normalizeRoundCount('planning_trace.clarified_brief.version', clarifiedBrief.version);
+  if (version === undefined) {
+    throw new Error('planning_trace.clarified_brief.version must be provided');
+  }
+
+  return {
+    version,
+    request_summary: requestSummary,
+    goals: compactStrings(clarifiedBrief.goals) ?? [],
+    non_goals: compactStrings(clarifiedBrief.non_goals) ?? [],
+    constraints: compactStrings(clarifiedBrief.constraints) ?? [],
+    assumptions: compactStrings(clarifiedBrief.assumptions) ?? [],
+    known_risks: compactStrings(clarifiedBrief.known_risks) ?? [],
+    unresolved_questions: compactStrings(clarifiedBrief.unresolved_questions) ?? [],
+    ready_for_planning: Boolean(clarifiedBrief.ready_for_planning),
+  };
 }
 
 function normalizeQualityGate(taskId: string, qualityGate: QualityGate): QualityGate {
@@ -181,6 +220,15 @@ export class DefaultPlanningNormalizer implements PlanningNormalizer {
         requested_mode: input.request.planning_mode,
         resolved_mode: input.resolved_mode,
         planner_routes: buildPlannerTraceRoutes(input.planner_routes),
+        clarified_brief: normalizeClarifiedPlanningBrief(input.clarified_brief),
+        clarification_rounds: normalizeRoundCount(
+          'planning_trace.clarification_rounds',
+          input.clarification_rounds,
+        ),
+        cross_review_rounds: normalizeRoundCount(
+          'planning_trace.cross_review_rounds',
+          input.cross_review_rounds,
+        ),
         debate: input.debate?.map((analysis) => ({
           role: analysis.role,
           summary: analysis.summary.trim(),
