@@ -148,7 +148,7 @@ node --test tests/orchestrator-goose-runtime.test.mjs tests/orchestrator-e2e.tes
 ## Preconditions And Shared Contracts
 
 - Run tasks in order; Phase 2 starts only after Phase 1 is merged.
-- Phase 3 starts only after Phase 2 tasks that define QA artifacts are merged.
+- Phase 3 starts only after Phase 2 tasks that define implementation and retry handoff artifacts are merged.
 - Phase 4 starts only after Phase 3 proves stable structured QA/report surfaces.
 - Goose should execute this file one `### Task N:` slice at a time through the existing PR-sized loop.
 - Each task-sized PR must include at least one docs update. Unless a task names a more specific docs target, update this plan file with validation results, changed docs, and remaining risks or follow-up notes.
