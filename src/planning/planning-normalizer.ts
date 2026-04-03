@@ -1,6 +1,8 @@
 import type { PlanningNormalizationInput, PlanningNormalizer } from './contracts.js';
 import type {
   ClarifiedPlanningBrief,
+  PlannerCrossReviewFinding,
+  PlanningClarificationRequest,
   ExecutionGuidance,
   PlanningResult,
   PlanningTask,
@@ -24,7 +26,7 @@ function compactRequiredStrings(taskId: string, fieldName: string, values: strin
   return normalized;
 }
 
-function normalizeRoundCount(fieldName: string, value: number | undefined): number | undefined {
+function normalizeNonNegativeInteger(fieldName: string, value: number | undefined): number | undefined {
   if (value === undefined) return undefined;
 
   if (!Number.isInteger(value) || value < 0) {
@@ -32,6 +34,22 @@ function normalizeRoundCount(fieldName: string, value: number | undefined): numb
   }
 
   return value;
+}
+
+function normalizeBoundedProtocolRoundCount(
+  fieldName: string,
+  value: number | undefined,
+): number | undefined {
+  const normalized = normalizeNonNegativeInteger(fieldName, value);
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  if (normalized > 1) {
+    throw new Error(`${fieldName} must be 0 or 1 when provided`);
+  }
+
+  return normalized;
 }
 
 function normalizeClarifiedPlanningBrief(
@@ -44,7 +62,10 @@ function normalizeClarifiedPlanningBrief(
     throw new Error('planning_trace.clarified_brief.request_summary must be non-empty');
   }
 
-  const version = normalizeRoundCount('planning_trace.clarified_brief.version', clarifiedBrief.version);
+  const version = normalizeNonNegativeInteger(
+    'planning_trace.clarified_brief.version',
+    clarifiedBrief.version,
+  );
   if (version === undefined) {
     throw new Error('planning_trace.clarified_brief.version must be provided');
   }
@@ -60,6 +81,51 @@ function normalizeClarifiedPlanningBrief(
     unresolved_questions: compactStrings(clarifiedBrief.unresolved_questions) ?? [],
     ready_for_planning: Boolean(clarifiedBrief.ready_for_planning),
   };
+}
+
+function normalizePlanningClarificationRequests(
+  clarificationRequests: PlanningClarificationRequest[] | undefined,
+) {
+  if (!clarificationRequests?.length) return undefined;
+
+  return clarificationRequests.map((request, index) => {
+    const question = request.question.trim();
+    if (!question) {
+      throw new Error(`planning_trace.debate[${index}].clarification_requests.question must be non-empty`);
+    }
+
+    const rationale = request.rationale.trim();
+    if (!rationale) {
+      throw new Error(`planning_trace.debate[${index}].clarification_requests.rationale must be non-empty`);
+    }
+
+    return {
+      requester: request.requester,
+      question,
+      rationale,
+      blocking: Boolean(request.blocking),
+    };
+  });
+}
+
+function normalizePlannerCrossReviewFindings(
+  crossReviewFindings: PlannerCrossReviewFinding[] | undefined,
+) {
+  if (!crossReviewFindings?.length) return undefined;
+
+  return crossReviewFindings.map((finding, index) => {
+    const evidence = finding.evidence.trim();
+    if (!evidence) {
+      throw new Error(`planning_trace.debate[${index}].cross_review_findings.evidence must be non-empty`);
+    }
+
+    return {
+      reviewer: finding.reviewer,
+      target: finding.target,
+      disposition: finding.disposition,
+      evidence,
+    };
+  });
 }
 
 function normalizeQualityGate(taskId: string, qualityGate: QualityGate): QualityGate {
@@ -221,11 +287,11 @@ export class DefaultPlanningNormalizer implements PlanningNormalizer {
         resolved_mode: input.resolved_mode,
         planner_routes: buildPlannerTraceRoutes(input.planner_routes),
         clarified_brief: normalizeClarifiedPlanningBrief(input.clarified_brief),
-        clarification_rounds: normalizeRoundCount(
+        clarification_rounds: normalizeBoundedProtocolRoundCount(
           'planning_trace.clarification_rounds',
           input.clarification_rounds,
         ),
-        cross_review_rounds: normalizeRoundCount(
+        cross_review_rounds: normalizeBoundedProtocolRoundCount(
           'planning_trace.cross_review_rounds',
           input.cross_review_rounds,
         ),
@@ -233,6 +299,12 @@ export class DefaultPlanningNormalizer implements PlanningNormalizer {
           role: analysis.role,
           summary: analysis.summary.trim(),
           recommended_plan: analysis.recommended_plan.trim(),
+          clarification_requests: normalizePlanningClarificationRequests(
+            analysis.clarification_requests,
+          ),
+          cross_review_findings: normalizePlannerCrossReviewFindings(
+            analysis.cross_review_findings,
+          ),
         })),
       },
     };
