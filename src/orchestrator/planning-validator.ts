@@ -25,6 +25,76 @@ function validateExecutionGuidance(taskId: string, guidance: PlanningResult['tas
   }
 }
 
+function validateOptionalStringList(fieldName: string, values: string[] | undefined): void {
+  if (values === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(values)) {
+    throw new Error(`${fieldName} must be an array when provided`);
+  }
+
+  for (const value of values) {
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new Error(`${fieldName} must include non-empty string entries`);
+    }
+  }
+}
+
+function validateOptionalBoundedRoundCount(fieldName: string, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || value < 0 || value > 1) {
+    throw new Error(`${fieldName} must be 0 or 1 when provided`);
+  }
+}
+
+function validatePlanningTrace(planningTrace: PlanningResult['planning_trace']): void {
+  if (!planningTrace) {
+    return;
+  }
+
+  if (!Array.isArray(planningTrace.planner_routes) || planningTrace.planner_routes.length === 0) {
+    throw new Error('planning_trace.planner_routes must include at least one route');
+  }
+
+  if (planningTrace.clarified_brief) {
+    if (
+      !Number.isInteger(planningTrace.clarified_brief.version)
+      || planningTrace.clarified_brief.version < 0
+    ) {
+      throw new Error('planning_trace.clarified_brief.version must be a non-negative integer');
+    }
+    if (!planningTrace.clarified_brief.request_summary?.trim()) {
+      throw new Error('planning_trace.clarified_brief.request_summary must be non-empty');
+    }
+    if (typeof planningTrace.clarified_brief.ready_for_planning !== 'boolean') {
+      throw new Error('planning_trace.clarified_brief.ready_for_planning must be a boolean');
+    }
+
+    validateOptionalStringList('planning_trace.clarified_brief.goals', planningTrace.clarified_brief.goals);
+    validateOptionalStringList('planning_trace.clarified_brief.non_goals', planningTrace.clarified_brief.non_goals);
+    validateOptionalStringList('planning_trace.clarified_brief.constraints', planningTrace.clarified_brief.constraints);
+    validateOptionalStringList('planning_trace.clarified_brief.assumptions', planningTrace.clarified_brief.assumptions);
+    validateOptionalStringList('planning_trace.clarified_brief.known_risks', planningTrace.clarified_brief.known_risks);
+    validateOptionalStringList(
+      'planning_trace.clarified_brief.unresolved_questions',
+      planningTrace.clarified_brief.unresolved_questions,
+    );
+  }
+
+  validateOptionalBoundedRoundCount(
+    'planning_trace.clarification_rounds',
+    planningTrace.clarification_rounds,
+  );
+  validateOptionalBoundedRoundCount(
+    'planning_trace.cross_review_rounds',
+    planningTrace.cross_review_rounds,
+  );
+}
+
 export function validatePlanningResult(planningResult: PlanningResult): void {
   if (!planningResult.schema_version) throw new Error('Missing schema_version');
   if (!planningResult.planning_mode) throw new Error('Missing planning_mode');
@@ -84,6 +154,7 @@ export function validatePlanningResult(planningResult: PlanningResult): void {
     }
   }
 
+  validatePlanningTrace(planningResult.planning_trace);
   detectCycles(planningResult);
 }
 
