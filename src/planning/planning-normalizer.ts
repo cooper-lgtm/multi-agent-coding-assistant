@@ -1,5 +1,6 @@
 import type { PlanningNormalizationInput, PlanningNormalizer } from './contracts.js';
 import type {
+  ClarifiedPlanningBrief,
   ExecutionGuidance,
   PlanningResult,
   PlanningTask,
@@ -21,6 +22,99 @@ function compactRequiredStrings(taskId: string, fieldName: string, values: strin
   }
 
   return normalized;
+}
+
+function normalizeNonNegativeInteger(fieldName: string, value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${fieldName} must be a non-negative integer when provided`);
+  }
+
+  return value;
+}
+
+function normalizeBoundedProtocolRoundCount(
+  fieldName: string,
+  value: number | undefined,
+): number | undefined {
+  const normalized = normalizeNonNegativeInteger(fieldName, value);
+  if (normalized === undefined) {
+    return undefined;
+  }
+
+  if (normalized > 1) {
+    throw new Error(`${fieldName} must be 0 or 1 when provided`);
+  }
+
+  return normalized;
+}
+
+function normalizeRequiredBoolean(fieldName: string, value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`${fieldName} must be a boolean`);
+  }
+
+  return value;
+}
+
+function normalizeOptionalStringList(fieldName: string, value: unknown): string[] {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldName} must be an array when provided`);
+  }
+
+  return [...new Set(value.map((entry) => {
+    if (typeof entry !== 'string' || !entry.trim()) {
+      throw new Error(`${fieldName} must include non-empty string entries`);
+    }
+
+    return entry.trim();
+  }))];
+}
+
+function normalizeClarifiedPlanningBrief(
+  clarifiedBrief: ClarifiedPlanningBrief | undefined,
+): ClarifiedPlanningBrief | undefined {
+  if (!clarifiedBrief) return undefined;
+
+  if (typeof clarifiedBrief.request_summary !== 'string') {
+    throw new Error('planning_trace.clarified_brief.request_summary must be a string');
+  }
+
+  const requestSummary = clarifiedBrief.request_summary.trim();
+  if (!requestSummary) {
+    throw new Error('planning_trace.clarified_brief.request_summary must be non-empty');
+  }
+
+  const version = normalizeNonNegativeInteger(
+    'planning_trace.clarified_brief.version',
+    clarifiedBrief.version,
+  );
+  if (version === undefined) {
+    throw new Error('planning_trace.clarified_brief.version must be provided');
+  }
+
+  return {
+    version,
+    request_summary: requestSummary,
+    goals: normalizeOptionalStringList('planning_trace.clarified_brief.goals', clarifiedBrief.goals),
+    non_goals: normalizeOptionalStringList('planning_trace.clarified_brief.non_goals', clarifiedBrief.non_goals),
+    constraints: normalizeOptionalStringList('planning_trace.clarified_brief.constraints', clarifiedBrief.constraints),
+    assumptions: normalizeOptionalStringList('planning_trace.clarified_brief.assumptions', clarifiedBrief.assumptions),
+    known_risks: normalizeOptionalStringList('planning_trace.clarified_brief.known_risks', clarifiedBrief.known_risks),
+    unresolved_questions: normalizeOptionalStringList(
+      'planning_trace.clarified_brief.unresolved_questions',
+      clarifiedBrief.unresolved_questions,
+    ),
+    ready_for_planning: normalizeRequiredBoolean(
+      'planning_trace.clarified_brief.ready_for_planning',
+      clarifiedBrief.ready_for_planning,
+    ),
+  };
 }
 
 function normalizeQualityGate(taskId: string, qualityGate: QualityGate): QualityGate {
@@ -181,6 +275,15 @@ export class DefaultPlanningNormalizer implements PlanningNormalizer {
         requested_mode: input.request.planning_mode,
         resolved_mode: input.resolved_mode,
         planner_routes: buildPlannerTraceRoutes(input.planner_routes),
+        clarified_brief: normalizeClarifiedPlanningBrief(input.clarified_brief),
+        clarification_rounds: normalizeBoundedProtocolRoundCount(
+          'planning_trace.clarification_rounds',
+          input.clarification_rounds,
+        ),
+        cross_review_rounds: normalizeBoundedProtocolRoundCount(
+          'planning_trace.cross_review_rounds',
+          input.cross_review_rounds,
+        ),
         debate: input.debate?.map((analysis) => ({
           role: analysis.role,
           summary: analysis.summary.trim(),

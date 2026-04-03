@@ -1,4 +1,5 @@
 import type {
+  ClarifiedPlanningBrief,
   DebatePlannerRoleName,
   PlannerRouteTrace,
   PlanningRequest,
@@ -20,6 +21,7 @@ export interface PlanningPipelineContext {
   request: PlanningRequest;
   resolved_mode: ResolvedPlanningMode;
   available_models: string[];
+  clarified_brief?: ClarifiedPlanningBrief;
 }
 
 export interface DirectPlanningInput extends PlanningPipelineContext {
@@ -46,6 +48,9 @@ export interface PlanningNormalizationInput {
   resolved_mode: ResolvedPlanningMode;
   draft: PlanningDraft;
   planner_routes: PlannerRouteTrace[];
+  clarified_brief?: ClarifiedPlanningBrief;
+  clarification_rounds?: number;
+  cross_review_rounds?: number;
   debate?: DebateAnalysis[];
 }
 
