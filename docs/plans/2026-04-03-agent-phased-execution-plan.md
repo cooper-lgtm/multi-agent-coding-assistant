@@ -933,21 +933,3 @@ node --test tests/orchestrator-persistence.test.mjs tests/orchestrator-approval-
 ```
 
 Expected: PASS.
-
----
-
-## Phase Ordering and Execution Notes
-
-- Run tasks in order. Phase 2 starts only after Phase 1 is merged.
-- Phase 3 starts only after Phase 2 tasks that define QA artifacts are merged.
-- Phase 4 starts only after Phase 3 proves stable structured QA/report surfaces.
-- Goose should execute this file one `### Task N:` slice at a time through the existing PR-sized loop.
-- If any task uncovers a design contradiction, pause after that PR and refresh this plan before continuing.
-
-## Deliverables
-
-- Planning coordination artifacts and prompts
-- Attempt-level contract and artifact-first handoff surfaces
-- Structured QA reports for `test-agent` and `review-agent`
-- Task-lifecycle and stage-discipline scaffolding
-- Updated docs and focused validation for each slice
