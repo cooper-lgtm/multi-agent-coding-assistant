@@ -5,3 +5,4 @@ state/runs/
 state/*.json
 .learnings/
 codex-strict-review*.json
+.omx/
