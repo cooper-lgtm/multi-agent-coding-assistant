@@ -14,11 +14,11 @@ Grounded repository constraints:
 ## Acceptance Criteria
 
 1. `scripts/run-plan-doc.mjs` no longer shells out to `goose run --recipe .goose/recipes/execute-next-plan-task.yaml` and no longer installs git hooks or propagates local review timeout state in the main automated path.
-2. A new OMX executor seam exists with an explicit contract for task execution that preserves the existing `ExecutedTaskSlice` shape in [`src/automation/plan-runner.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/automation/plan-runner.ts#L6).
+2. A new OMX executor seam exists with an explicit contract for task execution that preserves the existing `ExecutedTaskSlice` shape in [`src/automation/plan-runner.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/automation/plan-runner.ts#L6), including explicit handling for no-op / no-commit outcomes.
 3. The automated plan runner still performs, in order, one task slice execution, required-check polling, and merge per task; existing sequential merge discipline remains unchanged.
 4. The automated task workflow pushes directly without depending on `.githooks/pre-push`, `hooks:install`, or `review:local` as blocking gates, and the automation-owned push path explicitly bypasses any locally configured git hooks.
 5. Repository docs clearly state that for this workflow the blocking local pre-push Codex review gate is removed; required GitHub checks remain the only blocking merge gate.
-6. The runtime/CLI/docs no longer present `mock|goose` as the only execution-runtime options for the plan-runner path.
+6. The docs/help surfaces no longer present `mock|goose` as the only execution-runtime choices for the plan-runner automation path, while avoiding any claim that `maca run --execution-runtime omx` is already wired if that CLI path remains scaffold-only.
 7. Tests cover the OMX executor contract, the rewired `run-plan-doc` integration, preserved required-check semantics, and the explicit removal of hook-install/review-gate behavior from the automated path.
 
 ## RALPLAN-DR Summary
@@ -83,9 +83,11 @@ Work:
 - Introduce an explicit OMX executor contract for the `executeTaskSlice` seam rather than inlining shell details in `run-plan-doc.mjs`.
 - Define exact failure mapping for OMX task execution:
   - `completed` + PR opened => success path (`opened_not_merged`)
-  - no branch or no PR => `blocked`
+  - no branch, no PR, or no committed diff relative to `baseBranch` => `blocked`
+  - executor-reported `merge_status: "merged"` => contract violation and outer-runner failure
   - explicit task execution failure => `failed`
 - Define branch/PR ownership explicitly in the executor contract instead of leaving it implicit in prompt text.
+- Require the executor seam to decide explicitly whether a task produced a pushable branch delta, instead of letting `git push` / `gh pr create` discover that late.
 
 Required contract fields for the new OMX executor result:
 - `status`
@@ -97,6 +99,11 @@ Required contract fields for the new OMX executor result:
 - `validation_commands`
 - optional `risks`
 - optional `follow_up`
+
+Additional required executor invariants:
+- the executor must not merge the PR; it may only return `opened_not_merged` or `not_opened`
+- the executor must verify that the task branch has a committed diff before pushing or creating/updating a PR
+- a clean/no-op execution must return a normalized blocked/not-opened result instead of attempting push/PR creation
 
 ### Step 2: Implement a structured OMX task execution entrypoint
 Files:
@@ -111,9 +118,12 @@ Work:
   - assembles a bounded task brief using `taskHint`, `planPath`, `designDocPath`, and `taskDocPaths`
   - invokes `omx exec` with a schema-constrained JSON result
   - captures changed files and validation commands
+  - verifies whether the task produced a committed branch delta; if not, returns a normalized `blocked` + `not_opened` result without attempting push or PR creation
   - pushes the task branch directly using an explicit automation-owned hook-bypass mechanism such as `git -c core.hooksPath=/dev/null push ...`
   - creates or updates the PR with `gh pr create --fill --base <baseBranch>` or equivalent update logic
   - emits only the normalized `ExecutedTaskSlice` JSON expected by the outer runner
+- Make "commit before push" an explicit wrapper responsibility. If OMX edits files but leaves only a dirty worktree, the wrapper should fail/normalize that outcome instead of implicitly pushing nothing.
+- Keep merge ownership in the outer runner. The OMX wrapper may prepare branch state and PR state, but it must never call `gh pr merge`.
 - Keep prompt/brief generation inside the wrapper, not in `run-plan-doc.mjs`, so the runner stays orchestration-only.
 
 ### Step 3: Remove local pre-push review from the automated workflow path
@@ -137,16 +147,16 @@ Work:
 - Update command guidance to stop presenting `hooks:install`, `review:local`, and `verify:local-review-gate` as required for the plan-runner automation path.
 - For v1, keep the review scripts and hook files in the repository as optional/manual legacy utilities unless implementation proves they are dead and safe to delete in the same change.
 
-### Step 4: Update CLI/runtime surfaces to acknowledge OMX execution
+### Step 4: Update docs/help surfaces to acknowledge the script-only OMX execution path
 Files:
-- [`src/cli/main.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/cli/main.ts)
 - [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md)
+- [`src/cli/main.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/cli/main.ts) only if the help text is intentionally narrowed or annotated to avoid a false OMX claim
 - any runtime docs that currently say `mock|goose`
 
 Work:
-- Extend documented execution runtime choices to include OMX for the plan-runner path.
-- Decide whether the repo models this as `mock|goose|omx` or as a separate script-only executor path; document one choice consistently.
-- Update help text and docs to avoid stale `mock|goose` language where OMX is now supported.
+- Treat OMX as a plan-runner script executor path first, not as a fully wired `maca run` runtime, unless the implementation also connects the CLI end-to-end in the same change.
+- Update README and workflow docs to avoid stale `mock|goose` language where the plan-runner automation path now supports OMX.
+- If `src/cli/main.ts` remains scaffold-only, do not advertise `mock|goose|omx` there. Instead, add a scoped note or leave the CLI runtime list untouched until the CLI path is actually wired.
 
 ### Step 5: Rework tests around contracts, not Goose literals
 Files:
@@ -198,6 +208,9 @@ Work:
 - Risk: an already-configured local `core.hooksPath` still triggers a blocking pre-push review even after hook installation is removed from the runner.
   Mitigation: make automation-owned pushes use an explicit scoped hook bypass and cover that behavior with a regression test.
 
+- Risk: OMX task execution may finish with only a dirty worktree or an empty/no-op branch, causing `git push` / `gh pr create` to fail late and opaquely.
+  Mitigation: require the wrapper to detect committed branch deltas before push, and normalize no-op outcomes into `blocked` + `not_opened`.
+
 ## Verification Steps
 
 Minimum implementation verification:
@@ -217,6 +230,8 @@ Behavioral verification requirements:
 - prove that `checksTimeoutMs` still maps to `manual_review_required`
 - prove that the automated workflow no longer installs hooks or requires local review to push
 - prove that an existing failing pre-push hook does not block the automation-owned push path
+- prove that a no-op / no-commit OMX task result is normalized before push/PR creation
+- prove that the executor cannot merge early and that any unexpected `merge_status: "merged"` still fails closed in the outer runner
 
 ## ADR
 
@@ -239,6 +254,7 @@ This option preserves the smallest stable contract that already works while movi
 - The repository’s active workflow contract changes materially: local pre-push review is no longer a required gate.
 - Docs and tests that treated Goose and local review as normative must be updated together.
 - A new OMX executor seam becomes a first-class maintenance surface.
+- The executor contract now also owns no-op normalization and must not leak merge ownership back inward.
 
 ### Follow-ups
 - Consider a later v2 for parallel task execution once sequential OMX delivery is stable.
@@ -306,3 +322,8 @@ Applied after Critic review:
 - expanded the test/doc update list to include CLI smoke, hook utility coverage, and review-gate verification surfaces
 - explicitly narrowed preserved regressions to the sequential orchestration and required-check semantics
 - added an explicit automation-owned hook-bypass requirement plus regression coverage for preconfigured failing hooks
+
+Applied after implementation review:
+- made no-op / no-commit outcomes explicit executor-contract cases instead of leaving them to push/PR failures
+- re-stated that merge ownership must stay in the outer runner and that executor-reported `merged` is a fail-closed contract violation
+- narrowed OMX acknowledgement from "CLI runtime support" to the plan-runner script path unless `maca run` is wired in the same change
