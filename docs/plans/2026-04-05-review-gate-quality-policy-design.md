@@ -25,6 +25,74 @@ Phase 1 defines the decision model and stop rules without changing:
 - hooks
 - tests
 
+## Temporary Exception During Review-Gate Stabilization
+
+Before the review-gate decision mechanism exists, the repository needs a narrow
+transition rule for work that is explicitly building or stabilizing review-gate
+policy itself.
+
+### Decision
+
+Allow a temporary, explicit exception from the blocking local pre-push review
+gate for a very small class of review-gate-stabilization PRs.
+
+This exception exists only because the current gate still treats any returned
+`findings` as a repair-now signal, which can force policy and follow-up-design
+PRs to absorb unrelated fixes and grow beyond their declared slice.
+
+### Eligibility
+
+A PR may use this temporary exception only if all of the following are true:
+
+- the PR exists to define, narrow, or document review-gate policy, defer rules,
+  or deferred-finding handoff semantics
+- the PR does not change runtime implementation, review runner logic, hook
+  logic, schema enforcement, or provider automation
+- the PR does not use the exception to merge code that would otherwise require
+  same-PR correctness fixes
+- the PR keeps a tightly bounded, reviewable scope and explicitly names the
+  transition-rule dependency in its plan or PR description
+
+Examples that may qualify:
+- a docs-only PR that defines when `reject_with_evidence` or
+  `defer_with_follow_up` is legitimate
+- a docs-only PR that defines the canonical deferred-finding handoff model
+
+Examples that do not qualify:
+- any PR that modifies `scripts/run-local-codex-review.mjs`
+- any PR that modifies `scripts/lib/local-codex-review-adapter.mjs`
+- any PR that modifies `.githooks/`
+- any PR that modifies `src/` runtime behavior, schemas, or issue automation
+- any PR that mixes policy docs with unrelated product or feature work
+
+### Compensating Controls
+
+A PR using this exception must instead satisfy all of the following controls:
+
+- explicit statement in the checked-in implementation plan that the PR is using
+  the temporary review-gate-stabilization exception
+- explicit statement in the PR description that the local pre-push review gate
+  was not used as a blocking approval signal for this PR
+- bounded file scope declared up front
+- no unrelated cleanup or opportunistic fixes
+- normal non-review validation still runs for the touched surface
+- human review remains mandatory before merge
+
+This exception is not a waiver of review quality.
+It is only a temporary waiver of the current pre-push gate as the blocking
+mechanism for a narrow class of gate-stabilization PRs.
+
+### Sunset Condition
+
+This exception expires once the repository lands a mechanism that can classify
+review findings into `fix_now`, `reject_with_evidence`, and
+`defer_with_follow_up` without forcing every finding into the same same-PR
+repair loop.
+
+Once that mechanism exists, future PRs must use the normal blocking local review
+path again unless a new, separately approved policy supersedes this transition
+rule.
+
 ## Decision Model
 
 Apply review findings in this order:
