@@ -76,6 +76,13 @@ Use exact paths when possible:
 - Test: `tests/...`
 - Docs: `docs/...`
 
+For policy-sensitive or review-gate-sensitive work:
+- list the exact allowed file paths, not broad areas such as "review system"
+- list exact named policy surfaces when the task depends on checked-in workflow
+  governance
+- list explicitly prohibited surfaces when the task must stay docs-only or must
+  not widen into runner, schema, hook, prompt, or automation work
+
 ### Risks
 
 List risks and edge cases worth checking.
@@ -137,6 +144,19 @@ Add these only when they materially help execution.
 
 Use when the task depends on prior work, shared harnesses, migrations, auth contracts, or architectural invariants that must not drift.
 
+### Review Gate Decision Log
+
+Use when the branch may need to record a review-finding disposition such as
+`reject_with_evidence`, `defer_with_follow_up`, or `manual_review_required`.
+
+When used, record at least:
+- finding fingerprint or exact file/line reference
+- review command and scope
+- disposition
+- in-scope basis
+- rationale
+- follow-up artifact or owner
+
 ### Out Of Scope Follow-ups
 
 Use when adjacent issues are worth recording without expanding the current task.
@@ -173,4 +193,6 @@ In that case, expand a task like this:
 - Prefer task-specific constraints over repeating repo-wide doctrine.
 - Name the first failing test target for behavior changes, but do not restate the full TDD doctrine unless sequencing needs to be explicit.
 - Keep `Planning / Runtime Contract Check` explicit for architecture-sensitive work.
+- For policy-sensitive tasks, name the exact governed files and policy docs so a
+  review finding cannot silently widen the branch.
 - Use the expanded step-by-step format sparingly.

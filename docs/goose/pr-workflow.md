@@ -78,6 +78,33 @@ node --test tests/cli-smoke.test.mjs
 - Do not merge from inside the Goose execution recipe; the outer plan runner owns required-check polling and merge after the push succeeds.
 - Prefer one small, reviewable PR over broad multi-task changes.
 
+## Review-Gate Policy Branches
+
+Default rule:
+- treat `npm run review:local` as a blocking gate
+- fix actionable in-scope findings in the current slice before pushing or
+  merging
+
+Temporary review-gate-stabilization exception:
+- use it only when the PR is explicitly limited to review-gate policy or
+  deferred-finding handoff documentation
+- keep the branch limited to the exact files named in the checked-in
+  implementation plan
+- do not use it for feature, runtime, schema, hook, prompt, or automation work
+- do not treat it as permission to merge through real in-scope correctness
+  findings
+
+If a review finding is real but handling it would require widening a docs-only
+policy branch into runner, schema, prompt, hook, or automation work:
+- stop the current branch
+- record the attempted disposition in the branch plan's
+  `Review Gate Decision Log`
+- capture the blocker under `Out Of Scope Follow-ups`
+- open a separate mechanism plan instead of extending the same PR
+
+See `docs/reviews/review-gate-quality-policy.md` for the applicability-first
+decision model, temporary transition rule, and stop rules.
+
 ## Scripted Plan Runner
 
 For plan documents that should execute one task-sized PR at a time, the repository now includes:
