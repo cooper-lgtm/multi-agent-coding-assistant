@@ -72,7 +72,38 @@ Choose Option B. Keep [`src/automation/plan-runner.ts`](/Users/yezi/Documents/mu
 
 ## Implementation Steps
 
-### Step 1: Define the OMX executor seam and keep the outer control loop unchanged
+### Step 1: Split `run-plan-doc.mjs` before swapping executors
+Files:
+- [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs)
+- New: `scripts/lib/github-required-checks.mjs` or equivalent helper module
+- New: `scripts/run-omx-task.mjs` or `src/adapters/omx-task-executor.ts`
+
+Work:
+- Treat decomposition as a migration prerequisite, not as optional polish. The current `run-plan-doc.mjs` mixes CLI argument parsing, Goose execution, hook/review policy, GitHub required-check polling, and fake-review test support in one file.
+- Keep `scripts/run-plan-doc.mjs` as the thin orchestration entrypoint that only:
+  - parses CLI args
+  - reads the plan document
+  - wires dependencies into `runPlanTaskSequence()`
+- Move executor-specific task execution into a dedicated OMX wrapper module.
+- Move required-check polling and rerun/cancel normalization into a focused GitHub-checks helper module so that executor migration does not keep touching check semantics.
+- Move any legacy local-review / hook-specific support out of the main plan-runner path so the OMX migration is not coupled to historical Goose review behavior.
+- Preserve existing behavior while splitting:
+  - sequential task ordering
+  - required-check polling semantics
+  - merge-after-checks ownership in the outer runner
+
+Target post-split responsibilities:
+- `scripts/run-plan-doc.mjs`: entrypoint and dependency wiring only
+- OMX wrapper module: branch/task execution, push, PR create/update, normalized `ExecutedTaskSlice` output
+- GitHub-checks helper: `gh pr checks` polling and required-check normalization
+- legacy review/hook utilities: optional/manual-only paths outside the automated runner
+
+Why this step is first:
+- it reduces migration risk by separating "replace Goose" from "untangle historical script coupling"
+- it keeps the OMX executor seam small and testable
+- it avoids recreating the same coupling with OMX under a different command name
+
+### Step 2: Define the OMX executor seam and keep the outer control loop unchanged
 Files:
 - [`src/automation/plan-runner.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/automation/plan-runner.ts)
 - [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs)
@@ -105,7 +136,7 @@ Additional required executor invariants:
 - the executor must verify that the task branch has a committed diff before pushing or creating/updating a PR
 - a clean/no-op execution must return a normalized blocked/not-opened result instead of attempting push/PR creation
 
-### Step 2: Implement a structured OMX task execution entrypoint
+### Step 3: Implement a structured OMX task execution entrypoint
 Files:
 - New: `scripts/run-omx-task.mjs`
 - Optional shared schema: `scripts/lib/omx-task-output.schema.json`
@@ -126,7 +157,7 @@ Work:
 - Keep merge ownership in the outer runner. The OMX wrapper may prepare branch state and PR state, but it must never call `gh pr merge`.
 - Keep prompt/brief generation inside the wrapper, not in `run-plan-doc.mjs`, so the runner stays orchestration-only.
 
-### Step 3: Remove local pre-push review from the automated workflow path
+### Step 4: Remove local pre-push review from the automated workflow path
 Files:
 - [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs)
 - [`docs/goose/pr-workflow.md`](/Users/yezi/Documents/multi-agent-coding-assistant/docs/goose/pr-workflow.md)
@@ -147,7 +178,7 @@ Work:
 - Update command guidance to stop presenting `hooks:install`, `review:local`, and `verify:local-review-gate` as required for the plan-runner automation path.
 - For v1, keep the review scripts and hook files in the repository as optional/manual legacy utilities unless implementation proves they are dead and safe to delete in the same change.
 
-### Step 4: Update docs/help surfaces to acknowledge the script-only OMX execution path
+### Step 5: Update docs/help surfaces to acknowledge the script-only OMX execution path
 Files:
 - [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md)
 - [`src/cli/main.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/cli/main.ts) only if the help text is intentionally narrowed or annotated to avoid a false OMX claim
@@ -158,7 +189,7 @@ Work:
 - Update README and workflow docs to avoid stale `mock|goose` language where the plan-runner automation path now supports OMX.
 - If `src/cli/main.ts` remains scaffold-only, do not advertise `mock|goose|omx` there. Instead, add a scoped note or leave the CLI runtime list untouched until the CLI path is actually wired.
 
-### Step 5: Rework tests around contracts, not Goose literals
+### Step 6: Rework tests around contracts, not Goose literals
 Files:
 - [`tests/plan-runner.test.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/tests/plan-runner.test.mjs)
 - [`tests/run-plan-doc.test.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/tests/run-plan-doc.test.mjs)
@@ -169,18 +200,22 @@ Files:
 
 Work:
 - Keep `tests/plan-runner.test.mjs` focused on the unchanged sequential control-loop contract.
+- Add focused coverage for the split boundaries so `run-plan-doc.mjs` does not silently re-absorb executor or review logic later.
 - Update `tests/run-plan-doc.test.mjs` so it asserts executor-agnostic behavior where possible:
   - task order
   - linked design/task docs propagation
   - required-check polling
   - merge timing
+- Add focused tests for the new helper boundaries:
+  - OMX wrapper returns normalized `ExecutedTaskSlice`
+  - GitHub-checks helper preserves pass/fail/cancelled/skipped semantics
 - Replace Goose command literal assertions with OMX executor invocation/result assertions.
 - Remove or rewrite tests whose only purpose is validating automatic pre-push review behavior in the plan-runner path.
 - Add a regression test that seeds a failing local pre-push hook configuration and proves the OMX automation path still pushes, opens/updates the PR, and proceeds to required-check polling.
 - Update CLI smoke tests for any new OMX runtime/help text.
 - Decide whether `install-git-hooks` and `pre-push-hook` tests remain as optional utility coverage or are removed from the primary repo validation target.
 
-### Step 6: Update plan and workflow docs that encode the old invariant
+### Step 7: Update plan and workflow docs that encode the old invariant
 Files:
 - [`docs/goose/pr-workflow.md`](/Users/yezi/Documents/multi-agent-coding-assistant/docs/goose/pr-workflow.md)
 - [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md)
@@ -201,6 +236,9 @@ Work:
 
 - Risk: Existing tests and docs encode Goose/review-specific assumptions across many files.
   Mitigation: separate executor-contract updates from control-loop assertions; rewrite only the tests that bind to the executor seam or review policy.
+
+- Risk: replacing Goose before decomposing `run-plan-doc.mjs` will just move the same coupling onto OMX, making the new executor hard to verify and hard to clean up later.
+  Mitigation: split the entrypoint, executor wrapper, and required-check helper first, then swap the executor behind the same outer contract.
 
 - Risk: Branch/PR ownership remains ambiguous and leads to duplicate PRs or wrong branch naming.
   Mitigation: define branch naming, push behavior, and PR create/update ownership directly in the OMX executor contract before implementation.
@@ -232,6 +270,7 @@ Behavioral verification requirements:
 - prove that an existing failing pre-push hook does not block the automation-owned push path
 - prove that a no-op / no-commit OMX task result is normalized before push/PR creation
 - prove that the executor cannot merge early and that any unexpected `merge_status: "merged"` still fails closed in the outer runner
+- prove that `run-plan-doc.mjs` remains a thin coordinator after the split and does not keep executor-specific logic inline
 
 ## ADR
 
@@ -327,3 +366,7 @@ Applied after implementation review:
 - made no-op / no-commit outcomes explicit executor-contract cases instead of leaving them to push/PR failures
 - re-stated that merge ownership must stay in the outer runner and that executor-reported `merged` is a fail-closed contract violation
 - narrowed OMX acknowledgement from "CLI runtime support" to the plan-runner script path unless `maca run` is wired in the same change
+
+Applied after follow-up planning:
+- elevated `run-plan-doc.mjs` decomposition into the first migration step instead of treating it as optional cleanup
+- named the target module split so executor migration, GitHub-check semantics, and legacy review utilities stop sharing one script file
