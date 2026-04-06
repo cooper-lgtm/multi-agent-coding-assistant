@@ -44,8 +44,8 @@ Out of scope for this cleanup PR:
 
 ### Step 1: Confirm no active automation path still depends on Goose
 Files:
-- [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md)
-- [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs)
+- [`README.md`](../../README.md)
+- [`scripts/run-plan-doc.mjs`](../../scripts/run-plan-doc.mjs)
 - OMX migration PR artifacts that replaced Goose
 
 Work:
@@ -69,7 +69,7 @@ Work:
 
 ### Step 3: Remove Goose-specific docs and normative guidance
 Files:
-- [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md)
+- [`README.md`](../../README.md)
 - `docs/goose/pr-workflow.md`
 - `docs/goose/task-contract.md`
 - any current docs that still instruct operators to use Goose
@@ -95,8 +95,8 @@ Work:
 
 ### Step 5: Converge help text and validation targets
 Files:
-- [`src/cli/main.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/cli/main.ts)
-- [`tests/cli-smoke.test.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/tests/cli-smoke.test.mjs)
+- [`src/cli/main.ts`](../../src/cli/main.ts)
+- [`tests/cli-smoke.test.mjs`](../../tests/cli-smoke.test.mjs)
 - CI or local validation docs that still name Goose
 
 Work:
