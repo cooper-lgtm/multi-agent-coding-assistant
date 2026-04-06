@@ -60,6 +60,7 @@ Phase 1 is allowed to modify only doc surfaces:
 - `docs/goose/pr-workflow.md`
 - `docs/templates/task-template.md`
 - `docs/reviews/recurring-issues.md`
+- `docs/plans/2026-04-05-review-gate-quality-policy.md`
 
 Phase 1 must not:
 - add a JSON decision artifact
