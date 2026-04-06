@@ -5,4 +5,9 @@ state/runs/
 state/*.json
 .learnings/
 codex-strict-review*.json
-.omx/
+.omx/*
+!.omx/plans/
+!.omx/plans/**
+.omx/logs/
+.omx/state/
+.omx/metrics.json
