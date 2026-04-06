@@ -31,7 +31,7 @@ Before the review-gate decision mechanism exists, the repository needs a narrow
 transition rule for work that is explicitly building or stabilizing review-gate
 policy itself.
 
-### Decision
+### Transition Rule
 
 Allow a temporary, explicit exception from the blocking local pre-push review
 gate for a very small class of review-gate-stabilization PRs.
