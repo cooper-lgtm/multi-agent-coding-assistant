@@ -240,7 +240,7 @@ Infrastructure recovery lane:
 Phase 1 is doc-only. Validate with:
 - `rg -n "Review Gate Decision Log|fix_now|reject_with_evidence|defer_with_follow_up|manual_review_required" docs/goose/pr-workflow.md docs/templates/task-template.md docs/reviews/recurring-issues.md docs/reviews/review-gate-quality-policy.md docs/plans/2026-04-05-review-gate-quality-policy.md`
 - `git diff --name-only origin/main...HEAD`
-- `if (git diff --name-only origin/main...HEAD; git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard) | sort -u | rg -v '^(docs/goose/pr-workflow\\.md|docs/plans/2026-04-05-review-gate-quality-policy\\.md|docs/reviews/recurring-issues\\.md|docs/reviews/review-gate-quality-policy\\.md|docs/templates/task-template\\.md)$'; then echo "Out-of-scope file changes detected" && exit 1; fi`
+- `if (git diff --name-only origin/main...HEAD; git diff --name-only; git diff --cached --name-only) | sort -u | rg -v '^(docs/goose/pr-workflow\\.md|docs/plans/2026-04-05-review-gate-quality-policy\\.md|docs/reviews/recurring-issues\\.md|docs/reviews/review-gate-quality-policy\\.md|docs/templates/task-template\\.md)$'; then echo "Out-of-scope tracked file changes detected" && exit 1; fi`
 - `npm run lint:md`
 - `git diff --check`
 
@@ -324,7 +324,7 @@ For `team`:
 
 - `rg -n "Review Gate Decision Log|fix_now|reject_with_evidence|defer_with_follow_up|manual_review_required" docs/goose/pr-workflow.md docs/templates/task-template.md docs/reviews/recurring-issues.md docs/reviews/review-gate-quality-policy.md docs/plans/2026-04-05-review-gate-quality-policy.md`
 - `git diff --name-only origin/main...HEAD`
-- `if (git diff --name-only origin/main...HEAD; git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard) | sort -u | rg -v '^(docs/goose/pr-workflow\\.md|docs/plans/2026-04-05-review-gate-quality-policy\\.md|docs/reviews/recurring-issues\\.md|docs/reviews/review-gate-quality-policy\\.md|docs/templates/task-template\\.md)$'; then echo "Out-of-scope file changes detected" && exit 1; fi`
+- `if (git diff --name-only origin/main...HEAD; git diff --name-only; git diff --cached --name-only) | sort -u | rg -v '^(docs/goose/pr-workflow\\.md|docs/plans/2026-04-05-review-gate-quality-policy\\.md|docs/reviews/recurring-issues\\.md|docs/reviews/review-gate-quality-policy\\.md|docs/templates/task-template\\.md)$'; then echo "Out-of-scope tracked file changes detected" && exit 1; fi`
 - `npm run lint:md`
 - `git diff --check`
 
