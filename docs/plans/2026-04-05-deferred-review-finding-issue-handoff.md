@@ -47,6 +47,22 @@ issue projection model, and explicit lifecycle rules.
 - keep the first implementation slice docs-only and reviewable
 - avoid using `fingerprint` as identity
 
+## Dependency On PR49 Policy
+
+This plan depends on the review-gate quality policy baseline in
+`docs/plans/2026-04-05-review-gate-quality-policy.md`.
+
+In particular, it assumes that PR49 has already established:
+
+- the temporary transition rule for narrow review-gate-stabilization PRs
+- the decision vocabulary `fix_now`, `reject_with_evidence`, and
+  `defer_with_follow_up`
+- the rule that docs-only policy and handoff PRs must not widen into runner,
+  hook, schema, or automation work in the same slice
+
+If that policy baseline is not yet landed, this handoff plan should not be
+treated as an independent execution entrypoint.
+
 ## Planning / Runtime Contract Check
 
 This plan intentionally starts outside the runner/runtime implementation path.
@@ -63,6 +79,11 @@ Current repository rules already constrain the design:
 
 Phase 1 should document the target handoff contract without changing these
 runtime or workflow rules.
+
+For the docs-only Phase 1 described here, the target owner for triage is not a
+new runtime role. It is the current PR owner plus human reviewer, with any
+future automated or runner-owned triage surface deferred to a later mechanism
+branch.
 
 ## Canonical Record Model
 
@@ -137,6 +158,9 @@ Reconciliation must be keyed by `ledger_entry_id`, not by `fingerprint`.
       `manual_review_required` exclusion
 - [ ] Phase 1 implementation does not change runner, hook, merge, or review
       status behavior
+- [ ] Phase 1 docs explicitly name the current target owner for triage
+- [ ] Phase 1 docs explicitly state that this plan depends on the PR49 quality
+      policy baseline and transition rule
 
 ## Affected Modules
 
@@ -260,6 +284,8 @@ For `team`:
 - Start with a docs-only branch.
 - Do not open a runner or GitHub automation lane in the same slice.
 - Keep `ledger_entry_id` minting explicit in the written Phase 1 docs.
+- Rely on the temporary transition rule from PR49 only while this work remains
+  docs-only and bounded to the named handoff surfaces.
 
 ### Team Verification Path
 

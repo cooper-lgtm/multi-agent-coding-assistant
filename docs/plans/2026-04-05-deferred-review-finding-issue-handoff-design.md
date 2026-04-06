@@ -51,6 +51,23 @@ If this is solved too loosely, the repository risks two failure modes:
 - keep the first implementation slice docs-only
 - avoid baking Goose or GitHub behavior into the canonical contract
 
+## Dependency On Review-Gate Policy
+
+This handoff design depends on the review-gate quality policy plan in
+`docs/plans/2026-04-05-review-gate-quality-policy.md`.
+
+That plan defines:
+
+- the temporary transition rule for narrow review-gate-stabilization PRs before
+  the mechanism exists
+- the governing distinction between `fix_now`, `reject_with_evidence`, and
+  `defer_with_follow_up`
+- the repository boundary that deferred follow-up design must not widen into
+  runner, hook, schema, or automation work in the same slice
+
+This design should therefore be executed only after that policy baseline is in
+place, and it should use the same terminology and transition boundaries.
+
 ## Chosen Design
 
 ### 1. Separate detection from triage
@@ -65,6 +82,18 @@ Triage owns:
 - carry-forward and supersession decisions
 - resolution and discard decisions
 - whether a durable follow-up issue should exist
+
+### Current target owner for Phase 1
+
+Until a later mechanism branch introduces explicit runtime or automation
+ownership, the target owner for triage in this design is:
+
+- the PR owner, acting as the first recorder of the candidate handoff
+- a human reviewer, acting as the confirmer or challenger of defer,
+  carry-forward, discard, and resolution decisions
+
+Phase 1 does not assume an automated triage service, runner-owned triage
+surface, or issue-projection adapter.
 
 ### 2. Canonical record model
 
