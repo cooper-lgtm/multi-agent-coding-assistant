@@ -2,19 +2,19 @@
 
 ## Requirements Summary
 
-Replace the Goose-backed task execution path in [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs#L19) with an OMX-backed executor while preserving the existing sequential task control loop in [`src/automation/plan-runner.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/automation/plan-runner.ts#L65), preserving branch-per-task and PR-per-task delivery, and preserving required GitHub checks before merge. Per user direction, remove the blocking local pre-push Codex review gate from the automated workflow defined in [`docs/goose/pr-workflow.md`](/Users/yezi/Documents/multi-agent-coding-assistant/docs/goose/pr-workflow.md#L27) and [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md#L217).
+Replace the Goose-backed task execution path in [`scripts/run-plan-doc.mjs`](../../scripts/run-plan-doc.mjs#L19) with an OMX-backed executor while preserving the existing sequential task control loop in [`src/automation/plan-runner.ts`](../../src/automation/plan-runner.ts#L65), preserving branch-per-task and PR-per-task delivery, and preserving required GitHub checks before merge. Per user direction, remove the blocking local pre-push Codex review gate from the automated workflow defined in [`docs/goose/pr-workflow.md`](../../docs/goose/pr-workflow.md#L27) and [`README.md`](../../README.md#L217).
 
 Grounded repository constraints:
-- `run-plan-doc.mjs` currently shells out to Goose for `executeTaskSlice`, installs hooks, propagates local review timeout, polls required checks, and merges [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs#L119).
-- `runPlanTaskSequence()` already owns the sequential `execute -> wait checks -> merge` contract and should remain the single outer coordinator [`src/automation/plan-runner.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/automation/plan-runner.ts#L46).
-- The installed pre-push hook currently enforces local Codex review on push [`.githooks/pre-push`](/Users/yezi/Documents/multi-agent-coding-assistant/.githooks/pre-push#L85).
-- The hook installer hardwires `.githooks/pre-push` and sets `core.hooksPath` [`scripts/install-git-hooks.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/install-git-hooks.mjs#L31).
-- The CLI only advertises `mock|goose` as execution runtimes today [`src/cli/main.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/cli/main.ts#L15).
+- `run-plan-doc.mjs` currently shells out to Goose for `executeTaskSlice`, installs hooks, propagates local review timeout, polls required checks, and merges [`scripts/run-plan-doc.mjs`](../../scripts/run-plan-doc.mjs#L119).
+- `runPlanTaskSequence()` already owns the sequential `execute -> wait checks -> merge` contract and should remain the single outer coordinator [`src/automation/plan-runner.ts`](../../src/automation/plan-runner.ts#L46).
+- The installed pre-push hook currently enforces local Codex review on push [`.githooks/pre-push`](../../.githooks/pre-push#L85).
+- The hook installer hardwires `.githooks/pre-push` and sets `core.hooksPath` [`scripts/install-git-hooks.mjs`](../../scripts/install-git-hooks.mjs#L31).
+- The CLI only advertises `mock|goose` as execution runtimes today [`src/cli/main.ts`](../../src/cli/main.ts#L15).
 
 ## Acceptance Criteria
 
 1. `scripts/run-plan-doc.mjs` no longer shells out to `goose run --recipe .goose/recipes/execute-next-plan-task.yaml` and no longer installs git hooks or propagates local review timeout state in the main automated path.
-2. A new OMX executor seam exists with an explicit contract for task execution that preserves the existing `ExecutedTaskSlice` shape in [`src/automation/plan-runner.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/automation/plan-runner.ts#L6), including explicit handling for no-op / no-commit outcomes.
+2. A new OMX executor seam exists with an explicit contract for task execution that preserves the existing `ExecutedTaskSlice` shape in [`src/automation/plan-runner.ts`](../../src/automation/plan-runner.ts#L6), including explicit handling for no-op / no-commit outcomes.
 3. The automated plan runner still performs, in order, one task slice execution, required-check polling, and merge per task; existing sequential merge discipline remains unchanged.
 4. The automated task workflow pushes directly without depending on `.githooks/pre-push`, `hooks:install`, or `review:local` as blocking gates, and the automation-owned push path explicitly bypasses any locally configured git hooks.
 5. Repository docs clearly state that for this workflow the blocking local pre-push Codex review gate is removed; required GitHub checks remain the only blocking merge gate.
@@ -68,13 +68,13 @@ Cons:
 
 ### Recommendation
 
-Choose Option B. Keep [`src/automation/plan-runner.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/automation/plan-runner.ts#L65) unchanged as the outer state machine, replace the Goose-backed `executeTaskSlice` path with an explicit OMX executor contract, and treat the removal of local pre-push review as a separate workflow-policy update within the same scoped change.
+Choose Option B. Keep [`src/automation/plan-runner.ts`](../../src/automation/plan-runner.ts#L65) unchanged as the outer state machine, replace the Goose-backed `executeTaskSlice` path with an explicit OMX executor contract, and treat the removal of local pre-push review as a separate workflow-policy update within the same scoped change.
 
 ## Implementation Steps
 
 ### Step 1: Split `run-plan-doc.mjs` before swapping executors
 Files:
-- [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs)
+- [`scripts/run-plan-doc.mjs`](../../scripts/run-plan-doc.mjs)
 - New: `scripts/lib/github-required-checks.mjs` or equivalent helper module
 - New: `scripts/run-omx-task.mjs` or `src/adapters/omx-task-executor.ts`
 
@@ -105,8 +105,8 @@ Why this step is first:
 
 ### Step 2: Define the OMX executor seam and keep the outer control loop unchanged
 Files:
-- [`src/automation/plan-runner.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/automation/plan-runner.ts)
-- [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs)
+- [`src/automation/plan-runner.ts`](../../src/automation/plan-runner.ts)
+- [`scripts/run-plan-doc.mjs`](../../scripts/run-plan-doc.mjs)
 - New: `scripts/run-omx-task.mjs` or `src/adapters/omx-task-executor.ts`
 
 Work:
@@ -140,7 +140,7 @@ Additional required executor invariants:
 Files:
 - New: `scripts/run-omx-task.mjs`
 - Optional shared schema: `scripts/lib/omx-task-output.schema.json`
-- [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs)
+- [`scripts/run-plan-doc.mjs`](../../scripts/run-plan-doc.mjs)
 
 Work:
 - Use `omx exec` as the non-interactive execution surface because it supports structured output via `--output-schema`, last-message capture, and non-interactive invocation.
@@ -159,10 +159,10 @@ Work:
 
 ### Step 4: Remove local pre-push review from the automated workflow path
 Files:
-- [`scripts/run-plan-doc.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/run-plan-doc.mjs)
-- [`docs/goose/pr-workflow.md`](/Users/yezi/Documents/multi-agent-coding-assistant/docs/goose/pr-workflow.md)
-- [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md)
-- [`package.json`](/Users/yezi/Documents/multi-agent-coding-assistant/package.json)
+- [`scripts/run-plan-doc.mjs`](../../scripts/run-plan-doc.mjs)
+- [`docs/goose/pr-workflow.md`](../../docs/goose/pr-workflow.md)
+- [`README.md`](../../README.md)
+- [`package.json`](../../package.json)
 
 Work:
 - Remove the call to `ensureGitHooksInstalled()` from the automated plan-runner path.
@@ -180,8 +180,8 @@ Work:
 
 ### Step 5: Update docs/help surfaces to acknowledge the script-only OMX execution path
 Files:
-- [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md)
-- [`src/cli/main.ts`](/Users/yezi/Documents/multi-agent-coding-assistant/src/cli/main.ts) only if the help text is intentionally narrowed or annotated to avoid a false OMX claim
+- [`README.md`](../../README.md)
+- [`src/cli/main.ts`](../../src/cli/main.ts) only if the help text is intentionally narrowed or annotated to avoid a false OMX claim
 - any runtime docs that currently say `mock|goose`
 
 Work:
@@ -191,12 +191,12 @@ Work:
 
 ### Step 6: Rework tests around contracts, not Goose literals
 Files:
-- [`tests/plan-runner.test.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/tests/plan-runner.test.mjs)
-- [`tests/run-plan-doc.test.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/tests/run-plan-doc.test.mjs)
-- [`tests/cli-smoke.test.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/tests/cli-smoke.test.mjs)
-- [`tests/install-git-hooks.test.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/tests/install-git-hooks.test.mjs)
-- [`tests/pre-push-hook.test.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/tests/pre-push-hook.test.mjs)
-- [`scripts/verify-local-review-gate.mjs`](/Users/yezi/Documents/multi-agent-coding-assistant/scripts/verify-local-review-gate.mjs)
+- [`tests/plan-runner.test.mjs`](../../tests/plan-runner.test.mjs)
+- [`tests/run-plan-doc.test.mjs`](../../tests/run-plan-doc.test.mjs)
+- [`tests/cli-smoke.test.mjs`](../../tests/cli-smoke.test.mjs)
+- [`tests/install-git-hooks.test.mjs`](../../tests/install-git-hooks.test.mjs)
+- [`tests/pre-push-hook.test.mjs`](../../tests/pre-push-hook.test.mjs)
+- [`scripts/verify-local-review-gate.mjs`](../../scripts/verify-local-review-gate.mjs)
 
 Work:
 - Keep `tests/plan-runner.test.mjs` focused on the unchanged sequential control-loop contract.
@@ -217,8 +217,8 @@ Work:
 
 ### Step 7: Update plan and workflow docs that encode the old invariant
 Files:
-- [`docs/goose/pr-workflow.md`](/Users/yezi/Documents/multi-agent-coding-assistant/docs/goose/pr-workflow.md)
-- [`README.md`](/Users/yezi/Documents/multi-agent-coding-assistant/README.md)
+- [`docs/goose/pr-workflow.md`](../../docs/goose/pr-workflow.md)
+- [`README.md`](../../README.md)
 - relevant historical plans in `docs/plans/` only if they are referenced as current guidance
 
 Work:
@@ -324,7 +324,7 @@ Why this lane mix:
 - The work is sequential at the feature level, but the implementation, docs, and verification slices are still separable enough for supervised follow-up.
 
 Suggested launch hint:
-- `omx ralph --prd "Implement .omx/plans/2026-04-05-omx-plan-runner-without-local-review.md in /Users/yezi/Documents/multi-agent-coding-assistant"`
+- `omx ralph --prd "Implement .omx/plans/2026-04-05-omx-plan-runner-without-local-review.md in $(pwd)"`
 
 ### Team path
 Recommended staffing:
@@ -333,7 +333,7 @@ Recommended staffing:
 - 1 `verifier` lane: contract/evidence validation before shutdown
 
 Suggested launch hint:
-- `omx team 4:executor "Implement plan .omx/plans/2026-04-05-omx-plan-runner-without-local-review.md in /Users/yezi/Documents/multi-agent-coding-assistant"`
+- `omx team 4:executor "Implement plan .omx/plans/2026-04-05-omx-plan-runner-without-local-review.md in $(pwd)"`
 
 ## Team Verification Path
 
