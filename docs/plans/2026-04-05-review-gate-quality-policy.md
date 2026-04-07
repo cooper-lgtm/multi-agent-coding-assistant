@@ -197,6 +197,10 @@ Phase 1 deferral is a branch-stop governance outcome, not a merge-through waiver
 - Modify: `docs/reviews/recurring-issues.md`
 - Modify: `docs/plans/2026-04-05-review-gate-quality-policy.md`
 
+Execution rule:
+- the Phase 1 branch must not modify any file outside the five exact paths
+  listed above
+
 ### Explicitly out of scope for Phase 1
 
 - `scripts/run-local-codex-review.mjs`
@@ -228,6 +232,9 @@ Minimum log fields:
 - in-scope basis
 - rationale
 - follow-up artifact or owner
+
+If the Phase 1 execution branch does not reject or defer any finding during
+implementation, do not invent a log entry only to satisfy the format.
 
 These are workflow dispositions layered on top of the unchanged runner contract. They are not new runner statuses and do not authorize pushing or merging through unresolved local-review findings.
 

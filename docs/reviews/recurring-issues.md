@@ -129,3 +129,21 @@ Suggested actions:
 - run `npm run analyze:traces -- --state-dir state` after noisy runs or before proposing another harness change
 - summarize stable findings in `docs/reviews/recurring-issues.md`, `docs/context/repo-context.*`, or a fresh plan doc
 - keep the analyzer read-only and require a human decision before changing prompts, policies, or roadmap priorities
+
+---
+
+## 11. Policy branches widen into mechanism work
+Common symptoms:
+- a docs-only review-gate policy branch starts editing runner, schema, hook,
+  prompt, or automation surfaces
+- a new review finding is treated as justification to expand the current branch
+  instead of stopping and replanning
+- a temporary review-gate-stabilization exception starts being used like a
+  general-purpose bypass for blocking review
+
+Suggested actions:
+- keep policy-only review-gate work on exact named doc surfaces
+- if a finding requires runner or schema changes, record it in the branch plan,
+  stop the current branch, and open a separate mechanism plan
+- treat the temporary transition rule as governance for narrow docs-only
+  stabilization PRs, not as a waiver for runtime or feature correctness fixes
