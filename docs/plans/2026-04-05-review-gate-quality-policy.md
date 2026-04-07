@@ -111,68 +111,22 @@ Create a compact, execution-ready plan for a first implementation slice that doc
 - use durable repo docs instead of chat-only guidance
 - new findings against the policy branch must not justify widening into runner or schema work
 
-## Temporary Transition Rule For Gate-Stabilization PRs
+## Out-Of-Scope Mechanism Note
 
-Until the repository implements a real review-gate decision mechanism, a narrow
-temporary exception is allowed for review-gate-stabilization PRs that would
-otherwise be forced to absorb unrelated findings from the current
-all-findings-are-blocking local review loop.
+The repository may still need a narrow first-blocked-push exception for
+review-gate-stabilization work, but that path is not part of this Phase 1
+docs-only plan.
 
-### Allowed Use
+Why it stays out of scope:
+- the unchanged local pre-push gate still blocks pushes on returned `findings`
+- making a reliable exception path executable would require hook, runner, or
+  other mechanism work
+- this plan must not widen into those surfaces
 
-This exception may be used only for PRs that are explicitly and narrowly about:
-
-- review-gate policy definition
-- defer / reject / fix-now governance
-- deferred required finding handoff design
-- repository workflow documentation needed to land those policies
-
-### Not Allowed
-
-This exception must not be used for PRs that touch:
-
-- `src/`
-- `scripts/`
-- `.githooks/`
-- review prompt/schema enforcement
-- issue automation or provider automation
-- unrelated feature, bugfix, refactor, or cleanup work
-
-### Required Controls
-
-A PR using this temporary exception must:
-
-- declare the exception explicitly in the checked-in implementation plan
-- declare the exception explicitly in the PR description
-- list the exact files it is allowed to modify
-- keep the diff bounded to the named review-gate policy/handoff surfaces
-- avoid unrelated fixes even if current local review would otherwise request them
-- complete the normal non-review validation relevant to the touched files
-- receive human review before merge
-
-### Relationship To Deferred Findings
-
-This temporary exception does not mean unresolved actionable findings become
-mergeable by default.
-
-It exists only so bounded review-gate-stabilization PRs do not have to widen
-into unrelated repair work before the repository has a mechanism capable of
-making `fix_now` versus `defer_with_follow_up` decisions cleanly.
-
-### Initial Consumer
-
-The deferred review finding issue-handoff planning PR is an intended example of
-a PR that may rely on this transition rule, provided it remains docs-only and
-does not widen into runner, hook, schema, or automation work.
-
-### Sunset
-
-Remove this transition rule after the first mechanism branch lands the actual
-decision flow for:
-
-- `fix_now`
-- `reject_with_evidence`
-- `defer_with_follow_up`
+Phase 1 rule:
+- if a docs-only review-gate policy branch would need a first-blocked-push
+  exception to land, stop and open a separate mechanism plan instead of trying
+  to encode that landing path in this branch
 
 ## Planning / Runtime Contract Check
 
@@ -229,8 +183,7 @@ Phase 1 deferral is a branch-stop governance outcome, not a merge-through waiver
 - [ ] the policy records how a deferral or rejection must be documented in checked-in repo artifacts
 - [ ] the policy separates infrastructure stop conditions from substantive review findings
 - [ ] the policy explicitly states that deferral in Phase 1 is a stop-and-replan outcome, not a merge-through waiver against an unchanged blocking runner
-- [ ] the plan defines a narrow temporary exception for review-gate-stabilization PRs before the mechanism exists
-- [ ] the temporary exception includes eligibility, prohibited surfaces, compensating controls, and a sunset condition
+- [ ] the plan explicitly records that any first-blocked-push exception remains out of scope for Phase 1 and requires a separate mechanism plan
 - [ ] workflow docs say when Goose must stop instead of widening the branch
 - [ ] the plan records the failed branch as a scope anti-pattern so future work does not repeat it
 
@@ -287,7 +240,7 @@ Infrastructure recovery lane:
 Phase 1 is doc-only. Validate with:
 - `rg -n "Review Gate Decision Log|fix_now|reject_with_evidence|defer_with_follow_up|manual_review_required" docs/goose/pr-workflow.md docs/templates/task-template.md docs/reviews/recurring-issues.md docs/reviews/review-gate-quality-policy.md docs/plans/2026-04-05-review-gate-quality-policy.md`
 - `git diff --name-only origin/main...HEAD`
-- `git diff --name-only origin/main...HEAD | rg '^(src/|scripts/|tests/|\\.githooks/)'`
+- `if (git diff --name-only origin/main...HEAD; git diff --name-only; git diff --cached --name-only) | sort -u | rg -v '^(docs/goose/pr-workflow\\.md|docs/plans/2026-04-05-review-gate-quality-policy\\.md|docs/reviews/recurring-issues\\.md|docs/reviews/review-gate-quality-policy\\.md|docs/templates/task-template\\.md)$'; then echo "Out-of-scope tracked file changes detected" && exit 1; fi`
 - `npm run lint:md`
 - `git diff --check`
 
@@ -371,7 +324,7 @@ For `team`:
 
 - `rg -n "Review Gate Decision Log|fix_now|reject_with_evidence|defer_with_follow_up|manual_review_required" docs/goose/pr-workflow.md docs/templates/task-template.md docs/reviews/recurring-issues.md docs/reviews/review-gate-quality-policy.md docs/plans/2026-04-05-review-gate-quality-policy.md`
 - `git diff --name-only origin/main...HEAD`
-- `git diff --name-only origin/main...HEAD | rg '^(src/|scripts/|tests/|\\.githooks/)'`
+- `if (git diff --name-only origin/main...HEAD; git diff --name-only; git diff --cached --name-only) | sort -u | rg -v '^(docs/goose/pr-workflow\\.md|docs/plans/2026-04-05-review-gate-quality-policy\\.md|docs/reviews/recurring-issues\\.md|docs/reviews/review-gate-quality-policy\\.md|docs/templates/task-template\\.md)$'; then echo "Out-of-scope tracked file changes detected" && exit 1; fi`
 - `npm run lint:md`
 - `git diff --check`
 
@@ -385,7 +338,9 @@ For `team`:
 - Phase 1 may not add or broaden regression suites beyond doc validation.
 - Phase 1 workflow dispositions are guidance for humans and Goose operators; they are not new runner states.
 - Phase 1 may not imply that deferred findings are mergeable while the unchanged runner still reports blocking `findings`.
-- the temporary transition rule is governance only and must not be used to bypass the normal review gate for feature or runtime code changes.
+- any first-blocked-push exception remains out of scope for this branch and must
+  not be used to bypass the normal review gate for feature or runtime code
+  changes.
 
 ### Stop rules
 
